@@ -1,0 +1,24 @@
+{
+  "name": "@crowlkats/deploy-experimental",
+  "version": "0.0.2",
+  "license": "MIT",
+  "exports": "./main.ts",
+  "tasks": {
+    "dev": "deno run --watch main.ts"
+  },
+  "imports": {
+    "@cfa/gitignore-parser": "jsr:@cfa/gitignore-parser@^0.1.4",
+    "@std/cli": "jsr:@std/cli@^1.0.15",
+    "@std/encoding": "jsr:@std/encoding@^1.0.8",
+    "@std/fmt": "jsr:@std/fmt@^1.0.6",
+    "@std/fs": "jsr:@std/fs@^1.0.14",
+    "@std/jsonc": "jsr:@std/jsonc@^1.0.1",
+    "@std/path": "jsr:@std/path@^1.0.8",
+    "@std/tar": "jsr:@std/tar@^0.1.6",
+    "@trpc/client": "npm:@trpc/client@^11.0.2",
+    "@trpc/server": "npm:@trpc/server@^11.0.2",
+    "jsonc-parser": "npm:jsonc-parser@^3.3.1",
+    "open": "npm:open@^10.1.0",
+    "superjson": "npm:superjson@^2.2.2"
+  }
+}

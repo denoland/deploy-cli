@@ -1,0 +1,9 @@
+.env
+
+/.idea/
+/.vs/
+/.vscode/
+
+# MacOS generated files
+.DS_Store
+.DS_Store?
