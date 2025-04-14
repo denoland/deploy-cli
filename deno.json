@@ -3,9 +3,6 @@
   "version": "0.0.2",
   "license": "MIT",
   "exports": "./main.ts",
-  "tasks": {
-    "dev": "deno run --watch main.ts"
-  },
   "imports": {
     "@cfa/gitignore-parser": "jsr:@cfa/gitignore-parser@^0.1.4",
     "@std/cli": "jsr:@std/cli@^1.0.15",

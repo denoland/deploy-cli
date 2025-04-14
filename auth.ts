@@ -103,10 +103,13 @@ if (!deployToken) {
         clearInterval(interval);
         resolve(token);
       } else {
-        // TODO: if The requested authorization is still pending
-        if (false) {
+        const err = await res.json();
+        if (
+          !(err.code === "DEVICE_AUTH_ERROR" &&
+            err.message.endsWith("User has not been yet set"))
+        ) {
           clearInterval(interval);
-          reject();
+          reject(new Error(err.message));
         }
       }
     }, 2000);
