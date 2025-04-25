@@ -10,7 +10,7 @@ import {
   modify as modifyJSONC,
   parse as parseJSONC,
 } from "jsonc-parser";
-import { green, yellow } from "@std/fmt/colors";
+import { green, yellow, red } from "@std/fmt/colors";
 import { deployToken, deployUrl, trpcClient } from "./auth.ts";
 
 const args = parseArgs(Deno.args, {
@@ -220,25 +220,32 @@ const resp = await fetch(`${deployUrl}/api/trigger_tarball_build`, {
   body: tarball,
 });
 
-const { revisionId } = await resp.json();
+const resBody = await resp.json();
 
 await progress.end();
 
-console.log("Successfully uploaded tarball!");
-console.log(
-  `You can view the revision here:\n${deployUrl}/${org}/${app}/builds/${revisionId}`,
-);
+if (!resp.ok) {
+  console.log();
+  console.log(`${red("✗")} An error occurred:`);
+  console.log(`  ${resBody.message}`);
+} else {
+  console.log("Successfully uploaded tarball!");
+  console.log(
+    `You can view the revision here:\n${deployUrl}/${org}/${app}/builds/${resBody.revisionId}`,
+  );
 
-if (configContent) {
-  const edits = modifyJSONC(configContent.content, ["deploy"], {
-    org,
-    app,
-  }, {
-    formattingOptions: {
-      insertSpaces: true,
-      tabSize: 2,
-    },
-  });
-  const out = applyJSONCEdits(configContent.content, edits);
-  await Deno.writeTextFile(configContent.path, out);
+  if (configContent) {
+    const edits = modifyJSONC(configContent.content, ["deploy"], {
+      org,
+      app,
+    }, {
+      formattingOptions: {
+        insertSpaces: true,
+        tabSize: 2,
+      },
+    });
+    const out = applyJSONCEdits(configContent.content, edits);
+    await Deno.writeTextFile(configContent.path, out);
+  }
 }
+

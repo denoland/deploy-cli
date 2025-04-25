@@ -105,8 +105,8 @@ if (!deployToken) {
       } else {
         const err = await res.json();
         if (
-          !(err.code === "DEVICE_AUTH_ERROR" &&
-            err.message.endsWith("User has not been yet set"))
+          !(err.code === "AUTHORIZATION_PENDING" &&
+            err.message.endsWith("The requested authorization has not been approved or denied yet."))
         ) {
           clearInterval(interval);
           reject(new Error(err.message));
