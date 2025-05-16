@@ -10,7 +10,7 @@ import {
   modify as modifyJSONC,
   parse as parseJSONC,
 } from "jsonc-parser";
-import { green, yellow, red } from "@std/fmt/colors";
+import { green, red, yellow } from "@std/fmt/colors";
 import { deployToken, deployUrl, trpcClient } from "./auth.ts";
 
 const args = parseArgs(Deno.args, {
@@ -63,7 +63,9 @@ org ??= args.org;
 app ??= args.app;
 
 if (!org || !app) {
-  const orgs = await trpcClient.orgs.list.query();
+  const orgs: Array<{ name: string; slug: string; id: string }> =
+    // deno-lint-ignore no-explicit-any
+    await (trpcClient.orgs as any).list.query();
 
   const orgStrings = orgs.map((org) => `${org.name} (${org.slug})`);
   const orgsResult = promptSelect("select an organization:", orgStrings, {
@@ -78,9 +80,11 @@ if (!org || !app) {
   org = selectedOrg.slug;
   console.log(`Selected organization '${selectedOrg.name}'`);
 
-  const apps = await trpcClient.apps.list.query({
-    org: selectedOrg.id,
-  });
+  // deno-lint-ignore no-explicit-any
+  const apps: Array<{ slug: string }> = await (trpcClient.apps as any).list
+    .query({
+      org: selectedOrg.id,
+    });
   const appStrings = apps.map((app) => `${app.slug}`);
   const appsResult = promptSelect("select an application:", appStrings, {
     clear: true,
@@ -108,7 +112,7 @@ if (!app) {
   Deno.exit(1);
 }
 
-let gitignore: any = {
+let gitignore: { denies(query: string): boolean } = {
   denies: () => false,
 };
 
@@ -248,4 +252,3 @@ if (!resp.ok) {
     await Deno.writeTextFile(configContent.path, out);
   }
 }
-

@@ -11,7 +11,7 @@ import {
 } from "@trpc/client";
 import { Spinner } from "@std/cli/unstable-spinner";
 
-export const deployUrl = Deno.env.get("DEPLOY_URL");
+export const deployUrl = Deno.env.get("DEPLOY_URL") ?? "https://app.deno.com";
 export let deployToken = Deno.env.get("DEPLOY_TOKEN");
 
 const transformer: TRPCCombinedDataTransformer = {
@@ -24,6 +24,8 @@ const transformer: TRPCCombinedDataTransformer = {
     deserialize: (object) => (0, eval)(`(${object})`),
   },
 };
+
+// deno-lint-ignore no-explicit-any
 export const trpcClient = createTRPCClient<any>({
   links: [
     splitLink({
@@ -50,12 +52,6 @@ export const trpcClient = createTRPCClient<any>({
   ],
 });
 
-if (!deployUrl) {
-  console.error(
-    "Expected the 'DEPLOY_URL' environmental variable to be specified.",
-  );
-  Deno.exit(1);
-}
 if (!deployToken) {
   const verifier = crypto.randomUUID();
   const data = (new TextEncoder()).encode(verifier);
@@ -106,7 +102,9 @@ if (!deployToken) {
         const err = await res.json();
         if (
           !(err.code === "AUTHORIZATION_PENDING" &&
-            err.message.endsWith("The requested authorization has not been approved or denied yet."))
+            err.message.endsWith(
+              "The requested authorization has not been approved or denied yet.",
+            ))
         ) {
           clearInterval(interval);
           reject(new Error(err.message));
