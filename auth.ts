@@ -13,7 +13,7 @@ import {
 import { Spinner } from "@std/cli/unstable-spinner";
 import { promptSelect } from "@std/cli/unstable-prompt-select";
 
-export const deployUrl = Deno.env.get("DEPLOY_URL");
+export const deployUrl = Deno.env.get("DEPLOY_URL") ?? "https://app.deno.com";
 
 export function createTrpcClient(deployToken?: string) {
   const transformer: TRPCCombinedDataTransformer = {
