@@ -8,51 +8,76 @@ import {
   httpBatchStreamLink,
   httpSubscriptionLink,
   splitLink,
+  type TRPCClient,
 } from "@trpc/client";
 import { Spinner } from "@std/cli/unstable-spinner";
+import { promptSelect } from "@std/cli/unstable-prompt-select";
 
 export const deployUrl = Deno.env.get("DEPLOY_URL") ?? "https://app.deno.com";
-export let deployToken = Deno.env.get("DEPLOY_TOKEN");
 
-const transformer: TRPCCombinedDataTransformer = {
-  input: {
-    serialize,
-    deserialize: (_) => {/* this is never called on the client */},
-  },
-  output: {
-    serialize: (_) => {/* this is never called on the client */},
-    deserialize: (object) => (0, eval)(`(${object})`),
-  },
-};
+export function createTrpcClient(deployToken?: string) {
+  const transformer: TRPCCombinedDataTransformer = {
+    input: {
+      serialize,
+      deserialize: (_) => {/* this is never called on the client */},
+    },
+    output: {
+      serialize: (_) => {/* this is never called on the client */},
+      deserialize: (object) => (0, eval)(`(${object})`),
+    },
+  };
 
-// deno-lint-ignore no-explicit-any
-export const trpcClient = createTRPCClient<any>({
-  links: [
-    splitLink({
-      // uses the httpSubscriptionLink for subscriptions
-      condition: (op) => op.type === "subscription",
-      false: httpBatchStreamLink({
-        url: deployUrl + "/api",
-        headers() {
-          if (deployToken) {
-            return {
-              cookie: `token=${deployToken}`,
-            };
-          } else {
-            return {};
-          }
-        },
-        transformer,
+  // deno-lint-ignore no-explicit-any
+  return createTRPCClient<any>({
+    links: [
+      splitLink({
+        // uses the httpSubscriptionLink for subscriptions
+        condition: (op) => op.type === "subscription",
+        false: httpBatchStreamLink({
+          url: deployUrl + "/api",
+          headers() {
+            if (deployToken) {
+              return {
+                cookie: `token=${deployToken}`,
+              };
+            } else {
+              return {};
+            }
+          },
+          transformer,
+        }),
+        true: httpSubscriptionLink({
+          url: deployUrl + "/api",
+          transformer,
+        }),
       }),
-      true: httpSubscriptionLink({
-        url: deployUrl + "/api",
-        transformer,
-      }),
-    }),
-  ],
-});
+    ],
+  });
+}
 
-if (!deployToken) {
+export async function auth() {
+  let deployToken = Deno.env.get("DEPLOY_TOKEN");
+
+  if (!deployToken) {
+    const { code, exchangeToken, verifier } = await interactive();
+
+    const authUrl = `${deployUrl}/auth?code=${code}`;
+
+    console.log(`Visit ${authUrl} to authorize uploading of tarball.\x07`);
+    const spinner = new Spinner({ message: "Waiting...", color: "yellow" });
+    spinner.start();
+
+    await open(authUrl);
+
+    deployToken = await tokenExchange(exchangeToken, verifier, spinner);
+  }
+
+  return deployToken!;
+}
+
+export async function interactive(): Promise<
+  { code: string; exchangeToken: string; verifier: string }
+> {
   const verifier = crypto.randomUUID();
   const data = (new TextEncoder()).encode(verifier);
   const hash = await crypto.subtle.digest("SHA-256", data);
@@ -70,20 +95,24 @@ if (!deployToken) {
 
   const body = await res.json();
 
-  const authUrl = `${deployUrl}/auth?code=${body.code}`;
+  return {
+    code: body.code,
+    exchangeToken: body.exchangeToken,
+    verifier,
+  };
+}
 
-  console.log(`Visit ${authUrl} to authorize uploading of tarball.\x07`);
-  const spinner = new Spinner({ message: "Waiting...", color: "yellow" });
-  spinner.start();
-
-  await open(authUrl);
-
-  deployToken = await new Promise((resolve, reject) => {
+export function tokenExchange(
+  exchangeToken: string,
+  verifier: string,
+  spinner: Spinner,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
     const interval = setInterval(async () => {
       const res = await fetch(`${deployUrl}/auth/exchange`, {
         method: "POST",
         body: JSON.stringify({
-          exchangeToken: body.exchangeToken,
+          exchangeToken,
           verifier,
         }),
       });
@@ -112,4 +141,70 @@ if (!deployToken) {
       }
     }, 2000);
   });
+}
+
+export async function withApp(
+  // deno-lint-ignore no-explicit-any
+  trpcClient: TRPCClient<any>,
+  org?: string,
+  app?: string,
+) {
+  if (!org || !app) {
+    const orgs: Array<{
+      name: string;
+      slug: string;
+      id: string;
+      // deno-lint-ignore no-explicit-any
+    }> = await (trpcClient.orgs as any).list.query();
+
+    const orgStrings = orgs.map((org) => `${org.name} (${org.slug})`);
+    const orgsResult = promptSelect("select an organization:", orgStrings, {
+      clear: true,
+    });
+    if (!orgsResult) {
+      console.error("No organization was selected.");
+      Deno.exit(1);
+    }
+
+    const selectedOrg = orgs[orgStrings.indexOf(orgsResult)];
+    org = selectedOrg.slug;
+    console.log(`Selected organization '${selectedOrg.name}'`);
+
+    const apps: Array<{ name: string; slug: string }> =
+      // deno-lint-ignore no-explicit-any
+      await (trpcClient.apps as any)
+        .list.query({
+          org: selectedOrg.id,
+        });
+    const appStrings = apps.map((app) => `${app.slug}`);
+    const appsResult = promptSelect("select an application:", appStrings, {
+      clear: true,
+    });
+    if (!appsResult) {
+      console.error("No organization was selected.");
+      Deno.exit(1);
+    }
+
+    const selectedApp = apps[appStrings.indexOf(appsResult)];
+    app = selectedApp.slug;
+    console.log(`Selected app '${selectedApp.slug}'`);
+  }
+
+  if (!org) {
+    console.error(
+      "Expected 'deploy.org' in the config file or the '--org' flag to be specified.",
+    );
+    Deno.exit(1);
+  }
+  if (!app) {
+    console.error(
+      "Expected 'deploy.app' in the config file or the '--app' flag to be specified.",
+    );
+    Deno.exit(1);
+  }
+
+  return {
+    org,
+    app,
+  };
 }
