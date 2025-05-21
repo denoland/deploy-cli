@@ -17,6 +17,6 @@
     "jsonc-parser": "npm:jsonc-parser@^3.3.1",
     "open": "npm:open@^10.1.0",
     "superjson": "npm:superjson@^2.2.2",
-    "@deno/framework-detect": "jsr:@deno/framework-detect"
+    "@deno/framework-detect": "jsr:@deno/framework-detect@^0"
   }
 }
