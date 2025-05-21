@@ -2,7 +2,7 @@ import type { TRPCCombinedDataTransformer } from "@trpc/server";
 import { serialize } from "superjson";
 import open from "open";
 import { encodeBase64 } from "@std/encoding";
-import { green, red } from "@std/fmt/colors";
+import { green } from "@std/fmt/colors";
 import {
   createTRPCClient,
   httpBatchStreamLink,
@@ -27,6 +27,7 @@ export function createTrpcClient(deployToken?: string) {
     },
   };
 
+  // deno-lint-ignore no-explicit-any
   return createTRPCClient<any>({
     links: [
       splitLink({
@@ -74,7 +75,9 @@ export async function auth() {
   return deployToken!;
 }
 
-export async function interactive(): Promise<{ code: string; exchangeToken: string; verifier: string; }> {
+export async function interactive(): Promise<
+  { code: string; exchangeToken: string; verifier: string }
+> {
   const verifier = crypto.randomUUID();
   const data = (new TextEncoder()).encode(verifier);
   const hash = await crypto.subtle.digest("SHA-256", data);
@@ -96,10 +99,14 @@ export async function interactive(): Promise<{ code: string; exchangeToken: stri
     code: body.code,
     exchangeToken: body.exchangeToken,
     verifier,
-  }
+  };
 }
 
-export function tokenExchange(exchangeToken: string, verifier: string, spinner: Spinner): Promise<string> {
+export function tokenExchange(
+  exchangeToken: string,
+  verifier: string,
+  spinner: Spinner,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const interval = setInterval(async () => {
       const res = await fetch(`${deployUrl}/auth/exchange`, {
@@ -137,6 +144,7 @@ export function tokenExchange(exchangeToken: string, verifier: string, spinner: 
 }
 
 export async function withApp(
+  // deno-lint-ignore no-explicit-any
   trpcClient: TRPCClient<any>,
   org?: string,
   app?: string,
@@ -146,7 +154,8 @@ export async function withApp(
       name: string;
       slug: string;
       id: string;
-    }> = await trpcClient.orgs.list.query();
+      // deno-lint-ignore no-explicit-any
+    }> = await (trpcClient.orgs as any).list.query();
 
     const orgStrings = orgs.map((org) => `${org.name} (${org.slug})`);
     const orgsResult = promptSelect("select an organization:", orgStrings, {
@@ -161,10 +170,12 @@ export async function withApp(
     org = selectedOrg.slug;
     console.log(`Selected organization '${selectedOrg.name}'`);
 
-    const apps: Array<{ name: string; slug: string }> = await trpcClient.apps
-      .list.query({
-        org: selectedOrg.id,
-      });
+    const apps: Array<{ name: string; slug: string }> =
+      // deno-lint-ignore no-explicit-any
+      await (trpcClient.apps as any)
+        .list.query({
+          org: selectedOrg.id,
+        });
     const appStrings = apps.map((app) => `${app.slug}`);
     const appsResult = promptSelect("select an application:", appStrings, {
       clear: true,
@@ -197,4 +208,3 @@ export async function withApp(
     app,
   };
 }
-

@@ -4,7 +4,7 @@ import { walk } from "@std/fs";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { join, relative } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
-import { Config, writeConfig } from "./main.ts";
+import { type Config, writeConfig } from "./main.ts";
 import { deployUrl } from "./auth.ts";
 
 export async function publish(
@@ -14,7 +14,7 @@ export async function publish(
   org: string,
   app: string,
 ) {
-  let gitignore: any = {
+  let gitignore: { denies(input: string): boolean } = {
     denies: () => false,
   };
 

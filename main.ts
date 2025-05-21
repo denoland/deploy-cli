@@ -102,7 +102,11 @@ function getAppFromConfig(configContent: Config | null) {
   };
 }
 
-export async function writeConfig(configContent: Config | null, org: string, app: string) {
+export async function writeConfig(
+  configContent: Config | null,
+  org: string,
+  app: string,
+) {
   if (configContent) {
     const edits = modifyJSONC(configContent.content, ["deploy"], {
       org,
