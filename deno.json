@@ -1,11 +1,11 @@
 {
   "name": "@deno/deploy",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "license": "MIT",
   "exports": "./main.ts",
   "imports": {
     "@cfa/gitignore-parser": "jsr:@cfa/gitignore-parser@^0.1.4",
-    "@std/cli": "jsr:@std/cli@^1.0.15",
+    "@std/cli": "jsr:@std/cli@1.0.15",
     "@std/encoding": "jsr:@std/encoding@^1.0.8",
     "@std/fmt": "jsr:@std/fmt@^1.0.6",
     "@std/fs": "jsr:@std/fs@^1.0.14",
