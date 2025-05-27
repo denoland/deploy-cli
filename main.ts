@@ -13,8 +13,22 @@ import {
 const subcommand = Deno.args[0];
 
 switch (subcommand) {
-  case "publish": {
-    const args = parseArgs(Deno.args.slice(1), {
+  case "create": {
+    const args = parseArgs(Deno.args.slice(1), {});
+    const rootPath = args._[0]?.toString() || Deno.cwd();
+    const configContent = await readConfig(rootPath);
+    const { org, app } = getAppFromConfig(configContent);
+    if (org || app) {
+      console.log(`${red("✗")} An app already exists in this directory.`);
+      Deno.exit(1);
+    }
+
+    await create(rootPath, configContent);
+
+    break;
+  }
+  default: {
+    const args = parseArgs(Deno.args, {
       string: ["app", "org"],
     });
     const rootPath = args._[0]?.toString() || Deno.cwd();
@@ -34,20 +48,6 @@ switch (subcommand) {
       orgAndApp.org,
       orgAndApp.app,
     );
-    break;
-  }
-  case "create": {
-    const args = parseArgs(Deno.args.slice(1), {});
-    const rootPath = args._[0]?.toString() || Deno.cwd();
-    const configContent = await readConfig(rootPath);
-    const { org, app } = getAppFromConfig(configContent);
-    if (org || app) {
-      console.log(`${red("✗")} An app already exists in this directory.`);
-      Deno.exit(1);
-    }
-
-    await create(rootPath, configContent);
-
     break;
   }
 }
