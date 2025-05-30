@@ -12,8 +12,13 @@ import {
 } from "@trpc/client";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { promptSelect } from "@std/cli/unstable-prompt-select";
+import { parseArgs } from "@std/cli";
 
-export const deployUrl = Deno.env.get("DEPLOY_URL") ?? "https://app.deno.com";
+const args = parseArgs(Deno.args, {
+  string: ["endpoint"],
+});
+
+export const deployUrl = args.endpoint ?? "https://app.deno.com";
 
 export function createTrpcClient(deployToken: string, github: string) {
   const transformer: TRPCCombinedDataTransformer = {
