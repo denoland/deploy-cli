@@ -15,7 +15,7 @@ import { promptSelect } from "@std/cli/unstable-prompt-select";
 
 export const deployUrl = Deno.env.get("DEPLOY_URL") ?? "https://app.deno.com";
 
-export function createTrpcClient(deployToken?: string) {
+export function createTrpcClient(deployToken: string, github: string) {
   const transformer: TRPCCombinedDataTransformer = {
     input: {
       serialize,
@@ -38,7 +38,7 @@ export function createTrpcClient(deployToken?: string) {
           headers() {
             if (deployToken) {
               return {
-                cookie: `token=${deployToken}`,
+                cookie: `token=${deployToken}; deno_auth_ghid=${github}`,
               };
             } else {
               return {};
@@ -57,6 +57,7 @@ export function createTrpcClient(deployToken?: string) {
 
 export async function auth() {
   let deployToken = Deno.env.get("DEPLOY_TOKEN");
+  let githubUser = Deno.env.get("DEPLOY_GITHUB_USER");
 
   if (!deployToken) {
     const { code, exchangeToken, verifier } = await interactive();
@@ -69,10 +70,15 @@ export async function auth() {
 
     await open(authUrl);
 
-    deployToken = await tokenExchange(exchangeToken, verifier, spinner);
+    const exchange = await tokenExchange(exchangeToken, verifier, spinner);
+    deployToken = exchange.token;
+    githubUser = exchange.github;
   }
 
-  return deployToken!;
+  return {
+    token: deployToken!,
+    github: githubUser!,
+  };
 }
 
 export async function interactive(): Promise<
@@ -106,7 +112,7 @@ export function tokenExchange(
   exchangeToken: string,
   verifier: string,
   spinner: Spinner,
-): Promise<string> {
+): Promise<{ token: string; github: string }> {
   return new Promise((resolve, reject) => {
     const interval = setInterval(async () => {
       const res = await fetch(`${deployUrl}/auth/exchange`, {
@@ -126,7 +132,7 @@ export function tokenExchange(
           } Authorization successful. Authenticated as ${user.name}\n`,
         );
         clearInterval(interval);
-        resolve(token);
+        resolve({ token, github: user.github_id });
       } else {
         const err = await res.json();
         if (

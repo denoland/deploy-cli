@@ -37,14 +37,15 @@ switch (subcommand) {
     org ??= args.org;
     app ??= args.app;
 
-    const deployToken = await auth();
-    const trpcClient = createTrpcClient(deployToken);
+    const { token, github } = await auth();
+    const trpcClient = createTrpcClient(token, github);
     const orgAndApp = await withApp(trpcClient, org, app);
 
     await publish(
       rootPath,
       configContent,
-      deployToken,
+      token,
+      github,
       orgAndApp.org,
       orgAndApp.app,
     );

@@ -11,6 +11,7 @@ import type { Config } from "./main.ts";
 
 export async function create(rootPath: string, configContent: Config | null) {
   let deployToken = Deno.env.get("DEPLOY_TOKEN");
+  let githubUser = Deno.env.get("DEPLOY_GITHUB_USER");
   let verifier;
   let exchangeToken;
 
@@ -72,11 +73,12 @@ export async function create(rootPath: string, configContent: Config | null) {
   ]);
 
   if (newToken) {
-    deployToken = newToken;
+    deployToken = newToken.token;
+    githubUser = newToken.github;
   }
 
   spinner.stop();
   console.log(`${green("✔")} App '${app}' created in the '${org}' org.\n`);
 
-  await publish(rootPath, configContent, deployToken!, org, app);
+  await publish(rootPath, configContent, deployToken!, githubUser!, org, app);
 }

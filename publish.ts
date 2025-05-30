@@ -11,6 +11,7 @@ export async function publish(
   rootPath: string,
   configContent: Config | null,
   deployToken: string,
+  githubUser: string,
   org: string,
   app: string,
 ) {
@@ -123,7 +124,7 @@ export async function publish(
         org,
         app,
       }),
-      "cookie": `token=${deployToken}`,
+      "cookie": `token=${deployToken}; deno_auth_ghid=${githubUser}`,
     },
     body: tarball,
   });
