@@ -29,7 +29,7 @@ switch (subcommand) {
   }
   default: {
     const args = parseArgs(Deno.args, {
-      string: ["app", "org", "endpoint"],
+      string: ["app", "org"],
     });
     const rootPath = args._[0]?.toString() || Deno.cwd();
     const configContent = await readConfig(rootPath);
