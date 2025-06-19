@@ -35,11 +35,8 @@ async function runAwsCommand<T>(args: string[]): Promise<T> {
         "%cError%c AWS CLI is not installed or not found in PATH.\n\n" +
         "Please install the AWS CLI before running this command:\n" +
         "  • Visit: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html\n" +
-        "  • Or run: %ccurl \"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\" -o \"awscliv2.zip\" && unzip awscliv2.zip && sudo ./aws/install%c\n",
         "color: red; font-weight: bold;",
         "color: reset;",
-        "color: cyan;",
-        "color: reset;"
       );
       Deno.exit(1);
     }
