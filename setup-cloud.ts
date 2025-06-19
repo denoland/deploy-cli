@@ -7,26 +7,43 @@ const OIDC_PROVIDER_DOMAIN = "dev.deno-cluster.net";
 const OIDC_AUDIENCE = "sts.amazonaws.com";
 
 async function runAwsCommand<T>(args: string[]): Promise<T> {
-  const output = await new Deno.Command("aws", {
-    args: [...args, "--output=json"],
-    stdout: "piped",
-    stderr: "inherit",
-    stdin: "inherit",
-  }).output();
-  if (!output.success) Deno.exit(output.code);
-  if (output.stdout.length === 0) return {} as T;
-  const decoder = new TextDecoder();
-  const json = decoder.decode(output.stdout);
   try {
-    return JSON.parse(json) as T;
-  } catch (_) {
-    console.error(
-      "%cError%c Failed to parse JSON output from AWS CLI command:",
-      "color: red;",
-      "color: reset;",
-      json,
-    );
-    Deno.exit(1);
+    const output = await new Deno.Command("aws", {
+      args: [...args, "--output=json"],
+      stdout: "piped",
+      stderr: "inherit",
+      stdin: "inherit",
+    }).output();
+    if (!output.success) Deno.exit(output.code);
+    if (output.stdout.length === 0) return {} as T;
+    const decoder = new TextDecoder();
+    const json = decoder.decode(output.stdout);
+    try {
+      return JSON.parse(json) as T;
+    } catch (_) {
+      console.error(
+        "%cError%c Failed to parse JSON output from AWS CLI command:",
+        "color: red;",
+        "color: reset;",
+        json,
+      );
+      Deno.exit(1);
+    }
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      console.error(
+        "%cError%c AWS CLI is not installed or not found in PATH.\n\n" +
+        "Please install the AWS CLI before running this command:\n" +
+        "  • Visit: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html\n" +
+        "  • Or run: %ccurl \"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\" -o \"awscliv2.zip\" && unzip awscliv2.zip && sudo ./aws/install%c\n",
+        "color: red; font-weight: bold;",
+        "color: reset;",
+        "color: cyan;",
+        "color: reset;"
+      );
+      Deno.exit(1);
+    }
+    throw error;
   }
 }
 
