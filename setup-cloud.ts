@@ -33,9 +33,9 @@ async function runAwsCommand<T>(args: string[]): Promise<T> {
     if (error instanceof Deno.errors.NotFound) {
       console.error(
         "%cError%c AWS CLI is not installed or not found in PATH.\n\n" +
-        "Please install the AWS CLI before running this command:\n" +
-        "  • Visit: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html\n" +
-        "color: red; font-weight: bold;",
+          "Please install the AWS CLI before running this command:\n" +
+          "  • Visit: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html\n" +
+          "color: red; font-weight: bold;",
         "color: reset;",
       );
       Deno.exit(1);
