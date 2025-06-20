@@ -13,6 +13,7 @@ import {
 import { Spinner } from "@std/cli/unstable-spinner";
 import { promptSelect } from "@std/cli/unstable-prompt-select";
 import { parseArgs } from "@std/cli";
+import { error } from "./util.ts";
 
 const args = parseArgs(Deno.args, {
   string: ["endpoint"],
@@ -118,7 +119,7 @@ export function tokenExchange(
   verifier: string,
   spinner: Spinner,
 ): Promise<{ token: string; github: string }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const interval = setInterval(async () => {
       const res = await fetch(`${deployUrl}/auth/exchange`, {
         method: "POST",
@@ -147,7 +148,8 @@ export function tokenExchange(
             ))
         ) {
           clearInterval(interval);
-          reject(new Error(err.message));
+          spinner.stop();
+          error(res, err.message);
         }
       }
     }, 2000);
@@ -169,7 +171,7 @@ export async function withApp(
     }> = await (trpcClient.orgs as any).list.query();
 
     const orgStrings = orgs.map((org) => `${org.name} (${org.slug})`);
-    const orgsResult = promptSelect("select an organization:", orgStrings, {
+    const orgsResult = promptSelect("Select an organization:", orgStrings, {
       clear: true,
     });
     if (!orgsResult) {
@@ -188,7 +190,7 @@ export async function withApp(
           org: selectedOrg.id,
         });
     const appStrings = apps.map((app) => `${app.slug}`);
-    const appsResult = promptSelect("select an application:", appStrings, {
+    const appsResult = promptSelect("Select an application:", appStrings, {
       clear: true,
     });
     if (!appsResult) {
