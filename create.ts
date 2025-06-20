@@ -9,9 +9,9 @@ import { publish } from "./publish.ts";
 import { green } from "@std/fmt/colors";
 import type { Config } from "./main.ts";
 
-export async function create(rootPath: string, configContent: Config | null) {
-  let deployToken = Deno.env.get("DEPLOY_TOKEN");
-  let githubUser = Deno.env.get("DEPLOY_GITHUB_USER");
+export async function create(rootPath: string, configContent: Config | null, token?: string, github?: string, initOrg?: string) {
+  let deployToken = Deno.env.get("DEPLOY_TOKEN") ?? token;
+  let githubUser = Deno.env.get("DEPLOY_GITHUB_USER") ?? github;
   let verifier;
   let exchangeToken;
 
@@ -28,6 +28,10 @@ export async function create(rootPath: string, configContent: Config | null) {
   const { id: deviceCreateId } = await deviceCreate.json();
 
   const url = new URL(`${deployUrl!}/device-create/${deviceCreateId}`);
+
+  if (initOrg) {
+    url.searchParams.set("org", initOrg);
+  }
 
   if (!deployToken) {
     const res = await interactive();
