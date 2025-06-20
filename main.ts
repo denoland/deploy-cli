@@ -9,6 +9,7 @@ import {
   applyEdits as applyJSONCEdits,
   modify as modifyJSONC,
 } from "jsonc-parser";
+import { setupAws } from "./setup-cloud.ts";
 
 const subcommand = Deno.args[0];
 
@@ -24,6 +25,29 @@ switch (subcommand) {
     }
 
     await create(rootPath, configContent);
+
+    break;
+  }
+  case "setup-aws": {
+    const args = parseArgs(Deno.args.slice(1), {
+      string: ["app", "org"],
+    });
+    if (!args.org || !args.app) {
+      console.error(
+        `${
+          red("✗")
+        } Usage: deno deploy setup-aws --org <org> --app <app> [context1,context2,...]`,
+      );
+      Deno.exit(1);
+    }
+    const contexts = args._[0]?.toString();
+    const contextList = contexts
+      ? contexts.split(",").map((c) =>
+        c.trim().toLowerCase().replaceAll(" ", "-")
+      )
+      : [];
+
+    await setupAws(args.org, args.app, contextList);
 
     break;
   }
