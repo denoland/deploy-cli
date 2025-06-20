@@ -29,24 +29,25 @@ switch (subcommand) {
     break;
   }
   case "setup-aws": {
-    const org = Deno.args[1];
-    const app = Deno.args[2];
-    if (!org || !app) {
+    const args = parseArgs(Deno.args.slice(1), {
+      string: ["app", "org"],
+    });
+    if (!args.org || !args.app) {
       console.error(
         `${
           red("✗")
-        } Usage: deno deploy setup-aws <org> <app> [context1,context2,...]`,
+        } Usage: deno deploy setup-aws --org <org> --app <app> [context1,context2,...]`,
       );
       Deno.exit(1);
     }
-    const contexts = Deno.args[3];
+    const contexts = args._[0]?.toString();
     const contextList = contexts
       ? contexts.split(",").map((c) =>
         c.trim().toLowerCase().replaceAll(" ", "-")
       )
       : [];
 
-    await setupAws(org, app, contextList);
+    await setupAws(args.org, args.app, contextList);
 
     break;
   }
