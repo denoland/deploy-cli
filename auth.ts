@@ -13,6 +13,7 @@ import {
 import { Spinner } from "@std/cli/unstable-spinner";
 import { promptSelect } from "@std/cli/unstable-prompt-select";
 import { parseArgs } from "@std/cli";
+import { error } from "./util.ts";
 
 const args = parseArgs(Deno.args, {
   string: ["endpoint"],
@@ -118,7 +119,7 @@ export function tokenExchange(
   verifier: string,
   spinner: Spinner,
 ): Promise<{ token: string; github: string }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const interval = setInterval(async () => {
       const res = await fetch(`${deployUrl}/auth/exchange`, {
         method: "POST",
@@ -147,7 +148,8 @@ export function tokenExchange(
             ))
         ) {
           clearInterval(interval);
-          reject(new Error(err.message));
+          spinner.stop();
+          error(res, err.message);
         }
       }
     }, 2000);
@@ -158,8 +160,8 @@ export async function withApp(
   // deno-lint-ignore no-explicit-any
   trpcClient: TRPCClient<any>,
   org?: string,
-  app?: string,
-) {
+  app?: string | null,
+): Promise< { org: string; app: string | null }> {
   if (!org || !app) {
     const orgs: Array<{
       name: string;
@@ -169,7 +171,7 @@ export async function withApp(
     }> = await (trpcClient.orgs as any).list.query();
 
     const orgStrings = orgs.map((org) => `${org.name} (${org.slug})`);
-    const orgsResult = promptSelect("select an organization:", orgStrings, {
+    const orgsResult = promptSelect("Select an organization:", orgStrings, {
       clear: true,
     });
     if (!orgsResult) {
@@ -188,26 +190,33 @@ export async function withApp(
           org: selectedOrg.id,
         });
     const appStrings = apps.map((app) => `${app.slug}`);
-    const appsResult = promptSelect("select an application:", appStrings, {
+    appStrings.push("Create a new app");
+    const appsResult = promptSelect("Select an application:", appStrings, {
       clear: true,
     });
     if (!appsResult) {
-      console.error("No organization was selected.");
+      console.error("No application was selected.");
       Deno.exit(1);
     }
 
-    const selectedApp = apps[appStrings.indexOf(appsResult)];
-    app = selectedApp.slug;
-    console.log(`Selected app '${selectedApp.slug}'`);
+    const index = appStrings.indexOf(appsResult);
+
+    if (index == (appStrings.length - 1)) {
+      app = null;
+    } else {
+      const selectedApp = apps[appStrings.indexOf(appsResult)];
+      app = selectedApp.slug;
+      console.log(`Selected app '${selectedApp.slug}'`);
+    }
   }
 
-  if (!org) {
+  if (org === undefined) {
     console.error(
       "Expected 'deploy.org' in the config file or the '--org' flag to be specified.",
     );
     Deno.exit(1);
   }
-  if (!app) {
+  if (app === undefined) {
     console.error(
       "Expected 'deploy.app' in the config file or the '--app' flag to be specified.",
     );

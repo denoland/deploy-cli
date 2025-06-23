@@ -65,14 +65,18 @@ switch (subcommand) {
     const trpcClient = createTrpcClient(token, github);
     const orgAndApp = await withApp(trpcClient, org, app);
 
-    await publish(
-      rootPath,
-      configContent,
-      token,
-      github,
-      orgAndApp.org,
-      orgAndApp.app,
-    );
+    if (orgAndApp.app === null) {
+      await create(rootPath, configContent, token, github, orgAndApp.org);
+    } else {
+      await publish(
+        rootPath,
+        configContent,
+        token,
+        github,
+        orgAndApp.org,
+        orgAndApp.app,
+      );
+    }
     break;
   }
 }

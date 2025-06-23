@@ -6,6 +6,7 @@ import { join, relative } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
 import { type Config, writeConfig } from "./main.ts";
 import { deployUrl } from "./auth.ts";
+import { error } from "./util.ts";
 
 export async function publish(
   rootPath: string,
@@ -28,6 +29,8 @@ export async function publish(
   }
 
   const excludes = [/node_modules/, /.git/, /.DS_Store/];
+
+  console.log(`Publishing '${rootPath}'`);
 
   const stream = ReadableStream.from(walk(rootPath, { skip: excludes }))
     .pipeThrough(
@@ -134,9 +137,7 @@ export async function publish(
   await progress.end();
 
   if (!resp.ok) {
-    console.log();
-    console.log(`${red("✗")} An error occurred:`);
-    console.log(`  ${resBody.message}`);
+    error(resp, resBody.message);
   } else {
     console.log("Successfully uploaded tarball!");
     console.log(
