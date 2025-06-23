@@ -8,20 +8,15 @@ import {
   httpBatchStreamLink,
   httpSubscriptionLink,
   splitLink,
-  type TRPCClient,
 } from "@trpc/client";
 import { Spinner } from "@std/cli/unstable-spinner";
-import { promptSelect } from "@std/cli/unstable-prompt-select";
-import { parseArgs } from "@std/cli";
 import { error } from "./util.ts";
+import token_storage, { type Authorization } from "./token_storage.ts";
+import { deployUrl } from "./main.ts";
 
-const args = parseArgs(Deno.args, {
-  string: ["endpoint"],
-});
+export async function createTrpcClient() {
+  const storedAuth = await token_storage.get();
 
-export const deployUrl = args.endpoint ?? "https://app.deno.com";
-
-export function createTrpcClient(deployToken: string, github: string) {
   const transformer: TRPCCombinedDataTransformer = {
     input: {
       serialize,
@@ -42,9 +37,10 @@ export function createTrpcClient(deployToken: string, github: string) {
         false: httpBatchStreamLink({
           url: deployUrl + "/api",
           headers() {
-            if (deployToken) {
+            if (storedAuth) {
               return {
-                cookie: `token=${deployToken}; deno_auth_ghid=${github}`,
+                cookie:
+                  `token=${storedAuth.token}; deno_auth_ghid=${storedAuth.githubUser}`,
               };
             } else {
               return {};
@@ -61,30 +57,23 @@ export function createTrpcClient(deployToken: string, github: string) {
   });
 }
 
-export async function auth() {
-  let deployToken = Deno.env.get("DEPLOY_TOKEN");
-  let githubUser = Deno.env.get("DEPLOY_GITHUB_USER");
-
-  if (!deployToken) {
-    const { code, exchangeToken, verifier } = await interactive();
-
-    const authUrl = `${deployUrl}/auth?code=${code}`;
-
-    console.log(`Visit ${authUrl} to authorize uploading of tarball.\x07`);
-    const spinner = new Spinner({ message: "Waiting...", color: "yellow" });
-    spinner.start();
-
-    await open(authUrl);
-
-    const exchange = await tokenExchange(exchangeToken, verifier, spinner);
-    deployToken = exchange.token;
-    githubUser = exchange.github;
+export async function getAuth(): Promise<Authorization> {
+  const storedAuth = await token_storage.get();
+  if (storedAuth) {
+    return storedAuth;
   }
 
-  return {
-    token: deployToken!,
-    github: githubUser!,
-  };
+  const { code, exchangeToken, verifier } = await interactive();
+
+  const authUrl = `${deployUrl}/auth?code=${code}`;
+
+  console.log(`Visit ${authUrl} to authorize uploading of tarball.\x07`);
+  const spinner = new Spinner({ message: "Waiting...", color: "yellow" });
+  spinner.start();
+
+  await open(authUrl);
+
+  return await tokenExchange(exchangeToken, verifier, spinner);
 }
 
 export async function interactive(): Promise<
@@ -118,7 +107,7 @@ export function tokenExchange(
   exchangeToken: string,
   verifier: string,
   spinner: Spinner,
-): Promise<{ token: string; github: string }> {
+): Promise<Authorization> {
   return new Promise((resolve) => {
     const interval = setInterval(async () => {
       const res = await fetch(`${deployUrl}/auth/exchange`, {
@@ -138,7 +127,9 @@ export function tokenExchange(
           } Authorization successful. Authenticated as ${user.name}\n`,
         );
         clearInterval(interval);
-        resolve({ token, github: user.github_id });
+        const auth = { token, githubUser: user.github_id };
+        await token_storage.store(auth);
+        resolve(auth);
       } else {
         const err = await res.json();
         if (
@@ -149,82 +140,46 @@ export function tokenExchange(
         ) {
           clearInterval(interval);
           spinner.stop();
-          error(res, err.message);
+          error(err.message, res);
         }
       }
     }, 2000);
   });
 }
 
-export async function withApp(
-  // deno-lint-ignore no-explicit-any
-  trpcClient: TRPCClient<any>,
-  org?: string,
-  app?: string | null,
-): Promise< { org: string; app: string | null }> {
-  if (!org || !app) {
-    const orgs: Array<{
-      name: string;
-      slug: string;
-      id: string;
-      // deno-lint-ignore no-explicit-any
-    }> = await (trpcClient.orgs as any).list.query();
+export async function authedFetch(url: string, init: RequestInit) {
+  let auth = await token_storage.get();
 
-    const orgStrings = orgs.map((org) => `${org.name} (${org.slug})`);
-    const orgsResult = promptSelect("Select an organization:", orgStrings, {
-      clear: true,
-    });
-    if (!orgsResult) {
-      console.error("No organization was selected.");
-      Deno.exit(1);
-    }
-
-    const selectedOrg = orgs[orgStrings.indexOf(orgsResult)];
-    org = selectedOrg.slug;
-    console.log(`Selected organization '${selectedOrg.name}'`);
-
-    const apps: Array<{ name: string; slug: string }> =
-      // deno-lint-ignore no-explicit-any
-      await (trpcClient.apps as any)
-        .list.query({
-          org: selectedOrg.id,
-        });
-    const appStrings = apps.map((app) => `${app.slug}`);
-    appStrings.push("Create a new app");
-    const appsResult = promptSelect("Select an application:", appStrings, {
-      clear: true,
-    });
-    if (!appsResult) {
-      console.error("No application was selected.");
-      Deno.exit(1);
-    }
-
-    const index = appStrings.indexOf(appsResult);
-
-    if (index == (appStrings.length - 1)) {
-      app = null;
-    } else {
-      const selectedApp = apps[appStrings.indexOf(appsResult)];
-      app = selectedApp.slug;
-      console.log(`Selected app '${selectedApp.slug}'`);
-    }
+  if (!auth) {
+    auth = await getAuth();
+    await token_storage.store(auth);
   }
 
-  if (org === undefined) {
-    console.error(
-      "Expected 'deploy.org' in the config file or the '--org' flag to be specified.",
-    );
-    Deno.exit(1);
-  }
-  if (app === undefined) {
-    console.error(
-      "Expected 'deploy.app' in the config file or the '--app' flag to be specified.",
-    );
-    Deno.exit(1);
-  }
-
-  return {
-    org,
-    app,
+  const headers = new Headers(init.headers);
+  headers.set(
+    "cookie",
+    `token=${auth.token}; deno_auth_ghid=${auth.githubUser}`,
+  );
+  const authedInit = {
+    ...init,
+    headers,
   };
+
+  const res = await fetch(url, authedInit);
+
+  if (res.status === 401) {
+    auth = await getAuth();
+    await token_storage.store(auth);
+
+    const res = await fetch(url, authedInit);
+
+    if (res.status === 401) {
+      const err = await res.json();
+      error(`unexpected authentication failure\n${err.message}`);
+    } else {
+      return res;
+    }
+  } else {
+    return res;
+  }
 }

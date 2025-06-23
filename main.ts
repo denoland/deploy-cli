@@ -2,14 +2,19 @@ import { parseArgs } from "@std/cli";
 import { join } from "@std/path";
 import { parse as parseJSONC } from "jsonc-parser";
 import { publish } from "./publish.ts";
-import { auth, createTrpcClient, withApp } from "./auth.ts";
 import { red } from "@std/fmt/colors";
 import { create } from "./create.ts";
+import { withApp } from "./util.ts";
 import {
   applyEdits as applyJSONCEdits,
   modify as modifyJSONC,
 } from "jsonc-parser";
 import { setupAws } from "./setup-cloud.ts";
+
+const args: { endpoint?: string } = parseArgs(Deno.args, {
+  string: ["endpoint"],
+});
+export const deployUrl = args.endpoint ?? "https://app.deno.com";
 
 const subcommand = Deno.args[0];
 
@@ -61,21 +66,12 @@ switch (subcommand) {
     org ??= args.org;
     app ??= args.app;
 
-    const { token, github } = await auth();
-    const trpcClient = createTrpcClient(token, github);
-    const orgAndApp = await withApp(trpcClient, org, app);
+    const orgAndApp = await withApp(org, app);
 
     if (orgAndApp.app === null) {
-      await create(rootPath, configContent, token, github, orgAndApp.org);
+      await create(rootPath, configContent, orgAndApp.org);
     } else {
-      await publish(
-        rootPath,
-        configContent,
-        token,
-        github,
-        orgAndApp.org,
-        orgAndApp.app,
-      );
+      await publish(rootPath, configContent, orgAndApp.org, orgAndApp.app);
     }
     break;
   }
@@ -133,20 +129,23 @@ function getAppFromConfig(configContent: Config | null) {
 
 export async function writeConfig(
   configContent: Config | null,
+  rootPath: string,
   org: string,
   app: string,
 ) {
-  if (configContent) {
-    const edits = modifyJSONC(configContent.content, ["deploy"], {
-      org,
-      app,
-    }, {
-      formattingOptions: {
-        insertSpaces: true,
-        tabSize: 2,
-      },
-    });
-    const out = applyJSONCEdits(configContent.content, edits);
-    await Deno.writeTextFile(configContent.path, out);
-  }
+  const content = configContent?.content ?? "{}\n";
+  const edits = modifyJSONC(content, ["deploy"], {
+    org,
+    app,
+  }, {
+    formattingOptions: {
+      insertSpaces: true,
+      tabSize: 2,
+    },
+  });
+  const out = applyJSONCEdits(content, edits);
+  await Deno.writeTextFile(
+    configContent?.path ?? join(rootPath, "deno.jsonc"),
+    out,
+  );
 }

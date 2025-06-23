@@ -3,16 +3,14 @@ import { compile as gitignoreCompile } from "@cfa/gitignore-parser";
 import { walk } from "@std/fs";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { join, relative } from "@std/path";
-import { green, red, yellow } from "@std/fmt/colors";
+import { green, yellow } from "@std/fmt/colors";
 import { type Config, writeConfig } from "./main.ts";
-import { deployUrl } from "./auth.ts";
+import { authedFetch, deployUrl } from "./auth.ts";
 import { error } from "./util.ts";
 
 export async function publish(
   rootPath: string,
   configContent: Config | null,
-  deployToken: string,
-  githubUser: string,
   org: string,
   app: string,
 ) {
@@ -120,14 +118,13 @@ export async function publish(
     .pipeThrough(new TarStream())
     .pipeThrough(new CompressionStream("gzip"));
 
-  const resp = await fetch(`${deployUrl}/api/trigger_tarball_build`, {
+  const resp = await authedFetch(`${deployUrl}/api/trigger_tarball_build`, {
     method: "POST",
     headers: {
       "x-meta": JSON.stringify({
         org,
         app,
       }),
-      "cookie": `token=${deployToken}; deno_auth_ghid=${githubUser}`,
     },
     body: tarball,
   });
@@ -137,13 +134,13 @@ export async function publish(
   await progress.end();
 
   if (!resp.ok) {
-    error(resp, resBody.message);
+    error(resBody.message, resp);
   } else {
     console.log("Successfully uploaded tarball!");
     console.log(
       `You can view the revision here:\n${deployUrl}/${org}/${app}/builds/${resBody.revisionId}`,
     );
 
-    await writeConfig(configContent, org, app);
+    await writeConfig(configContent, rootPath, org, app);
   }
 }
