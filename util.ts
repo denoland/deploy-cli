@@ -14,12 +14,13 @@ export function error(error: string, response?: Response): never {
 }
 
 export async function withApp(
+  deployUrl: string,
   org?: string,
   app?: string | null,
 ): Promise<{ org: string; app: string | null }> {
-  await getAuth();
+  await getAuth(deployUrl);
 
-  const trpcClient = await createTrpcClient();
+  const trpcClient = await createTrpcClient(deployUrl);
 
   if (!org || !app) {
     const orgs: Array<{

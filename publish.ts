@@ -2,13 +2,14 @@ import { TarStream, type TarStreamDir, type TarStreamFile } from "@std/tar";
 import { compile as gitignoreCompile } from "@cfa/gitignore-parser";
 import { walk } from "@std/fs";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
-import { join, relative } from "@std/path";
+import { join, relative, resolve } from "@std/path";
 import { green, yellow } from "@std/fmt/colors";
-import { type Config, writeConfig } from "./main.ts";
-import { authedFetch, deployUrl } from "./auth.ts";
+import { type Config, writeConfig } from "./config.ts";
+import { authedFetch } from "./auth.ts";
 import { error } from "./util.ts";
 
 export async function publish(
+  deployUrl: string,
   rootPath: string,
   configContent: Config | null,
   org: string,
@@ -28,7 +29,7 @@ export async function publish(
 
   const excludes = [/node_modules/, /.git/, /.DS_Store/];
 
-  console.log(`Publishing '${rootPath}'`);
+  console.log(`Publishing '${resolve(rootPath)}'`);
 
   const stream = ReadableStream.from(walk(rootPath, { skip: excludes }))
     .pipeThrough(
@@ -118,7 +119,7 @@ export async function publish(
     .pipeThrough(new TarStream())
     .pipeThrough(new CompressionStream("gzip"));
 
-  const resp = await authedFetch(`${deployUrl}/api/trigger_tarball_build`, {
+  const resp = await authedFetch(deployUrl, `/api/trigger_tarball_build`, {
     method: "POST",
     headers: {
       "x-meta": JSON.stringify({
