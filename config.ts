@@ -32,7 +32,7 @@ export async function readConfig(rootPath: string): Promise<Config | null> {
   return null;
 }
 
-export function getAppFromConfig(configContent: Config | null) {
+export function getAppFromConfig(configContent: Config | null): { org: undefined | string; app: undefined | string } {
   if (configContent) {
     const config = parseJSONC(configContent.content);
     if (

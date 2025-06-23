@@ -66,7 +66,7 @@ export async function getAuth(deployUrl: string): Promise<Authorization> {
 
   const authUrl = `${deployUrl}/auth?code=${code}`;
 
-  console.log(`Visit ${authUrl} to authorize uploading of tarball.\x07`);
+  console.log(`Visit ${authUrl} to authorize deploying your project.\x07`);
   const spinner = new Spinner({ message: "Waiting...", color: "yellow" });
   spinner.start();
 

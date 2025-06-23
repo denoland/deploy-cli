@@ -137,10 +137,14 @@ export async function publish(
   if (!resp.ok) {
     error(resBody.message, resp);
   } else {
-    console.log("Successfully uploaded tarball!");
+    console.log("Successfully uploaded your app!");
     console.log(
-      `You can view the revision here:\n${deployUrl}/${org}/${app}/builds/${resBody.revisionId}`,
+      `You can view your app overview here:\n  ${deployUrl}/${org}/${app}`,
     );
+    console.log(
+      `You can view the revision here:\n  ${deployUrl}/${org}/${app}/builds/${resBody.revisionId}`,
+    );
+    // TODO: print out the preview url
 
     await writeConfig(configContent, rootPath, org, app);
   }
