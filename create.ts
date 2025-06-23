@@ -7,10 +7,11 @@ import open from "open";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { publish } from "./publish.ts";
 import { green } from "@std/fmt/colors";
-import { type Config, deployUrl } from "./main.ts";
+import type { Config } from "./config.ts";
 import token_storage from "./token_storage.ts";
 
 export async function create(
+  deployUrl: string,
   rootPath: string,
   configContent: Config | null,
   initOrg?: string,
@@ -39,7 +40,7 @@ export async function create(
   const storedAuth = await token_storage.get();
 
   if (!storedAuth) {
-    const res = await interactive();
+    const res = await interactive(deployUrl);
     url.searchParams.set("code", res.code);
     verifier = res.verifier;
     exchangeToken = res.exchangeToken;
@@ -78,11 +79,13 @@ export async function create(
 
   const [{ org, app }] = await Promise.all([
     appCreationPromise,
-    storedAuth ? undefined : tokenExchange(exchangeToken!, verifier!, spinner),
+    storedAuth
+      ? undefined
+      : tokenExchange(deployUrl, exchangeToken!, verifier!, spinner),
   ]);
 
   spinner.stop();
   console.log(`${green("✔")} App '${app}' created in the '${org}' org.\n`);
 
-  await publish(rootPath, configContent, org, app);
+  await publish(deployUrl, rootPath, configContent, org, app);
 }

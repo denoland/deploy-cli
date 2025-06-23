@@ -12,9 +12,8 @@ import {
 import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
 import token_storage, { type Authorization } from "./token_storage.ts";
-import { deployUrl } from "./main.ts";
 
-export async function createTrpcClient() {
+export async function createTrpcClient(deployUrl: string) {
   const storedAuth = await token_storage.get();
 
   const transformer: TRPCCombinedDataTransformer = {
@@ -57,13 +56,13 @@ export async function createTrpcClient() {
   });
 }
 
-export async function getAuth(): Promise<Authorization> {
+export async function getAuth(deployUrl: string): Promise<Authorization> {
   const storedAuth = await token_storage.get();
   if (storedAuth) {
     return storedAuth;
   }
 
-  const { code, exchangeToken, verifier } = await interactive();
+  const { code, exchangeToken, verifier } = await interactive(deployUrl);
 
   const authUrl = `${deployUrl}/auth?code=${code}`;
 
@@ -73,10 +72,10 @@ export async function getAuth(): Promise<Authorization> {
 
   await open(authUrl);
 
-  return await tokenExchange(exchangeToken, verifier, spinner);
+  return await tokenExchange(deployUrl, exchangeToken, verifier, spinner);
 }
 
-export async function interactive(): Promise<
+export async function interactive(deployUrl: string): Promise<
   { code: string; exchangeToken: string; verifier: string }
 > {
   const verifier = crypto.randomUUID();
@@ -104,6 +103,7 @@ export async function interactive(): Promise<
 }
 
 export function tokenExchange(
+  deployUrl: string,
   exchangeToken: string,
   verifier: string,
   spinner: Spinner,
@@ -147,11 +147,15 @@ export function tokenExchange(
   });
 }
 
-export async function authedFetch(url: string, init: RequestInit) {
+export async function authedFetch(
+  deployUrl: string,
+  endpoint: string,
+  init: RequestInit,
+) {
   let auth = await token_storage.get();
 
   if (!auth) {
-    auth = await getAuth();
+    auth = await getAuth(deployUrl);
     await token_storage.store(auth);
   }
 
@@ -165,10 +169,11 @@ export async function authedFetch(url: string, init: RequestInit) {
     headers,
   };
 
+  const url = deployUrl + endpoint;
   const res = await fetch(url, authedInit);
 
   if (res.status === 401) {
-    auth = await getAuth();
+    auth = await getAuth(deployUrl);
     await token_storage.store(auth);
 
     const res = await fetch(url, authedInit);
