@@ -7,7 +7,7 @@ import { setupAws } from "./setup-cloud.ts";
 import { getAppFromConfig, readConfig } from "./config.ts";
 
 const createCommand = new Command()
-  .option("--org <name>", "The name of the org to create the app for")
+  .option("--org <string:name>", "The name of the org to create the app for")
   .arguments("[rootPath:string]")
   .action(
     async (
