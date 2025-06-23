@@ -2,16 +2,19 @@ import {
   detectBuildConfig,
   FrameworkFileSystemReader,
 } from "@deno/framework-detect";
-import { deployUrl, interactive, tokenExchange } from "./auth.ts";
+import { interactive, tokenExchange } from "./auth.ts";
 import open from "open";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { publish } from "./publish.ts";
 import { green } from "@std/fmt/colors";
-import type { Config } from "./main.ts";
+import { type Config, deployUrl } from "./main.ts";
+import token_storage from "./token_storage.ts";
 
-export async function create(rootPath: string, configContent: Config | null, token?: string, github?: string, initOrg?: string) {
-  let deployToken = Deno.env.get("DEPLOY_TOKEN") ?? token;
-  let githubUser = Deno.env.get("DEPLOY_GITHUB_USER") ?? github;
+export async function create(
+  rootPath: string,
+  configContent: Config | null,
+  initOrg?: string,
+) {
   let verifier;
   let exchangeToken;
 
@@ -33,7 +36,9 @@ export async function create(rootPath: string, configContent: Config | null, tok
     url.searchParams.set("org", initOrg);
   }
 
-  if (!deployToken) {
+  const storedAuth = await token_storage.get();
+
+  if (!storedAuth) {
     const res = await interactive();
     url.searchParams.set("code", res.code);
     verifier = res.verifier;
@@ -71,18 +76,13 @@ export async function create(rootPath: string, configContent: Config | null, tok
     },
   );
 
-  const [{ org, app }, newToken] = await Promise.all([
+  const [{ org, app }] = await Promise.all([
     appCreationPromise,
-    deployToken ? undefined : tokenExchange(exchangeToken!, verifier!, spinner),
+    storedAuth ? undefined : tokenExchange(exchangeToken!, verifier!, spinner),
   ]);
-
-  if (newToken) {
-    deployToken = newToken.token;
-    githubUser = newToken.github;
-  }
 
   spinner.stop();
   console.log(`${green("✔")} App '${app}' created in the '${org}' org.\n`);
 
-  await publish(rootPath, configContent, deployToken!, githubUser!, org, app);
+  await publish(rootPath, configContent, org, app);
 }
