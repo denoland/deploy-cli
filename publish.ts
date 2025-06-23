@@ -8,6 +8,8 @@ import { type Config, writeConfig } from "./config.ts";
 import { authedFetch } from "./auth.ts";
 import { error } from "./util.ts";
 
+const SEPARATOR_PATTERN = Deno.build.os === "windows" ? "\\\\" : "/";
+
 export async function publish(
   deployUrl: string,
   rootPath: string,
@@ -27,7 +29,11 @@ export async function publish(
     //
   }
 
-  const excludes = [/node_modules/, /.git/, /.DS_Store/];
+  const excludes = [
+    new RegExp(`${SEPARATOR_PATTERN}node_modules(:?${SEPARATOR_PATTERN}|$)`),
+    new RegExp(`${SEPARATOR_PATTERN}\.git(:?${SEPARATOR_PATTERN}|$)`),
+    new RegExp(`${SEPARATOR_PATTERN}\.DS_Store`),
+  ];
 
   console.log(`Publishing '${resolve(rootPath)}'`);
 
@@ -43,6 +49,8 @@ export async function publish(
           if (gitignore.denies(relativePath)) {
             return;
           }
+
+          console.log(relativePath);
 
           controller.enqueue({ chunk, relativePath });
         },
