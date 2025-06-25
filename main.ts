@@ -3,7 +3,7 @@ import { publish } from "./publish.ts";
 import { red } from "@std/fmt/colors";
 import { create } from "./create.ts";
 import { withApp } from "./util.ts";
-import { setupAws } from "./setup-cloud.ts";
+import { setupAws, setupGcp } from "./setup-cloud.ts";
 import { getAppFromConfig, readConfig } from "./config.ts";
 
 const createCommand = new Command<{ endpoint: string }>()
@@ -37,6 +37,20 @@ const setupAWSCommand = new Command()
       : [];
 
     await setupAws(options.org, options.app, contextList);
+  });
+
+const setupGCPCommand = new Command()
+  .option("--org <name:string>", "The name of the org", { required: true })
+  .option("--app <name:string>", "The name of the app", { required: true })
+  .arguments("[contexts:string]")
+  .action(async (options, contexts) => {
+    const contextList = contexts
+      ? contexts.split(",").map((c) =>
+        c.trim().toLowerCase().replaceAll(" ", "-")
+      )
+      : [];
+
+    await setupGcp(options.org, options.app, contextList);
   });
 
 await new Command()
@@ -73,4 +87,5 @@ await new Command()
   )
   .command("create", createCommand)
   .command("setup-aws", setupAWSCommand)
+  .command("setup-gcp", setupGCPCommand)
   .parse(Deno.args);
