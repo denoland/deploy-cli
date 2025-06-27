@@ -3,8 +3,8 @@ import prompt from "npm:prompts@2.4.2";
 
 import { gray, green, yellow } from "@std/fmt/colors";
 
-const OIDC_PROVIDER_DOMAIN = "dev.deno-cluster.net";
-const OIDC_AUDIENCE = "sts.amazonaws.com";
+const OIDC_PROVIDER_DOMAIN = Deno.env.get("DENO_OIDC_PROVIDER_DOMAIN") || "oidc.deno.com";
+const AWS_OIDC_AUDIENCE = "sts.amazonaws.com";
 
 async function runAwsCommand<T>(args: string[]): Promise<T> {
   try {
@@ -98,7 +98,7 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
       "--open-id-connect-provider-arn",
       providerArn,
     ]);
-    providerHasClientId = providerDetails.ClientIDList.includes(OIDC_AUDIENCE);
+    providerHasClientId = providerDetails.ClientIDList.includes(AWS_OIDC_AUDIENCE);
   }
 
   console.log("\r                                          ");
@@ -160,7 +160,7 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
     );
   } else if (!providerHasClientId) {
     console.log(
-      `   %c+ add%c the ${OIDC_AUDIENCE} client ID to the existing OIDC provider %c${providerArn}`,
+      `   %c+ add%c the ${AWS_OIDC_AUDIENCE} client ID to the existing OIDC provider %c${providerArn}`,
       "color: green;",
       "color: gray;",
       "color: blue;",
@@ -241,17 +241,17 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
     );
   } else if (!providerHasClientId) {
     // If not, add it
-    log(gray(`  Adding ${OIDC_AUDIENCE} client ID to the OIDC provider...`));
+    log(gray(`  Adding ${AWS_OIDC_AUDIENCE} client ID to the OIDC provider...`));
     await runAwsCommand([
       "iam",
       "add-client-id-to-open-id-connect-provider",
       "--open-id-connect-provider-arn",
       providerArn,
       "--client-id",
-      OIDC_AUDIENCE,
+      AWS_OIDC_AUDIENCE,
     ]);
     console.log(
-      `\r%c✔ Added%c ${OIDC_AUDIENCE} client ID to the existing OIDC provider %c${providerArn}%c`,
+      `\r%c✔ Added%c ${AWS_OIDC_AUDIENCE} client ID to the existing OIDC provider %c${providerArn}%c`,
       "color: green;",
       "color: reset;",
       "color: blue;",
