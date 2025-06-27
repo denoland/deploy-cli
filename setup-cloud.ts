@@ -276,14 +276,14 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
   if (!providerArn) {
     // If not, create it
     log(gray("  Creating the OIDC provider..."));
-    providerArn = await runAwsCommand<{ Arn: string }>([
+    providerArn = await runAwsCommand<{ OpenIDConnectProviderArn: string }>([
       "iam",
       "create-open-id-connect-provider",
       "--url",
       `https://${OIDC_PROVIDER_DOMAIN}`,
       "--client-id-list",
       "sts.amazonaws.com",
-    ]).then((res) => res.Arn);
+    ]).then((res) => res.OpenIDConnectProviderArn);
     console.log(
       `\r%c✔ Created%c OIDC provider for %chttps://${OIDC_PROVIDER_DOMAIN}%c with ARN: %c${providerArn}%c`,
       "color: green;",
@@ -625,15 +625,6 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
       "color: blue;",
     );
   }
-  console.log(
-    `   %c+ create%c workload identity provider %c${gcpWorkloadIdentityId}%c for %chttps://${OIDC_PROVIDER_DOMAIN}`,
-    "color: green;",
-    "color: gray;",
-    "color: blue;",
-    "color: gray;",
-    "color: blue;",
-  );
-
   console.log(
     `   %c+ create%c service account %c${serviceAccountEmail}`,
     "color: green;",
