@@ -705,7 +705,7 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
       "--workload-identity-pool=" + gcpWorkloadIdentityId,
       "--location=global",
       "--issuer-uri=https://" + OIDC_PROVIDER_DOMAIN,
-      "--attribute-mapping=google.subject=assertion.sub,attribute.org_id=assertion.org_id,attribute.org_slug=assertion.org_slug,attribute.app_id=assertion.app_id,attribute.app_slug=assertion.app_slug,attribute.context_id=assertion.context_id,attribute.context_name=assertion.context_name",
+      "--attribute-mapping=google.subject=assertion.sub,attribute.org_id=assertion.org_id,attribute.org_slug=assertion.org_slug,attribute.app_id=assertion.app_id,attribute.app_slug=assertion.app_slug,attribute.full_slug=assertion.org_slug+\"/\"+assertion.app_slug,attribute.context_id=assertion.context_id,attribute.context_name=assertion.context_name",
       "--no-user-output-enabled",
     ]);
     console.log(
@@ -737,9 +737,9 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
   log(gray("  Configuring workload identity binding..."));
   const principalSet = contexts.length > 0
     ? contexts.map((context) =>
-      `principalSet://iam.googleapis.com/projects/${projectInfo.projectNumber}/locations/global/workloadIdentityPools/${gcpWorkloadIdentityId}/attribute.org_slug/${org}/attribute.app_slug/${app}/attribute.context_name/${context}`
+      `principal://iam.googleapis.com/projects/${projectInfo.projectNumber}/locations/global/workloadIdentityPools/${gcpWorkloadIdentityId}/subject/deployment:${org}/${app}/${context}`
     ).join(",")
-    : `principalSet://iam.googleapis.com/projects/${projectInfo.projectNumber}/locations/global/workloadIdentityPools/${gcpWorkloadIdentityId}/attribute.org_slug/${org}/attribute.app_slug/${app}`;
+    : `principal://iam.googleapis.com/projects/${projectInfo.projectNumber}/locations/global/workloadIdentityPools/${gcpWorkloadIdentityId}/attribute.full_slug/${org}/${app}`;
 
   await runGcloudCommand([
     "iam",
