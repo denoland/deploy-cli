@@ -3,7 +3,8 @@ import prompt from "npm:prompts@2.4.2";
 
 import { gray, green, yellow } from "@std/fmt/colors";
 
-const OIDC_PROVIDER_DOMAIN = Deno.env.get("DENO_OIDC_PROVIDER_DOMAIN") || "oidc.deno.com";
+const OIDC_PROVIDER_DOMAIN = Deno.env.get("DENO_OIDC_PROVIDER_DOMAIN") ||
+  "oidc.deno.com";
 const AWS_OIDC_AUDIENCE = "sts.amazonaws.com";
 
 async function runAwsCommand<T>(args: string[]): Promise<T> {
@@ -149,7 +150,9 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
       "--open-id-connect-provider-arn",
       providerArn,
     ]);
-    providerHasClientId = providerDetails.ClientIDList.includes(AWS_OIDC_AUDIENCE);
+    providerHasClientId = providerDetails.ClientIDList.includes(
+      AWS_OIDC_AUDIENCE,
+    );
   }
 
   console.log("\r                                          ");
@@ -292,7 +295,9 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
     );
   } else if (!providerHasClientId) {
     // If not, add it
-    log(gray(`  Adding ${AWS_OIDC_AUDIENCE} client ID to the OIDC provider...`));
+    log(
+      gray(`  Adding ${AWS_OIDC_AUDIENCE} client ID to the OIDC provider...`),
+    );
     await runAwsCommand([
       "iam",
       "add-client-id-to-open-id-connect-provider",
@@ -512,23 +517,26 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
   const workloadIdentityPoolExists = pools.some((pool) =>
     pool.name.endsWith(`/` + gcpWorkloadIdentityId)
   );
-  log(gray("\r  Checking workload identity provider..."));
-  const providers = await runGcloudCommand<{
-    name: string;
-    displayName: string;
-  }[]>(
-    [
-      "iam",
-      "workload-identity-pools",
-      "providers",
-      "list",
-      "--workload-identity-pool=" + gcpWorkloadIdentityId,
-      "--location=global",
-    ],
-  );
-  const workloadIdentityProviderExists = providers.some((provider) =>
-    provider.name.endsWith(`/${gcpWorkloadIdentityId}`)
-  );
+  let workloadIdentityProviderExists = false;
+  if (workloadIdentityPoolExists) {
+    log(gray("\r  Checking workload identity provider..."));
+    const providers = await runGcloudCommand<{
+      name: string;
+      displayName: string;
+    }[]>(
+      [
+        "iam",
+        "workload-identity-pools",
+        "providers",
+        "list",
+        "--workload-identity-pool=" + gcpWorkloadIdentityId,
+        "--location=global",
+      ],
+    );
+    workloadIdentityProviderExists = providers.some((provider) =>
+      provider.name.endsWith(`/${gcpWorkloadIdentityId}`)
+    );
+  }
   console.log("\r                                         ");
 
   log(
@@ -705,7 +713,7 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
       "--workload-identity-pool=" + gcpWorkloadIdentityId,
       "--location=global",
       "--issuer-uri=https://" + OIDC_PROVIDER_DOMAIN,
-      "--attribute-mapping=google.subject=assertion.sub,attribute.org_id=assertion.org_id,attribute.org_slug=assertion.org_slug,attribute.app_id=assertion.app_id,attribute.app_slug=assertion.app_slug,attribute.full_slug=assertion.org_slug+\"/\"+assertion.app_slug,attribute.context_id=assertion.context_id,attribute.context_name=assertion.context_name",
+      '--attribute-mapping=google.subject=assertion.sub,attribute.org_id=assertion.org_id,attribute.org_slug=assertion.org_slug,attribute.app_id=assertion.app_id,attribute.app_slug=assertion.app_slug,attribute.full_slug=assertion.org_slug+"/"+assertion.app_slug,attribute.context_id=assertion.context_id,attribute.context_name=assertion.context_name',
       "--no-user-output-enabled",
     ]);
     console.log(
