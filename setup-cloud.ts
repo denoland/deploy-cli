@@ -690,7 +690,7 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
       "create",
       gcpWorkloadIdentityId,
       "--location=global",
-      "--display-name=Deno Deploy Workload Identity Pool",
+      "--display-name=Deno Deploy",
       "--description=Workload Identity Pool for Deno Deploy integration",
       "--no-user-output-enabled",
     ]);
