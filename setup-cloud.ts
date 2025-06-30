@@ -174,24 +174,40 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
     value: policy.Arn,
   }));
 
-  const { policies } = await prompt({
-    type: "autocompleteMultiselect",
-    name: "policies",
-    message: "Select permission policies you want to attach to the new role",
-    choices,
-    hint: "- Space to select. Return to submit",
-    instructions: false,
-  });
-  if (policies === undefined) {
-    console.log("%c   Exiting setup.", "color: yellow;");
-    Deno.exit(1);
-  }
+  let policies;
+  while (true) {
+    const result = await prompt({
+      type: "autocompleteMultiselect",
+      name: "policies",
+      message: "Select permission policies you want to attach to the new role",
+      choices,
+      hint: "- Space to select a policy, Enter to confirm your selections",
+      instructions: false,
+    });
+    
+    if (result.policies === undefined) {
+      console.log("%c   Exiting setup.", "color: yellow;");
+      Deno.exit(1);
+    }
 
-  if (policies.length === 0) {
-    console.log(
-      "%c  No policies selected. You can attach policies later through the AWS Console.",
-      "color: yellow;",
-    );
+    if (result.policies.length === 0) {
+      const { confirmNoPolicies } = await prompt({
+        type: "confirm",
+        name: "confirmNoPolicies",
+        message: "Are you sure you don't want to associate any policies? Remember to use Space to select a policy, and Enter to confirm your selections.",
+        initial: false,
+      });
+      if (!confirmNoPolicies) {
+        continue;
+      }
+      console.log(
+        "%c  No policies selected. You can attach policies later through the AWS Console.",
+        "color: yellow;",
+      );
+    }
+
+    policies = result.policies;
+    break;
   }
 
   const roleName = `DenoDeploy-${org}-${app}-${
@@ -557,25 +573,40 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
     value: role.name,
   }));
 
-  const { selectedRoles } = await prompt({
-    type: "autocompleteMultiselect",
-    name: "selectedRoles",
-    message: "Select IAM roles you want to grant to the service account",
-    choices: roleChoices,
-    hint: "- Space to select. Return to submit",
-    instructions: false,
-  });
+  let selectedRoles;
+  while (true) {
+    const result = await prompt({
+      type: "autocompleteMultiselect",
+      name: "selectedRoles",
+      message: "Select IAM roles you want to grant to the service account",
+      choices: roleChoices,
+      hint: "- Space to select a role, Enter to confirm your selections",
+      instructions: false,
+    });
 
-  if (selectedRoles === undefined) {
-    console.log("%c   Exiting setup.", "color: yellow;");
-    Deno.exit(1);
-  }
+    if (result.selectedRoles === undefined) {
+      console.log("%c   Exiting setup.", "color: yellow;");
+      Deno.exit(1);
+    }
 
-  if (selectedRoles.length === 0) {
-    console.log(
-      "%c  No roles selected. You can grant roles later through the GCP Console.",
-      "color: yellow;",
-    );
+    if (result.selectedRoles.length === 0) {
+      const { confirmNoRoles } = await prompt({
+        type: "confirm",
+        name: "confirmNoRoles",
+        message: "Are you sure you don't want to associate any roles? Remember to use Space to select a role, and Enter to confirm your selections.",
+        initial: false,
+      });
+      if (!confirmNoRoles) {
+        continue;
+      }
+      console.log(
+        "%c  No roles selected. You can grant roles later through the GCP Console.",
+        "color: yellow;",
+      );
+    }
+
+    selectedRoles = result.selectedRoles;
+    break;
   }
 
   // service account name must be between 6 and 30 characters, lowercase, and can contain letters, numbers, and dashes
