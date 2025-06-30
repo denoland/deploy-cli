@@ -184,7 +184,7 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
       hint: "- Space to select a policy, Enter to confirm your selections",
       instructions: false,
     });
-    
+
     if (result.policies === undefined) {
       console.log("%c   Exiting setup.", "color: yellow;");
       Deno.exit(1);
@@ -194,7 +194,8 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
       const { confirmNoPolicies } = await prompt({
         type: "confirm",
         name: "confirmNoPolicies",
-        message: "Are you sure you don't want to associate any policies? Remember to use Space to select a policy, and Enter to confirm your selections.",
+        message:
+          "Are you sure you don't want to associate any policies? Remember to use Space to select a policy, and Enter to confirm your selections.",
         initial: false,
       });
       if (!confirmNoPolicies) {
@@ -461,6 +462,7 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "sts.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
   ];
 
   const missingApis = [];
@@ -528,6 +530,7 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
       "list",
       "--filter=name:" + gcpWorkloadIdentityId,
       "--location=global",
+      "--verbosity=error",
     ],
   );
   const workloadIdentityPoolExists = pools.some((pool) =>
@@ -593,7 +596,8 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
       const { confirmNoRoles } = await prompt({
         type: "confirm",
         name: "confirmNoRoles",
-        message: "Are you sure you don't want to associate any roles? Remember to use Space to select a role, and Enter to confirm your selections.",
+        message:
+          "Are you sure you don't want to associate any roles? Remember to use Space to select a role, and Enter to confirm your selections.",
         initial: false,
       });
       if (!confirmNoRoles) {
