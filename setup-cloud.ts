@@ -462,7 +462,6 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "sts.googleapis.com",
-    "cloudresourcemanager.googleapis.com",
   ];
 
   const missingApis = [];
