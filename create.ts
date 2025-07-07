@@ -37,7 +37,7 @@ export async function create(
     url.searchParams.set("org", initOrg);
   }
 
-  const storedAuth = await token_storage.get();
+  const storedAuth = token_storage.get();
 
   if (!storedAuth) {
     const res = await interactive(deployUrl);

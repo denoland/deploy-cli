@@ -50,8 +50,6 @@ export async function publish(
             return;
           }
 
-          console.log(relativePath);
-
           controller.enqueue({ chunk, relativePath });
         },
       }),
@@ -141,6 +139,8 @@ export async function publish(
   const resBody = await resp.json();
 
   await progress.end();
+
+  console.log();
 
   if (!resp.ok) {
     error(resBody.message, resp);
