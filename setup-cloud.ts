@@ -3,7 +3,7 @@ import prompt from "npm:prompts@2.4.2";
 
 import { gray, green, yellow } from "@std/fmt/colors";
 
-const OIDC_PROVIDER_DOMAIN = Deno.env.get("DENO_OIDC_PROVIDER_DOMAIN") ||
+const OIDC_PROVIDER_DOMAIN = Deno.env.get("DENO_DEPLOY_OIDC_DOMAIN") ||
   "oidc.deno.com";
 const AWS_OIDC_AUDIENCE = "sts.amazonaws.com";
 
