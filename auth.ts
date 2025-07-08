@@ -11,10 +11,10 @@ import {
 } from "@trpc/client";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
-import token_storage, { type Authorization } from "./token_storage.ts";
+import token_storage from "./token_storage.ts";
 
-export async function createTrpcClient(deployUrl: string) {
-  const storedAuth = await token_storage.get();
+export function createTrpcClient(deployUrl: string) {
+  const storedAuth = token_storage.get();
 
   const transformer: TRPCCombinedDataTransformer = {
     input: {
@@ -39,7 +39,7 @@ export async function createTrpcClient(deployUrl: string) {
             if (storedAuth) {
               return {
                 cookie:
-                  `token=${storedAuth.token}; deno_auth_ghid=${storedAuth.githubUser}`,
+                  `token=${storedAuth}; deno_auth_ghid=force`,
               };
             } else {
               return {};
@@ -56,8 +56,8 @@ export async function createTrpcClient(deployUrl: string) {
   });
 }
 
-export async function getAuth(deployUrl: string): Promise<Authorization> {
-  const storedAuth = await token_storage.get();
+export async function getAuth(deployUrl: string): Promise<string> {
+  const storedAuth = token_storage.get();
   if (storedAuth) {
     return storedAuth;
   }
@@ -93,6 +93,8 @@ export async function interactive(deployUrl: string): Promise<
     Deno.exit(1);
   }
 
+  console.log(`${deployUrl}/auth/interactive`)
+
   const body = await res.json();
 
   return {
@@ -107,7 +109,7 @@ export function tokenExchange(
   exchangeToken: string,
   verifier: string,
   spinner: Spinner,
-): Promise<Authorization> {
+): Promise<string> {
   return new Promise((resolve) => {
     const interval = setInterval(async () => {
       const res = await fetch(`${deployUrl}/auth/exchange`, {
@@ -127,9 +129,8 @@ export function tokenExchange(
           } Authorization successful. Authenticated as ${user.name}\n`,
         );
         clearInterval(interval);
-        const auth = { token, githubUser: user.github_id };
-        await token_storage.store(auth);
-        resolve(auth);
+        token_storage.set(token);
+        resolve(token);
       } else {
         const err = await res.json();
         if (
@@ -156,27 +157,69 @@ export async function authedFetch(
 
   if (!auth) {
     auth = await getAuth(deployUrl);
-    await token_storage.store(auth);
+    token_storage.set(auth);
   }
 
   const headers = new Headers(init.headers);
   headers.set(
     "cookie",
-    `token=${auth.token}; deno_auth_ghid=${auth.githubUser}`,
+    `token=${auth}; deno_auth_ghid=force`,
   );
-  const authedInit = {
-    ...init,
-    headers,
-  };
 
-  const url = deployUrl + endpoint;
-  const res = await fetch(url, authedInit);
+  const url = new URL(endpoint, deployUrl);
 
-  if (res.status === 401) {
+  let fallbackBody: ReadableStream | undefined;
+  try {
+    if (init.body instanceof ReadableStream) {
+      const [a, b]  = init.body.tee();
+      init.body = a;
+      fallbackBody = b;
+    }
+
+    const res = await fetch(url, {
+      ...init,
+      headers,
+    });
+
+    if (res.status === 401) {
+      token_storage.remove();
+      auth = await getAuth(deployUrl);
+      token_storage.set(auth);
+
+      const headers = new Headers(init.headers);
+      headers.set(
+        "cookie",
+        `token=${auth}; deno_auth_ghid=force`,
+      );
+      const res = await fetch(url, {
+        ...init,
+        headers,
+      });
+
+      if (res.status === 401) {
+        const err = await res.json();
+        error(`unexpected authentication failure\n${err.message}`);
+      } else {
+        return res;
+      }
+    } else {
+      return res;
+    }
+  } catch {
+     token_storage.remove();
     auth = await getAuth(deployUrl);
-    await token_storage.store(auth);
+    token_storage.set(auth);
 
-    const res = await fetch(url, authedInit);
+    const headers = new Headers(init.headers);
+    headers.set(
+      "cookie",
+      `token=${auth}; deno_auth_ghid=force`,
+    );
+    const res = await fetch(url, {
+      ...init,
+      headers,
+      body: init.body instanceof ReadableStream ? fallbackBody : init.body,
+    });
 
     if (res.status === 401) {
       const err = await res.json();
@@ -184,7 +227,5 @@ export async function authedFetch(
     } else {
       return res;
     }
-  } else {
-    return res;
   }
 }
