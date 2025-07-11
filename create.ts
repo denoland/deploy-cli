@@ -46,7 +46,7 @@ export async function create(
     exchangeToken = res.exchangeToken;
   }
 
-  console.log(`Visit ${url.href} to create a new app.\x07`);
+  console.log(`Visit ${url.href} to create a new application.\x07`);
   const spinner = new Spinner({ message: "Waiting...", color: "yellow" });
   spinner.start();
 
@@ -85,7 +85,7 @@ export async function create(
   ]);
 
   spinner.stop();
-  console.log(`${green("✔")} App '${app}' created in the '${org}' org.\n`);
+  console.log(`${green("✔")} App '${app}' created in the '${org}' organization.\n`);
 
-  await publish(deployUrl, rootPath, configContent, org, app);
+  await publish(deployUrl, rootPath, configContent, org, app, true);
 }
