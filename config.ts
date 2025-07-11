@@ -1,6 +1,8 @@
 import { join } from "@std/path";
-import { parse as parseJSONC,   applyEdits as applyJSONCEdits,
+import {
+  applyEdits as applyJSONCEdits,
   modify as modifyJSONC,
+  parse as parseJSONC,
 } from "jsonc-parser";
 
 export interface Config {
@@ -32,7 +34,9 @@ export async function readConfig(rootPath: string): Promise<Config | null> {
   return null;
 }
 
-export function getAppFromConfig(configContent: Config | null): { org: undefined | string; app: undefined | string } {
+export function getAppFromConfig(
+  configContent: Config | null,
+): { org: undefined | string; app: undefined | string } {
   if (configContent) {
     const config = parseJSONC(configContent.content);
     if (

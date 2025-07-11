@@ -85,7 +85,9 @@ export async function create(
   ]);
 
   spinner.stop();
-  console.log(`${green("✔")} App '${app}' created in the '${org}' organization.\n`);
+  console.log(
+    `${green("✔")} App '${app}' created in the '${org}' organization.\n`,
+  );
 
   await publish(deployUrl, rootPath, configContent, org, app, true);
 }

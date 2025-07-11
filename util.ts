@@ -19,13 +19,13 @@ export async function withApp(
   canCreate: false,
   org?: string,
   app?: string | null,
-): Promise<{ org: string; app: string }>
+): Promise<{ org: string; app: string }>;
 export async function withApp(
   deployUrl: string,
   canCreate: true,
   org?: string,
   app?: string | null,
-): Promise<{ org: string; app: string | null }>
+): Promise<{ org: string; app: string | null }>;
 export async function withApp(
   deployUrl: string,
   canCreate: boolean,
@@ -62,8 +62,8 @@ export async function withApp(
         // deno-lint-ignore no-explicit-any
         await (trpcClient.apps as any)
           .list.query({
-          org: selectedOrg.id,
-        });
+            org: selectedOrg.id,
+          });
       const appStrings = apps.map((app) => `${app.slug}`);
       if (canCreate) {
         appStrings.push("Create a new application");

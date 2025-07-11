@@ -6,16 +6,19 @@ import { withApp } from "./util.ts";
 import { setupAws, setupGcp } from "./setup-cloud.ts";
 import { getAppFromConfig, readConfig, writeConfig } from "./config.ts";
 import {
-  envListCommand,
   envAddCommand,
   envDeleteCommand,
+  envListCommand,
   envUpdateContextsCommand,
   envUpdateValueCommand,
 } from "./env.ts";
 
 const createCommand = new Command<{ endpoint: string }>()
   .description("Create a new application")
-  .option("--org <name:string>", "The name of the organization to create the application for")
+  .option(
+    "--org <name:string>",
+    "The name of the organization to create the application for",
+  )
   .arguments("[root-path:string]")
   .action(
     async (
@@ -25,7 +28,9 @@ const createCommand = new Command<{ endpoint: string }>()
       const configContent = await readConfig(rootPath);
       const { org, app } = getAppFromConfig(configContent);
       if (org || app) {
-        console.log(`${red("✗")} An application already exists in this directory.`);
+        console.log(
+          `${red("✗")} An application already exists in this directory.`,
+        );
         Deno.exit(1);
       }
 
@@ -35,8 +40,12 @@ const createCommand = new Command<{ endpoint: string }>()
 
 const setupAWSCommand = new Command<{ endpoint: string }>()
   .description("Setup AWS")
-  .option("--org <name:string>", "The name of the organization", { required: true })
-  .option("--app <name:string>", "The name of the application", { required: true })
+  .option("--org <name:string>", "The name of the organization", {
+    required: true,
+  })
+  .option("--app <name:string>", "The name of the application", {
+    required: true,
+  })
   .arguments("[contexts:string]")
   .action(async (options, contexts) => {
     const contextList = contexts
@@ -50,8 +59,12 @@ const setupAWSCommand = new Command<{ endpoint: string }>()
 
 const setupGCPCommand = new Command<{ endpoint: string }>()
   .description("Setup GCP")
-  .option("--org <name:string>", "The name of the organization", { required: true })
-  .option("--app <name:string>", "The name of the application", { required: true })
+  .option("--org <name:string>", "The name of the organization", {
+    required: true,
+  })
+  .option("--app <name:string>", "The name of the application", {
+    required: true,
+  })
   .arguments("[contexts:string]")
   .action(async (options, contexts) => {
     const contextList = contexts
@@ -82,7 +95,7 @@ const envCommand = new Command<{ endpoint: string }>()
   .command("add", envAddCommand)
   .command("update-value", envUpdateValueCommand)
   .command("update-contexts", envUpdateContextsCommand)
-  .command("delete", envDeleteCommand)
+  .command("delete", envDeleteCommand);
 
 await new Command()
   .name("deno deploy")
@@ -108,10 +121,20 @@ deploy your local directory to the specified application.`)
       org ??= options.org;
       app ??= options.app;
 
-      const orgAndApp = await withApp(options.endpoint as string, true, org, app);
+      const orgAndApp = await withApp(
+        options.endpoint as string,
+        true,
+        org,
+        app,
+      );
 
       if (orgAndApp.app === null) {
-        await create(options.endpoint as string, rootPath, configContent, orgAndApp.org);
+        await create(
+          options.endpoint as string,
+          rootPath,
+          configContent,
+          orgAndApp.org,
+        );
       } else {
         await publish(
           options.endpoint as string,

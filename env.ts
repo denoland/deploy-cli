@@ -25,16 +25,19 @@ export const envListCommand = new Command<EnvCommandContext>()
       app: orgAndApp.app,
     });
 
-    const contexts = await (trpcClient.envVarsContexts as any).listContexts.query({
-      org: orgAndApp.org,
-    });
+    const contexts = await (trpcClient.envVarsContexts as any).listContexts
+      .query({
+        org: orgAndApp.org,
+      });
 
     const processed = envVars.map((envVar) => {
       const contextNames = [];
 
       if (envVar.context_ids) {
         for (const contextId of envVar.context_ids) {
-          contextNames.push(contexts.find((context) => context.id === contextId)!.name);
+          contextNames.push(
+            contexts.find((context) => context.id === contextId)!.name,
+          );
         }
       } else {
         contextNames.push("All");
@@ -47,7 +50,9 @@ export const envListCommand = new Command<EnvCommandContext>()
       };
     });
 
-    const contextTitle = `Contexts (${contexts.map((context) => context.name).join(", ")})`
+    const contextTitle = `Contexts (${
+      contexts.map((context) => context.name).join(", ")
+    })`;
 
     let keyLength = 3;
     let valueLength = 5;
@@ -57,13 +62,20 @@ export const envListCommand = new Command<EnvCommandContext>()
       valueLength = Math.max(valueLength, processedElement.value.length);
     }
 
-    console.log(`${"Key".padEnd(keyLength)}   ${"Value".padEnd(valueLength)}   ${contextTitle}`);
+    console.log(
+      `${"Key".padEnd(keyLength)}   ${
+        "Value".padEnd(valueLength)
+      }   ${contextTitle}`,
+    );
 
     for (const env of processed) {
-      console.log(`${env.key.padEnd(keyLength)}   ${env.value.padEnd(valueLength)}   ${env.contexts}`);
+      console.log(
+        `${env.key.padEnd(keyLength)}   ${
+          env.value.padEnd(valueLength)
+        }   ${env.contexts}`,
+      );
     }
   });
-
 
 export const envAddCommand = new Command<EnvCommandContext>()
   .description("Add an environmental variable to the application")
@@ -92,7 +104,7 @@ export const envAddCommand = new Command<EnvCommandContext>()
           value,
           is_secret: options.secret,
           context_ids: null,
-        }
+        },
       ],
       update: [],
       remove: [],
@@ -100,7 +112,9 @@ export const envAddCommand = new Command<EnvCommandContext>()
   });
 
 export const envUpdateValueCommand = new Command<EnvCommandContext>()
-  .description("Update the value of an environmental variable in the application")
+  .description(
+    "Update the value of an environmental variable in the application",
+  )
   .arguments("variable:string value:string")
   .action(async (options, variable, value) => {
     const configContent = await readConfig(Deno.cwd());
@@ -136,8 +150,10 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
   });
 
 export const envUpdateContextsCommand = new Command<EnvCommandContext>()
-  .description(`Update the contexts of an environmental variable in the application
-You can define no contexts and it will set the value to "All"`)
+  .description(
+    `Update the contexts of an environmental variable in the application
+You can define no contexts and it will set the value to "All"`,
+  )
   .arguments("variable:string [new-contexts...:string]")
   .action(async (options, variable, ...newContexts) => {
     const configContent = await readConfig(Deno.cwd());
@@ -159,9 +175,10 @@ You can define no contexts and it will set the value to "All"`)
       throw new Error(`Environment variable "${variable}" not found`);
     }
 
-    const contexts = await (trpcClient.envVarsContexts as any).listContexts.query({
-      org: orgAndApp.org,
-    });
+    const contexts = await (trpcClient.envVarsContexts as any).listContexts
+      .query({
+        org: orgAndApp.org,
+      });
 
     const contextIds = [];
 
