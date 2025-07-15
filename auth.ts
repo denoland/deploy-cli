@@ -38,8 +38,7 @@ export function createTrpcClient(deployUrl: string) {
           headers() {
             if (storedAuth) {
               return {
-                cookie:
-                  `token=${storedAuth}; deno_auth_ghid=force`,
+                cookie: `token=${storedAuth}; deno_auth_ghid=force`,
               };
             } else {
               return {};
@@ -93,7 +92,7 @@ export async function interactive(deployUrl: string): Promise<
     Deno.exit(1);
   }
 
-  console.log(`${deployUrl}/auth/interactive`)
+  console.log(`${deployUrl}/auth/interactive`);
 
   const body = await res.json();
 
@@ -171,7 +170,7 @@ export async function authedFetch(
   let fallbackBody: ReadableStream | undefined;
   try {
     if (init.body instanceof ReadableStream) {
-      const [a, b]  = init.body.tee();
+      const [a, b] = init.body.tee();
       init.body = a;
       fallbackBody = b;
     }
@@ -206,7 +205,7 @@ export async function authedFetch(
       return res;
     }
   } catch {
-     token_storage.remove();
+    token_storage.remove();
     auth = await getAuth(deployUrl);
     token_storage.set(auth);
 

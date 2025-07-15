@@ -16,6 +16,7 @@ export async function publish(
   configContent: Config | null,
   org: string,
   app: string,
+  prod: boolean,
 ) {
   let gitignore: { denies(input: string): boolean } = {
     denies: () => false,
@@ -125,12 +126,13 @@ export async function publish(
     .pipeThrough(new TarStream())
     .pipeThrough(new CompressionStream("gzip"));
 
-  const resp = await authedFetch(deployUrl, `/api/trigger_tarball_build`, {
+  const resp = await authedFetch(deployUrl, "/api/trigger_tarball_build", {
     method: "POST",
     headers: {
       "x-meta": JSON.stringify({
         org,
         app,
+        production: prod,
       }),
     },
     body: tarball,
@@ -145,9 +147,9 @@ export async function publish(
   if (!resp.ok) {
     error(resBody.message, resp);
   } else {
-    console.log("Successfully uploaded your app!");
+    console.log("Successfully uploaded your application!");
     console.log(
-      `You can view your app overview here:\n  ${deployUrl}/${org}/${app}`,
+      `You can view your application overview here:\n  ${deployUrl}/${org}/${app}`,
     );
     console.log(
       `You can view the revision here:\n  ${deployUrl}/${org}/${app}/builds/${resBody.revisionId}`,

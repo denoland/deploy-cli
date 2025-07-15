@@ -5,7 +5,7 @@
   "exports": "./main.ts",
   "imports": {
     "@cfa/gitignore-parser": "jsr:@cfa/gitignore-parser@^0.1.4",
-    "@cliffy/command": "jsr:@cliffy/command@^1.0.0-rc.7",
+    "@cliffy/command": "jsr:@cliffy/command@^1.0.0-rc.8",
     "@std/cli": "jsr:@std/cli@1.0.15",
     "@std/encoding": "jsr:@std/encoding@^1.0.8",
     "@std/fmt": "jsr:@std/fmt@^1.0.8",
