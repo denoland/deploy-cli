@@ -6,6 +6,6 @@ export default {
     Deno[Deno.internal].core.ops.op_deploy_token_set(token);
   },
   remove() {
-    Deno[Deno.internal].core.ops.op_deploy_token_remove();
+    Deno[Deno.internal].core.ops.op_deploy_token_delete();
   },
 };

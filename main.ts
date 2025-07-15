@@ -1,8 +1,8 @@
 import { Command } from "@cliffy/command";
 import { publish } from "./publish.ts";
-import { red } from "@std/fmt/colors";
+import { red, yellow } from "@std/fmt/colors";
 import { create } from "./create.ts";
-import { withApp } from "./util.ts";
+import { error, renderTemporalTimestamp, withApp } from "./util.ts";
 import { setupAws, setupGcp } from "./setup-cloud.ts";
 import { getAppFromConfig, readConfig, writeConfig } from "./config.ts";
 import {
@@ -12,6 +12,7 @@ import {
   envUpdateContextsCommand,
   envUpdateValueCommand,
 } from "./env.ts";
+import { createTrpcClient } from "./auth.ts";
 
 const createCommand = new Command<{ endpoint: string }>()
   .description("Create a new application")
@@ -97,6 +98,75 @@ const envCommand = new Command<{ endpoint: string }>()
   .command("update-contexts", envUpdateContextsCommand)
   .command("delete", envDeleteCommand);
 
+const logsCommand = new Command<{ endpoint: string }>()
+  .option("--org <name:string>", "The name of the organization")
+  .option("--app <name:string>", "The name of the application")
+  .option("--start <date:string>", "The starting timestamp of the logs")
+  .option("--end <date:string>", "The ending timestamp of the logs", {
+    depends: ["start"],
+  })
+  .action(async (options, rootPath = Deno.cwd()) => {
+    const configContent = await readConfig(rootPath);
+    let { org, app } = getAppFromConfig(configContent);
+    org ??= options.org;
+    app ??= options.app;
+    const gottenApp = await withApp(options.endpoint, false, org, app);
+
+    interface LogEntry {
+      Timestamp: string;
+      TraceId: string;
+      SpanId: string;
+      SeverityText: string;
+      SeverityNumber: number;
+      Body: string;
+      ScopeName: string;
+      ScopeVersion: string;
+      LogAttributes: Record<string, string>;
+      Revision: string;
+    }
+
+    const trpcClient = createTrpcClient(options.endpoint);
+
+    const sub = (trpcClient.apps as any).logs.subscribe({
+      org: gottenApp.org,
+      app: gottenApp.app,
+      start: (options.start ? new Date(options.start) : new Date())
+        .toISOString(),
+      end: options.end ? new Date(options.end).toISOString() : undefined,
+      filter: {},
+    }, {
+      onData: (data: "streaming" | null | LogEntry[]) => {
+        if (data === "streaming") {
+          console.log("Streaming logs...");
+        } else if (Array.isArray(data)) {
+          for (const log of data) {
+            let text = `[${renderTemporalTimestamp(log.Timestamp)}${
+              log.TraceId ? ` (${log.TraceId})` : ""
+            }] ${log.Body}`;
+            if (text.endsWith("\n")) {
+              text = text.slice(0, -1);
+            }
+
+            if (log.SeverityNumber >= 17) {
+              console.log(red(text));
+            } else if (log.SeverityNumber >= 13) {
+              console.log(yellow(text));
+            } else {
+              console.log(text);
+            }
+          }
+        }
+      },
+      onError: (err: unknown) => {
+        sub.unsubscribe();
+        error(Deno.inspect(err));
+      },
+      onStopped: () => {
+        sub.unsubscribe();
+      },
+    });
+  });
+
 await new Command()
   .name("deno deploy")
   .description(`Interact with Deno Deploy
@@ -149,6 +219,7 @@ deploy your local directory to the specified application.`)
   )
   .command("create", createCommand)
   .command("env", envCommand)
+  .command("logs", logsCommand)
   .command("setup-aws", setupAWSCommand)
   .command("setup-gcp", setupGCPCommand)
   .command("tunnel-login", tunnelLoginCommand)

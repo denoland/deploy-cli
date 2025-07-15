@@ -1,5 +1,6 @@
 import { red } from "@std/fmt/colors";
 import { promptSelect } from "@std/cli/unstable-prompt-select";
+import { Temporal } from "temporal-polyfill";
 
 import { createTrpcClient, getAuth } from "./auth.ts";
 import token_storage from "./token_storage.ts";
@@ -100,4 +101,26 @@ export async function withApp(
     org: org as string,
     app: app as string | null,
   };
+}
+
+export function renderTemporalTimestamp(timestamp: string, hideDate = false) {
+  function pad(n: number, width: number): string {
+    return n.toString().padStart(width, "0");
+  }
+
+  const date = Temporal
+    .Instant
+    .from(timestamp)
+    .toZonedDateTimeISO("UTC");
+  const months = pad(date.month, 2);
+  const days = pad(date.day, 2);
+  const hours = pad(date.hour, 2);
+  const minutes = pad(date.minute, 2);
+  const seconds = pad(date.second, 2);
+  const ms = (date.millisecond / 1000).toFixed(2).substring(2);
+
+  const time = `${hours}:${minutes}:${seconds}.${ms}`;
+  if (hideDate) return time;
+
+  return `${date.year}-${months}-${days} ${time}`;
 }

@@ -12,6 +12,7 @@ import {
 import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
 import token_storage from "./token_storage.ts";
+import { EventSourcePolyfill } from "event-source-polyfill";
 
 export function createTrpcClient(deployUrl: string) {
   const storedAuth = token_storage.get();
@@ -48,6 +49,18 @@ export function createTrpcClient(deployUrl: string) {
         }),
         true: httpSubscriptionLink({
           url: deployUrl + "/api",
+          EventSource: EventSourcePolyfill,
+          eventSourceOptions: () => {
+            if (storedAuth) {
+              return {
+                headers: {
+                  cookie: `token=${storedAuth}; deno_auth_ghid=force`,
+                },
+              };
+            } else {
+              return {};
+            }
+          },
           transformer,
         }),
       }),
