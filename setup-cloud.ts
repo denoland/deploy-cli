@@ -2,9 +2,8 @@
 import prompt from "npm:prompts@2.4.2";
 
 import { gray, green, yellow } from "@std/fmt/colors";
+import { createTrpcClient } from "./auth.ts";
 
-const OIDC_PROVIDER_DOMAIN = Deno.env.get("DENO_DEPLOY_OIDC_DOMAIN") ||
-  "oidc.deno.com";
 const AWS_OIDC_AUDIENCE = "sts.amazonaws.com";
 
 async function runAwsCommand<T>(args: string[]): Promise<T> {
@@ -106,7 +105,12 @@ function log(string: string) {
   Deno.stdout.writeSync(new TextEncoder().encode(string));
 }
 
-export async function setupAws(org: string, app: string, contexts: string[]) {
+export async function setupAws(
+  deployUrl: string,
+  org: string,
+  app: string,
+  contexts: string[],
+) {
   // Print out "AWS Setup Wizard for Deno Deploy" in an orange box
   console.log(
     "%c                                    %c\n%c  AWS Setup Wizard for Deno Deploy  %c\n%c                                    %c",
@@ -118,6 +122,12 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
     "background-color: reset; color: reset; font-weight: normal;",
   );
   console.log();
+
+  const trpcClient = createTrpcClient(deployUrl);
+  const { oidcHostname } = await trpcClient.cloudConnections.config.query({
+    org,
+    app,
+  });
 
   // Check if AWS CLI is installed and that the user is authenticated
   log(gray("   Checking AWS account configuration..."));
@@ -131,13 +141,13 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
     } with ${yellow(awsInfo.UserId)}\n`,
   );
 
-  // Check whether the OIDC_PROVIDER_DOMAIN identity provider is already set up
+  // Check whether the oidcHostname identity provider is already set up
   log(gray("  Checking OIDC provider configuration..."));
   const providers = await runAwsCommand<
     { OpenIDConnectProviderList: Array<{ Arn: string }> }
   >(["iam", "list-open-id-connect-providers"]);
   let providerArn = providers.OpenIDConnectProviderList
-    .find((p) => p.Arn.includes(OIDC_PROVIDER_DOMAIN))?.Arn;
+    .find((p) => p.Arn.includes(oidcHostname))?.Arn;
   let providerHasClientId = false;
   if (providerArn) {
     // Check that the provider has the correct client ID
@@ -224,7 +234,7 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
 
   if (!providerArn) {
     console.log(
-      `   %c+ create%c an OIDC provider for %chttps://${OIDC_PROVIDER_DOMAIN}`,
+      `   %c+ create%c an OIDC provider for %chttps://${oidcHostname}`,
       "color: green;",
       "color: gray;",
       "color: blue;",
@@ -297,12 +307,12 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
       "iam",
       "create-open-id-connect-provider",
       "--url",
-      `https://${OIDC_PROVIDER_DOMAIN}`,
+      `https://${oidcHostname}`,
       "--client-id-list",
       "sts.amazonaws.com",
     ]).then((res) => res.OpenIDConnectProviderArn);
     console.log(
-      `\r%c✔ Created%c OIDC provider for %chttps://${OIDC_PROVIDER_DOMAIN}%c with ARN: %c${providerArn}%c`,
+      `\r%c✔ Created%c OIDC provider for %chttps://${oidcHostname}%c with ARN: %c${providerArn}%c`,
       "color: green;",
       "color: reset;",
       "color: blue;",
@@ -341,8 +351,7 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
       Action: "sts:AssumeRoleWithWebIdentity",
       Condition: {
         StringEquals: {
-          [`${OIDC_PROVIDER_DOMAIN}:sub`]:
-            `deployment:${org}/${app}/${context}`,
+          [`${oidcHostname}:sub`]: `deployment:${org}/${app}/${context}`,
         },
       },
     }))
@@ -354,7 +363,7 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
       Action: "sts:AssumeRoleWithWebIdentity",
       Condition: {
         StringLike: {
-          [`${OIDC_PROVIDER_DOMAIN}:sub`]: `deployment:${org}/${app}/*`,
+          [`${oidcHostname}:sub`]: `deployment:${org}/${app}/*`,
         },
       },
     }];
@@ -401,7 +410,12 @@ export async function setupAws(org: string, app: string, contexts: string[]) {
   );
 }
 
-export async function setupGcp(org: string, app: string, contexts: string[]) {
+export async function setupGcp(
+  deployUrl: string,
+  org: string,
+  app: string,
+  contexts: string[],
+) {
   // Print out "GCP Setup Wizard for Deno Deploy" in a blue box
   console.log(
     "%c                                    %c\n%c  GCP Setup Wizard for Deno Deploy  %c\n%c                                    %c",
@@ -413,6 +427,12 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
     "background-color: reset; color: reset; font-weight: normal;",
   );
   console.log();
+
+  const trpcClient = createTrpcClient(deployUrl);
+  const { oidcHostname } = await trpcClient.cloudConnections.config.query({
+    org,
+    app,
+  });
 
   // Check if gcloud CLI is installed and that the user is authenticated
   log(gray("   Checking GCP account configuration..."));
@@ -518,7 +538,7 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
     console.log(`\r${green("✔ APIs")} are enabled            `);
   }
 
-  const gcpWorkloadIdentityId = OIDC_PROVIDER_DOMAIN.replace(/\./g, "-");
+  const gcpWorkloadIdentityId = oidcHostname.replace(/\./g, "-");
 
   // Check if the Workload Identity Pool already exists
   log(gray("  Checking workload identity pool..."));
@@ -645,7 +665,7 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
 
   if (!workloadIdentityProviderExists) {
     console.log(
-      `   %c+ create%c workload identity provider %c${gcpWorkloadIdentityId}%c for %chttps://${OIDC_PROVIDER_DOMAIN}`,
+      `   %c+ create%c workload identity provider %c${gcpWorkloadIdentityId}%c for %chttps://${oidcHostname}`,
       "color: green;",
       "color: gray;",
       "color: blue;",
@@ -737,7 +757,7 @@ export async function setupGcp(org: string, app: string, contexts: string[]) {
       gcpWorkloadIdentityId,
       "--workload-identity-pool=" + gcpWorkloadIdentityId,
       "--location=global",
-      "--issuer-uri=https://" + OIDC_PROVIDER_DOMAIN,
+      "--issuer-uri=https://" + oidcHostname,
       '--attribute-mapping=google.subject=assertion.sub,attribute.org_id=assertion.org_id,attribute.org_slug=assertion.org_slug,attribute.app_id=assertion.app_id,attribute.app_slug=assertion.app_slug,attribute.full_slug=assertion.org_slug+"/"+assertion.app_slug,attribute.context_id=assertion.context_id,attribute.context_name=assertion.context_name',
       "--no-user-output-enabled",
     ]);

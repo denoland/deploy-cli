@@ -54,8 +54,13 @@ const setupAWSCommand = new Command<{ endpoint: string }>()
         c.trim().toLowerCase().replaceAll(" ", "-")
       )
       : [];
-
-    await setupAws(options.org, options.app, contextList);
+    const gottenApp = await withApp(
+      options.endpoint,
+      false,
+      options.org,
+      options.app,
+    );
+    await setupAws(options.endpoint, gottenApp.org, gottenApp.app, contextList);
   });
 
 const setupGCPCommand = new Command<{ endpoint: string }>()
@@ -73,8 +78,13 @@ const setupGCPCommand = new Command<{ endpoint: string }>()
         c.trim().toLowerCase().replaceAll(" ", "-")
       )
       : [];
-
-    await setupGcp(options.org, options.app, contextList);
+    const gottenApp = await withApp(
+      options.endpoint,
+      false,
+      options.org,
+      options.app,
+    );
+    await setupGcp(options.endpoint, gottenApp.org, gottenApp.app, contextList);
   });
 
 const tunnelLoginCommand = new Command<{ endpoint: string }>()
