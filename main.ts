@@ -2,7 +2,7 @@ import { Command } from "@cliffy/command";
 import { publish } from "./publish.ts";
 import { red, yellow } from "@std/fmt/colors";
 import { create } from "./create.ts";
-import { renderTemporalTimestamp, withApp } from "./util.ts";
+import { error, renderTemporalTimestamp, withApp } from "./util.ts";
 import { setupAws, setupGcp } from "./setup-cloud.ts";
 import { getAppFromConfig, readConfig, writeConfig } from "./config.ts";
 import {
@@ -130,7 +130,8 @@ const logsCommand = new Command<{ endpoint: string }>()
     const sub = (trpcClient.apps as any).logs.subscribe({
       org: gottenApp.org,
       app: gottenApp.app,
-      start: (options.start ? new Date(options.start) : new Date()).toISOString(),
+      start: (options.start ? new Date(options.start) : new Date())
+        .toISOString(),
       end: options.end ? new Date(options.end).toISOString() : undefined,
       filter: {},
     }, {
@@ -139,7 +140,9 @@ const logsCommand = new Command<{ endpoint: string }>()
           console.log("Streaming logs...");
         } else if (Array.isArray(data)) {
           for (const log of data) {
-            let text = `[${renderTemporalTimestamp(log.Timestamp)}${log.TraceId ? ` (${log.TraceId})` : ""}] ${log.Body}`;
+            let text = `[${renderTemporalTimestamp(log.Timestamp)}${
+              log.TraceId ? ` (${log.TraceId})` : ""
+            }] ${log.Body}`;
             if (text.endsWith("\n")) {
               text = text.slice(0, -1);
             }
@@ -154,11 +157,9 @@ const logsCommand = new Command<{ endpoint: string }>()
           }
         }
       },
-      onError: (err) => {
+      onError: (err: unknown) => {
         sub.unsubscribe();
-        console.log("An error occurred, exiting...");
-        console.log(err);
-        Deno.exit(1);
+        error(Deno.inspect(err));
       },
       onStopped: () => {
         sub.unsubscribe();
