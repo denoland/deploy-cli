@@ -124,10 +124,12 @@ export async function setupAws(
   console.log();
 
   const trpcClient = createTrpcClient(deployUrl);
-  const { oidcHostname } = await trpcClient.cloudConnections.config.query({
-    org,
-    app,
-  });
+  // deno-lint-ignore no-explicit-any
+  const { oidcHostname } = await (trpcClient.cloudConnections as any).config
+    .query({
+      org,
+      app,
+    });
 
   // Check if AWS CLI is installed and that the user is authenticated
   log(gray("   Checking AWS account configuration..."));
@@ -429,10 +431,12 @@ export async function setupGcp(
   console.log();
 
   const trpcClient = createTrpcClient(deployUrl);
-  const { oidcHostname } = await trpcClient.cloudConnections.config.query({
-    org,
-    app,
-  });
+  // deno-lint-ignore no-explicit-any
+  const { oidcHostname } = await (trpcClient.cloudConnections as any).config
+    .query({
+      org,
+      app,
+    });
 
   // Check if gcloud CLI is installed and that the user is authenticated
   log(gray("   Checking GCP account configuration..."));

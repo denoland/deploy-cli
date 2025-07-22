@@ -1,6 +1,7 @@
 import { Command } from "@cliffy/command";
 import { publish } from "./publish.ts";
 import { red, yellow } from "@std/fmt/colors";
+import { greaterOrEqual, parse as semverParse } from "@std/semver";
 import { create } from "./create.ts";
 import { error, renderTemporalTimestamp, withApp } from "./util.ts";
 import { setupAws, setupGcp } from "./setup-cloud.ts";
@@ -13,6 +14,18 @@ import {
   envUpdateValueCommand,
 } from "./env.ts";
 import { createTrpcClient } from "./auth.ts";
+
+const MINIMUM_DENO_VERSION = "2.4.2";
+if (
+  !greaterOrEqual(
+    semverParse(Deno.version.deno),
+    semverParse(MINIMUM_DENO_VERSION),
+  )
+) {
+  error(
+    `Minimum Deno version required is ${MINIMUM_DENO_VERSION} (found ${Deno.version.deno}).`,
+  );
+}
 
 const createCommand = new Command<{ endpoint: string }>()
   .description("Create a new application")
@@ -101,7 +114,9 @@ const envCommand = new Command<{ endpoint: string }>()
   .description("Modify environmental variables")
   .globalOption("--org <name:string>", "The name of the organization")
   .globalOption("--app <name:string>", "The name of the application")
-  .action(() => envCommand.showHelp())
+  .action(() => {
+    envCommand.showHelp();
+  })
   .command("list", envListCommand)
   .command("add", envAddCommand)
   .command("update-value", envUpdateValueCommand)
@@ -109,6 +124,7 @@ const envCommand = new Command<{ endpoint: string }>()
   .command("delete", envDeleteCommand);
 
 const logsCommand = new Command<{ endpoint: string }>()
+  .description("Stream logs from an application")
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
   .option("--start <date:string>", "The starting timestamp of the logs")
@@ -137,6 +153,7 @@ const logsCommand = new Command<{ endpoint: string }>()
 
     const trpcClient = createTrpcClient(options.endpoint);
 
+    // deno-lint-ignore no-explicit-any
     const sub = (trpcClient.apps as any).logs.subscribe({
       org: gottenApp.org,
       app: gottenApp.app,

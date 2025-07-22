@@ -65,11 +65,11 @@ export async function publish(
     }
   }
 
-  const progress = new ProgressBar(Deno.stdout.writable, {
+  const progress = new ProgressBar({
     max: total,
     emptyChar: " ",
     fillChar: green("█"),
-    fmt(formatter) {
+    formatter(formatter) {
       const minutes = (formatter.time / 1000 / 60 | 0).toString().padStart(
         2,
         "0",
@@ -113,7 +113,7 @@ export async function publish(
                 readable: file.readable.pipeThrough(
                   new TransformStream({
                     flush() {
-                      progress.add(1);
+                      progress.value += 1;
                     },
                   }),
                 ),
@@ -140,7 +140,7 @@ export async function publish(
 
   const resBody = await resp.json();
 
-  await progress.end();
+  await progress.stop();
 
   console.log();
 

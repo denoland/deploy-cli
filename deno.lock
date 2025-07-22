@@ -7,15 +7,16 @@
     "jsr:@cliffy/internal@1.0.0-rc.8": "1.0.0-rc.8",
     "jsr:@cliffy/table@1.0.0-rc.8": "1.0.0-rc.8",
     "jsr:@deno/framework-detect@0": "0.1.0",
-    "jsr:@std/cli@1.0.15": "1.0.15",
+    "jsr:@std/cli@1.0.21": "1.0.21",
     "jsr:@std/encoding@*": "1.0.8",
-    "jsr:@std/encoding@^1.0.8": "1.0.8",
+    "jsr:@std/encoding@^1.0.8": "1.0.10",
     "jsr:@std/fmt@^1.0.8": "1.0.8",
     "jsr:@std/fmt@~1.0.2": "1.0.8",
     "jsr:@std/fs@^1.0.14": "1.0.15",
     "jsr:@std/json@1": "1.0.2",
     "jsr:@std/jsonc@^1.0.1": "1.0.1",
     "jsr:@std/path@^1.0.8": "1.0.8",
+    "jsr:@std/semver@^1.0.5": "1.0.5",
     "jsr:@std/streams@^1.0.9": "1.0.9",
     "jsr:@std/tar@~0.1.6": "0.1.6",
     "jsr:@std/text@~1.0.7": "1.0.15",
@@ -66,11 +67,14 @@
         "jsr:@std/path"
       ]
     },
-    "@std/cli@1.0.15": {
-      "integrity": "e79ba3272ec710ca44d8342a7688e6288b0b88802703f3264184b52893d5e93f"
+    "@std/cli@1.0.21": {
+      "integrity": "cd25b050bdf6282e321854e3822bee624f07aca7636a3a76d95f77a3a919ca2a"
     },
     "@std/encoding@1.0.8": {
       "integrity": "a6c8f3f933ab1bed66244f435d1dc0fd23a888e07195532122ddc3d5f8f0e6b4"
+    },
+    "@std/encoding@1.0.10": {
+      "integrity": "8783c6384a2d13abd5e9e87a7ae0520a30e9f56aeeaa3bdf910a3eaaf5c811a1"
     },
     "@std/fmt@1.0.8": {
       "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
@@ -98,6 +102,9 @@
     },
     "@std/path@1.0.8": {
       "integrity": "548fa456bb6a04d3c1a1e7477986b6cffbce95102d0bb447c67c4ee70e0364be"
+    },
+    "@std/semver@1.0.5": {
+      "integrity": "529f79e83705714c105ad0ba55bec0f9da0f24d2f726b6cc1c15e505cc2c0624"
     },
     "@std/streams@1.0.9": {
       "integrity": "a9d26b1988cdd7aa7b1f4b51e1c36c1557f3f252880fa6cc5b9f37078b1a5035"
@@ -246,12 +253,13 @@
       "jsr:@cfa/gitignore-parser@~0.1.4",
       "jsr:@cliffy/command@^1.0.0-rc.8",
       "jsr:@deno/framework-detect@0",
-      "jsr:@std/cli@1.0.15",
+      "jsr:@std/cli@1.0.21",
       "jsr:@std/encoding@^1.0.8",
       "jsr:@std/fmt@^1.0.8",
       "jsr:@std/fs@^1.0.14",
       "jsr:@std/jsonc@^1.0.1",
       "jsr:@std/path@^1.0.8",
+      "jsr:@std/semver@^1.0.5",
       "jsr:@std/tar@~0.1.6",
       "npm:@trpc/client@^11.0.2",
       "npm:@trpc/server@^11.0.2",

@@ -7,6 +7,7 @@ import {
   createTRPCClient,
   httpBatchStreamLink,
   httpSubscriptionLink,
+  retryLink,
   splitLink,
 } from "@trpc/client";
 import { Spinner } from "@std/cli/unstable-spinner";
@@ -15,7 +16,7 @@ import token_storage from "./token_storage.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 
 export function createTrpcClient(deployUrl: string) {
-  const storedAuth = token_storage.get();
+  let storedAuth = token_storage.get();
 
   const transformer: TRPCCombinedDataTransformer = {
     input: {
@@ -28,15 +29,37 @@ export function createTrpcClient(deployUrl: string) {
     },
   };
 
+  let retryPromise: Promise<void> | undefined = undefined;
+
   // deno-lint-ignore no-explicit-any
   return createTRPCClient<any>({
     links: [
+      retryLink({
+        retry() {
+          // TODO: check its an auth error
+
+          if (typeof retryPromise !== "undefined") {
+            return false;
+          }
+
+          token_storage.remove();
+          retryPromise = getAuth(deployUrl).then((auth) => {
+            storedAuth = auth;
+          });
+          return true;
+        },
+      }),
       splitLink({
         // uses the httpSubscriptionLink for subscriptions
         condition: (op) => op.type === "subscription",
         false: httpBatchStreamLink({
           url: deployUrl + "/api",
-          headers() {
+          async headers() {
+            if (retryPromise) {
+              await retryPromise;
+              retryPromise = undefined;
+            }
+
             if (storedAuth) {
               return {
                 cookie: `token=${storedAuth}; deno_auth_ghid=force`,
@@ -50,7 +73,12 @@ export function createTrpcClient(deployUrl: string) {
         true: httpSubscriptionLink({
           url: deployUrl + "/api",
           EventSource: EventSourcePolyfill,
-          eventSourceOptions: () => {
+          async eventSourceOptions() {
+            if (retryPromise) {
+              await retryPromise;
+              retryPromise = undefined;
+            }
+
             if (storedAuth) {
               return {
                 headers: {
@@ -169,7 +197,6 @@ export async function authedFetch(
 
   if (!auth) {
     auth = await getAuth(deployUrl);
-    token_storage.set(auth);
   }
 
   const headers = new Headers(init.headers);
@@ -196,7 +223,6 @@ export async function authedFetch(
     if (res.status === 401) {
       token_storage.remove();
       auth = await getAuth(deployUrl);
-      token_storage.set(auth);
 
       const headers = new Headers(init.headers);
       headers.set(
@@ -220,7 +246,6 @@ export async function authedFetch(
   } catch {
     token_storage.remove();
     auth = await getAuth(deployUrl);
-    token_storage.set(auth);
 
     const headers = new Headers(init.headers);
     headers.set(
