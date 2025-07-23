@@ -1,6 +1,5 @@
 {
   "name": "@deno/deploy",
-  "version": "0.0.26",
   "license": "MIT",
   "exports": "./main.ts",
   "imports": {
