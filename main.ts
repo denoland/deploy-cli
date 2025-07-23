@@ -181,12 +181,14 @@ const logsCommand = new Command<{ endpoint: string }>()
               seenIds.add(id);
             }
 
-            let text = `[${renderTemporalTimestamp(log.Timestamp)}${
+            const prefix = `[${renderTemporalTimestamp(log.Timestamp)}${
               log.TraceId ? ` (${log.TraceId})` : ""
-            }] ${log.Body}`;
+            }]`;
+            let text = `${prefix} ${log.Body}`;
             if (text.endsWith("\n")) {
               text = text.slice(0, -1);
             }
+            text = text.replaceAll("\n", "\n".padEnd(prefix.length + 1));
 
             if (log.SeverityNumber >= 17) {
               console.log(red(text));
