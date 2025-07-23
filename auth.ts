@@ -58,6 +58,7 @@ export function createTrpcClient(deployUrl: string) {
         false: httpBatchStreamLink({
           url: deployUrl + "/api",
           fetch: async (url, options) => {
+            // deno-lint-ignore no-explicit-any
             const response = await fetch(url, options as any);
             if (response.status === 401) {
               throw TRPCClientError.from({
