@@ -40,7 +40,9 @@ export const envListCommand = new Command<EnvCommandContext>()
       });
 
     if (envVars.length === 0) {
-      console.log("There are no environmental variables set on this application.");
+      console.log(
+        "There are no environmental variables set on this application.",
+      );
       return;
     }
 
@@ -133,7 +135,9 @@ export const envAddCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(`Environmental variable '${variable}' has been successfully set.`);
+    console.log(
+      `Environmental variable '${variable}' has been successfully set.`,
+    );
   });
 
 export const envUpdateValueCommand = new Command<EnvCommandContext>()
@@ -174,7 +178,9 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(`The value of the environmental variable '${variable}' has been successfully updated.`);
+    console.log(
+      `The value of the environmental variable '${variable}' has been successfully updated.`,
+    );
   });
 
 export const envUpdateContextsCommand = new Command<EnvCommandContext>()
@@ -234,7 +240,9 @@ You can define no contexts, which is the equivalent to "All"`,
       remove: [],
     });
 
-    console.log(`The contexts of the environmental variable '${variable}' have been successfully updated`);
+    console.log(
+      `The contexts of the environmental variable '${variable}' have been successfully updated`,
+    );
   });
 
 export const envDeleteCommand = new Command<EnvCommandContext>()
@@ -270,5 +278,7 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
       remove: [envVar.id],
     });
 
-    console.log(`Environmental variable '${variable}' has been successfully deleted`);
+    console.log(
+      `Environmental variable '${variable}' has been successfully deleted`,
+    );
   });
