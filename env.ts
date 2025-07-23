@@ -1,6 +1,6 @@
 import { Command } from "@cliffy/command";
 import { getAppFromConfig, readConfig } from "./config.ts";
-import { withApp } from "./util.ts";
+import { error, withApp } from "./util.ts";
 import { createTrpcClient } from "./auth.ts";
 
 interface EnvVar {
@@ -38,6 +38,11 @@ export const envListCommand = new Command<EnvCommandContext>()
         org: orgAndApp.org,
         app: orgAndApp.app,
       });
+
+    if (envVars.length === 0) {
+      console.log("There are no environmental variables set on this application.");
+      return;
+    }
 
     // deno-lint-ignore no-explicit-any
     const contexts: Context[] = await (trpcClient.envVarsContexts as any)
@@ -127,6 +132,8 @@ export const envAddCommand = new Command<EnvCommandContext>()
       update: [],
       remove: [],
     });
+
+    console.log(`Environmental variable '${variable}' has been successfully set.`);
   });
 
 export const envUpdateValueCommand = new Command<EnvCommandContext>()
@@ -153,7 +160,7 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      throw new Error(`Environment variable "${variable}" not found`);
+      error(`Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
@@ -166,12 +173,14 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
       }],
       remove: [],
     });
+
+    console.log(`The value of the environmental variable '${variable}' has been successfully updated.`);
   });
 
 export const envUpdateContextsCommand = new Command<EnvCommandContext>()
   .description(
     `Update the contexts of an environmental variable in the application
-You can define no contexts and it will set the value to "All"`,
+You can define no contexts, which is the equivalent to "All"`,
   )
   .arguments("variable:string [new-contexts...:string]")
   .action(async (options, variable, ...newContexts) => {
@@ -193,7 +202,7 @@ You can define no contexts and it will set the value to "All"`,
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      throw new Error(`Environment variable "${variable}" not found`);
+      error(`Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
@@ -208,7 +217,7 @@ You can define no contexts and it will set the value to "All"`,
     for (const newContext of newContexts) {
       const context = contexts.find((context) => context.name === newContext);
       if (!context) {
-        throw new Error(`Context "${newContext}" not found`);
+        error(`Context "${newContext}" not found`);
       }
 
       contextIds.push(context.id);
@@ -224,6 +233,8 @@ You can define no contexts and it will set the value to "All"`,
       }],
       remove: [],
     });
+
+    console.log(`The contexts of the environmental variable '${variable}' have been successfully updated`);
   });
 
 export const envDeleteCommand = new Command<EnvCommandContext>()
@@ -248,7 +259,7 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      throw new Error(`Environment variable "${variable}" not found`);
+      throw new Error(`Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
@@ -258,4 +269,6 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
       update: [],
       remove: [envVar.id],
     });
+
+    console.log(`Environmental variable '${variable}' has been successfully deleted`);
   });
