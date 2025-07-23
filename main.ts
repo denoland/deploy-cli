@@ -153,6 +153,9 @@ const logsCommand = new Command<{ endpoint: string }>()
 
     const trpcClient = createTrpcClient(options.endpoint);
 
+    const seenIds = new Set();
+    let onceConnected = false;
+
     // deno-lint-ignore no-explicit-any
     const sub = (trpcClient.apps as any).logs.subscribe({
       org: gottenApp.org,
@@ -164,9 +167,20 @@ const logsCommand = new Command<{ endpoint: string }>()
     }, {
       onData: (data: "streaming" | null | LogEntry[]) => {
         if (data === "streaming") {
-          console.log("Streaming logs...");
+          if (!onceConnected) {
+            console.log("connected, streaming logs...");
+          }
+          onceConnected = true;
         } else if (Array.isArray(data)) {
           for (const log of data) {
+            const id = log.LogAttributes["log.record.uid"];
+
+            if (seenIds.has(id)) {
+              continue;
+            } else {
+              seenIds.add(id);
+            }
+
             let text = `[${renderTemporalTimestamp(log.Timestamp)}${
               log.TraceId ? ` (${log.TraceId})` : ""
             }] ${log.Body}`;
