@@ -9,6 +9,7 @@ import {
   httpSubscriptionLink,
   retryLink,
   splitLink,
+  TRPCClientError,
 } from "@trpc/client";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
@@ -35,8 +36,10 @@ export function createTrpcClient(deployUrl: string) {
   return createTRPCClient<any>({
     links: [
       retryLink({
-        retry() {
-          // TODO: check its an auth error
+        retry({ error }) {
+          if (error.message !== "Unauthorized") {
+            return false;
+          }
 
           if (typeof retryPromise !== "undefined") {
             return false;
@@ -54,6 +57,17 @@ export function createTrpcClient(deployUrl: string) {
         condition: (op) => op.type === "subscription",
         false: httpBatchStreamLink({
           url: deployUrl + "/api",
+          fetch: async (url, options) => {
+            const response = await fetch(url, options as any);
+            if (response.status === 401) {
+              throw TRPCClientError.from({
+                message: "Unauthorized",
+                code: -32004,
+                data: { httpStatus: 401, code: "NOT_AUTHENTICATED" },
+              });
+            }
+            return response;
+          },
           async headers() {
             if (retryPromise) {
               await retryPromise;
@@ -132,8 +146,6 @@ export async function interactive(deployUrl: string): Promise<
     console.error("An error occured, exiting...");
     Deno.exit(1);
   }
-
-  console.log(`${deployUrl}/auth/interactive`);
 
   const body = await res.json();
 
