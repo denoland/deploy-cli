@@ -1,4 +1,5 @@
 import { Command } from "@cliffy/command";
+import { parse as dotEnvParse } from "@std/dotenv";
 import { getAppFromConfig, readConfig } from "./config.ts";
 import { error, withApp } from "./util.ts";
 import { createTrpcClient } from "./auth.ts";
@@ -103,7 +104,7 @@ export const envListCommand = new Command<EnvCommandContext>()
 export const envAddCommand = new Command<EnvCommandContext>()
   .description("Add an environmental variable to the application")
   .option("--secret", "If the value should be secret", { default: false })
-  .arguments("variable:string value:string")
+  .arguments("<variable:string> <value:string>")
   .action(async (options, variable, value) => {
     const configContent = await readConfig(Deno.cwd());
     let { org, app } = getAppFromConfig(configContent);
@@ -144,7 +145,7 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
   .description(
     "Update the value of an environmental variable in the application",
   )
-  .arguments("variable:string value:string")
+  .arguments("<variable:string> <value:string>")
   .action(async (options, variable, value) => {
     const configContent = await readConfig(Deno.cwd());
     let { org, app } = getAppFromConfig(configContent);
@@ -188,7 +189,7 @@ export const envUpdateContextsCommand = new Command<EnvCommandContext>()
     `Update the contexts of an environmental variable in the application
 You can define no contexts, which is the equivalent to "All"`,
   )
-  .arguments("variable:string [new-contexts...:string]")
+  .arguments("<variable:string> [new-contexts...:string]")
   .action(async (options, variable, ...newContexts) => {
     const configContent = await readConfig(Deno.cwd());
     let { org, app } = getAppFromConfig(configContent);
@@ -281,4 +282,47 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
     console.log(
       `Environmental variable '${variable}' has been successfully deleted`,
     );
+  });
+
+export const envLoadCommand = new Command<EnvCommandContext>()
+  .description(
+    "Load environmental variables from a .env file into the application",
+  )
+  .option(
+    "--secrets <keys...:string>",
+    "Which keys in the .env file to treat as secrets",
+  )
+  .arguments("<file:string>")
+  .action(async (options, file) => {
+    const configContent = await readConfig(Deno.cwd());
+    let { org, app } = getAppFromConfig(configContent);
+    org ??= options.org;
+    app ??= options.app;
+
+    const orgAndApp = await withApp(options.endpoint, false, org, app);
+    const trpcClient = createTrpcClient(options.endpoint);
+
+    // deno-lint-ignore no-explicit-any
+    const fullApp = await (trpcClient.apps as any).get.query({
+      org: orgAndApp.org,
+      app: orgAndApp.app,
+    });
+
+    const variables = dotEnvParse(await Deno.readTextFile(file));
+
+    // deno-lint-ignore no-explicit-any
+    await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
+      org: orgAndApp.org,
+      add: Object.entries(variables).map(([key, value]) => ({
+        app_id: fullApp.id,
+        key,
+        value,
+        is_secret: options.secrets?.includes(key) ?? false,
+        context_ids: null,
+      })),
+      update: [],
+      remove: [],
+    });
+
+    console.log(`.env file '${file}' has been successfully loaded.`);
   });

@@ -10,6 +10,7 @@ import {
   envAddCommand,
   envDeleteCommand,
   envListCommand,
+  envLoadCommand,
   envUpdateContextsCommand,
   envUpdateValueCommand,
 } from "./env.ts";
@@ -121,7 +122,8 @@ const envCommand = new Command<{ endpoint: string }>()
   .command("add", envAddCommand)
   .command("update-value", envUpdateValueCommand)
   .command("update-contexts", envUpdateContextsCommand)
-  .command("delete", envDeleteCommand);
+  .command("delete", envDeleteCommand)
+  .command("load", envLoadCommand);
 
 const logsCommand = new Command<{ endpoint: string }>()
   .description("Stream logs from an application")
