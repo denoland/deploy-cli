@@ -6,7 +6,7 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve } from "@std/path";
 import { green, yellow } from "@std/fmt/colors";
 import { type Config, writeConfig } from "./config.ts";
-import { authedFetch } from "./auth.ts";
+import { authedFetch, createTrpcClient } from "./auth.ts";
 import { error } from "./util.ts";
 
 const SEPARATOR_PATTERN = Deno.build.os === "windows" ? "\\\\" : "/";
@@ -105,47 +105,61 @@ export async function publish(
   hashesSpinner.stop();
   console.log(`${green("✔")} Generated hashes`);
 
-  const initiatedBuildRes = await authedFetch(deployUrl, "api/initiate_cli_build", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
+  const initiatedBuildRes = await authedFetch(
+    deployUrl,
+    "api/initiate_cli_build",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        org,
+        app,
+        production: prod,
+        manifest,
+      }),
     },
-    body: JSON.stringify({
-      org,
-      app,
-      production: prod,
-      manifest,
-    }),
+  );
+
+  const { revisionId }: { revisionId: string } = await initiatedBuildRes.json();
+
+  const missingHashesPromise = Promise.withResolvers<string[]>();
+
+  const trpcClient = createTrpcClient(deployUrl);
+
+  // deno-lint-ignore no-explicit-any
+  const sub = await (trpcClient.revisions as any).watchUntilReady.subscribe({
+    org,
+    app,
+    revision: revisionId,
+  }, {
+    onData: (data: { labels: Record<string, string> }) => {
+      if ("deno.diffsync.missing_hashes" in data.labels) {
+        missingHashesPromise.resolve(
+          JSON.parse(data.labels["deno.diffsync.missing_hashes"]),
+        );
+        sub.unsubscribe();
+      }
+    },
+    onError: (err: unknown) => {
+      sub.unsubscribe();
+      error(Deno.inspect(err));
+    },
+    onStopped: () => {
+      sub.unsubscribe();
+    },
   });
 
-  const { revisionId }: { revisionId: string; } = await initiatedBuildRes.json();
-
-  let missingHashes: string[];
-
-  const s = Date.now();
-  while (true) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const maybeHashesRes = await authedFetch(deployUrl, `api/diffsync/${org}/${app}/${revisionId}`, {});
-    if (maybeHashesRes.status !== 202) {
-      if (maybeHashesRes.ok) {
-        missingHashes = await maybeHashesRes.json();
-        break;
-      } else {
-        const err = await maybeHashesRes.json();
-        error(`Failed getting file hashes: ${err.message}`, maybeHashesRes);
-      }
-    }
-
-    if ((Date.now() - s) >= 30 * 1000) {
-      error(`Failed getting file hashes`, maybeHashesRes);
-    }
-  }
+  const missingHashes = await missingHashesPromise.promise;
 
   if (missingHashes.length > 0) {
     const skippedFilesCount = total - missingHashes.length;
 
     if (skippedFilesCount > 0) {
-      console.log(`Found ${skippedFilesCount} already uploaded files, which will be skipped from uploading`);
+      console.log(
+        `Found ${skippedFilesCount} already uploaded files, which will be skipped from uploading`,
+      );
     }
 
     const progress = new ProgressBar({
@@ -202,17 +216,21 @@ export async function publish(
       .pipeThrough(new TarStream())
       .pipeThrough(new CompressionStream("gzip"));
 
-    const resp = await authedFetch(deployUrl, `api/diffsync/${org}/${app}/${revisionId}`, {
-      method: "POST",
-      headers: {
-        "x-meta": JSON.stringify({
-          org,
-          app,
-          production: prod,
-        }),
+    const resp = await authedFetch(
+      deployUrl,
+      `api/diffsync/${org}/${app}/${revisionId}`,
+      {
+        method: "POST",
+        headers: {
+          "x-meta": JSON.stringify({
+            org,
+            app,
+            production: prod,
+          }),
+        },
+        body: tarball,
       },
-      body: tarball,
-    });
+    );
 
     await progress.stop();
 
@@ -237,5 +255,4 @@ export async function publish(
   // TODO: print out the preview url
 
   await writeConfig(configContent, rootPath, org, app);
-
 }
