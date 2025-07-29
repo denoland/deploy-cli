@@ -13,13 +13,15 @@
     "jsr:@std/encoding@^1.0.8": "1.0.10",
     "jsr:@std/fmt@^1.0.8": "1.0.8",
     "jsr:@std/fmt@~1.0.2": "1.0.8",
-    "jsr:@std/fs@^1.0.14": "1.0.15",
+    "jsr:@std/fs@^1.0.14": "1.0.19",
+    "jsr:@std/internal@^1.0.9": "1.0.10",
     "jsr:@std/json@1": "1.0.2",
     "jsr:@std/jsonc@^1.0.1": "1.0.1",
-    "jsr:@std/path@^1.0.8": "1.0.8",
+    "jsr:@std/path@^1.0.8": "1.1.1",
+    "jsr:@std/path@^1.1.1": "1.1.1",
     "jsr:@std/semver@^1.0.5": "1.0.5",
-    "jsr:@std/streams@^1.0.9": "1.0.9",
-    "jsr:@std/tar@~0.1.6": "0.1.6",
+    "jsr:@std/streams@^1.0.10": "1.0.10",
+    "jsr:@std/tar@~0.1.7": "0.1.7",
     "jsr:@std/text@~1.0.7": "1.0.15",
     "npm:@trpc/client@^11.0.2": "11.0.2_@trpc+server@11.0.2__typescript@5.8.2_typescript@5.8.2",
     "npm:@trpc/server@^11.0.2": "11.0.2_typescript@5.8.2",
@@ -65,7 +67,7 @@
       "integrity": "ae554d9ad1d160d03727052608e271ce7f4aa71c4850b40cf02f13c9991b7e5b",
       "dependencies": [
         "jsr:@std/jsonc",
-        "jsr:@std/path"
+        "jsr:@std/path@^1.0.8"
       ]
     },
     "@std/cli@1.0.21": {
@@ -86,14 +88,24 @@
     "@std/fs@1.0.14": {
       "integrity": "1e84bf0b95fe08f41f1f4aea9717bbf29f45408a56ce073b0114474ce1c9fccf",
       "dependencies": [
-        "jsr:@std/path"
+        "jsr:@std/path@^1.0.8"
       ]
     },
     "@std/fs@1.0.15": {
       "integrity": "c083fb479889d6440d768e498195c3fc499d426fbf9a6592f98f53884d1d3f41",
       "dependencies": [
-        "jsr:@std/path"
+        "jsr:@std/path@^1.0.8"
       ]
+    },
+    "@std/fs@1.0.19": {
+      "integrity": "051968c2b1eae4d2ea9f79a08a3845740ef6af10356aff43d3e2ef11ed09fb06",
+      "dependencies": [
+        "jsr:@std/internal",
+        "jsr:@std/path@^1.1.1"
+      ]
+    },
+    "@std/internal@1.0.10": {
+      "integrity": "e3be62ce42cab0e177c27698e5d9800122f67b766a0bea6ca4867886cbde8cf7"
     },
     "@std/json@1.0.2": {
       "integrity": "d9e5497801c15fb679f55a2c01c7794ad7a5dfda4dd1bebab5e409cb5e0d34d4"
@@ -107,14 +119,20 @@
     "@std/path@1.0.8": {
       "integrity": "548fa456bb6a04d3c1a1e7477986b6cffbce95102d0bb447c67c4ee70e0364be"
     },
+    "@std/path@1.1.1": {
+      "integrity": "fe00026bd3a7e6a27f73709b83c607798be40e20c81dde655ce34052fd82ec76",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
     "@std/semver@1.0.5": {
       "integrity": "529f79e83705714c105ad0ba55bec0f9da0f24d2f726b6cc1c15e505cc2c0624"
     },
-    "@std/streams@1.0.9": {
-      "integrity": "a9d26b1988cdd7aa7b1f4b51e1c36c1557f3f252880fa6cc5b9f37078b1a5035"
+    "@std/streams@1.0.10": {
+      "integrity": "75c0b1431873cd0d8b3d679015220204d36d3c7420d93b60acfc379eb0dc30af"
     },
-    "@std/tar@0.1.6": {
-      "integrity": "7f06a5359518262207e1c28ea965fd552dff3ba2047d2e9225339af287b1f3a4",
+    "@std/tar@0.1.7": {
+      "integrity": "767ed89376a9665cee6d33144d2a06619e35411ad08b363568582bbaff5b40d2",
       "dependencies": [
         "jsr:@std/streams"
       ]
@@ -265,7 +283,7 @@
       "jsr:@std/jsonc@^1.0.1",
       "jsr:@std/path@^1.0.8",
       "jsr:@std/semver@^1.0.5",
-      "jsr:@std/tar@~0.1.6",
+      "jsr:@std/tar@~0.1.7",
       "npm:@trpc/client@^11.0.2",
       "npm:@trpc/server@^11.0.2",
       "npm:event-source-polyfill@^1.0.31",

@@ -108,16 +108,28 @@ export async function publish(
   const trpcClient = createTrpcClient(deployUrl);
 
   // deno-lint-ignore no-explicit-any
-  const revisionId: string = await (trpcClient.apps as any).initiateCliRevision.mutate({
-    org,
-    app,
-    production: prod,
-    manifest,
-  });
+  const revisionId: string = await (trpcClient.apps as any).initiateCliRevision
+    .mutate({
+      org,
+      app,
+      production: prod,
+      manifest,
+    });
 
-  console.log(revisionId);
+  console.log(
+    `You can view your application overview here:\n  ${deployUrl}/${org}/${app}`,
+  );
+  console.log(
+    `You can view the revision here:\n  ${deployUrl}/${org}/${app}/builds/${revisionId}`,
+  );
+  console.log();
 
   const missingHashesPromise = Promise.withResolvers<string[]>();
+
+  const existingFilesSpinner = new Spinner({
+    message: "Loading previously uploaded files...",
+  });
+  existingFilesSpinner.start();
 
   // deno-lint-ignore no-explicit-any
   const sub = await (trpcClient.revisions as any).watchUntilReady.subscribe({
@@ -143,6 +155,9 @@ export async function publish(
   });
 
   const missingHashes = await missingHashesPromise.promise;
+
+  existingFilesSpinner.stop();
+  console.log(`${green("✔")} Loaded previously uploaded files`);
 
   if (missingHashes.length > 0) {
     const skippedFilesCount = total - missingHashes.length;
@@ -234,16 +249,63 @@ export async function publish(
 
     console.log("Successfully uploaded your application!");
   } else {
-    console.log("No files were changed.");
+    console.log("No files were changed, so there is nothing to upload.");
   }
 
-  console.log(
-    `You can view your application overview here:\n  ${deployUrl}/${org}/${app}`,
-  );
-  console.log(
-    `You can view the revision here:\n  ${deployUrl}/${org}/${app}/builds/${revisionId}`,
-  );
-  // TODO: print out the preview url
+  const completionSpinner = new Spinner({
+    message: "Awaiting revision to complete...",
+  });
+  completionSpinner.start();
+
+  const completionPromise = Promise.withResolvers<void>();
+
+  // deno-lint-ignore no-explicit-any
+  const completionSub = await (trpcClient.revisions as any).watchUntilReady
+    .subscribe({
+      org,
+      app,
+      revision: revisionId,
+    }, {
+      onData: (newRevision: { steps: { step: string }[] }) => {
+        const lastStep = newRevision.steps.at(-1);
+
+        if (lastStep) {
+          completionSpinner.message = lastStep.step;
+        }
+      },
+      onError: (err: unknown) => {
+        completionSub.unsubscribe();
+        error(Deno.inspect(err));
+      },
+      onComplete: () => {
+        completionPromise.resolve();
+        completionSub.unsubscribe();
+      },
+      onStopped: () => {
+        completionSub.unsubscribe();
+      },
+    });
+
+  await completionPromise.promise;
+
+  completionSpinner.stop();
+  console.log(`\n${green("✔")} Successfully deployed your application!`);
+
+  const timelines: Array<{ partition_config_name: string; domains: string[] }> =
+    // deno-lint-ignore no-explicit-any
+    await (trpcClient.revisions as any).listTimelines.query({
+      org,
+      app,
+      revision: revisionId,
+    });
+
+  for (const timeline of timelines) {
+    console.log(
+      `${timeline.partition_config_name} url:${
+        timeline.domains.map((domain) => `\n  https://${domain}`)
+      }`,
+    );
+  }
 
   await writeConfig(configContent, rootPath, org, app);
 }
