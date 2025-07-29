@@ -159,7 +159,7 @@ const logsCommand = new Command<{ endpoint: string }>()
     let onceConnected = false;
 
     // deno-lint-ignore no-explicit-any
-    const sub = (trpcClient.apps as any).logs.subscribe({
+    const sub = await (trpcClient.apps as any).logs.subscribe({
       org: gottenApp.org,
       app: gottenApp.app,
       start: (options.start ? new Date(options.start) : new Date())

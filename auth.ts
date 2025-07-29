@@ -221,42 +221,19 @@ export async function authedFetch(
   const url = new URL(endpoint, deployUrl);
 
   let fallbackBody: ReadableStream | undefined;
-  try {
-    if (init.body instanceof ReadableStream) {
-      const [a, b] = init.body.tee();
-      init.body = a;
-      fallbackBody = b;
-    }
+  if (init.body instanceof ReadableStream) {
+    const [a, b] = init.body.tee();
+    init.body = a;
+    fallbackBody = b;
+  }
 
-    const res = await fetch(url, {
-      ...init,
-      headers,
-    });
+  const res = await fetch(url, {
+    ...init,
+    headers,
+  });
 
-    if (res.status === 401) {
-      token_storage.remove();
-      auth = await getAuth(deployUrl);
-
-      const headers = new Headers(init.headers);
-      headers.set(
-        "cookie",
-        `token=${auth}; deno_auth_ghid=force`,
-      );
-      const res = await fetch(url, {
-        ...init,
-        headers,
-      });
-
-      if (res.status === 401) {
-        const err = await res.json();
-        error(`unexpected authentication failure\n${err.message}`);
-      } else {
-        return res;
-      }
-    } else {
-      return res;
-    }
-  } catch {
+  if (res.status === 401) {
+    console.log(await res.text());
     token_storage.remove();
     auth = await getAuth(deployUrl);
 
@@ -265,17 +242,19 @@ export async function authedFetch(
       "cookie",
       `token=${auth}; deno_auth_ghid=force`,
     );
-    const res = await fetch(url, {
+    const retryRes = await fetch(url, {
       ...init,
       headers,
       body: init.body instanceof ReadableStream ? fallbackBody : init.body,
     });
 
-    if (res.status === 401) {
-      const err = await res.json();
+    if (retryRes.status === 401) {
+      const err = await retryRes.json();
       error(`unexpected authentication failure\n${err.message}`);
     } else {
-      return res;
+      return retryRes;
     }
+  } else {
+    return res;
   }
 }
