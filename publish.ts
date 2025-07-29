@@ -105,28 +105,19 @@ export async function publish(
   hashesSpinner.stop();
   console.log(`${green("✔")} Generated hashes`);
 
-  const initiatedBuildRes = await authedFetch(
-    deployUrl,
-    "api/initiate_cli_build",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        org,
-        app,
-        production: prod,
-        manifest,
-      }),
-    },
-  );
+  const trpcClient = createTrpcClient(deployUrl);
 
-  const { revisionId }: { revisionId: string } = await initiatedBuildRes.json();
+  // deno-lint-ignore no-explicit-any
+  const revisionId: string = await (trpcClient.apps as any).initiateCliRevision.mutate({
+    org,
+    app,
+    production: prod,
+    manifest,
+  });
+
+  console.log(revisionId);
 
   const missingHashesPromise = Promise.withResolvers<string[]>();
-
-  const trpcClient = createTrpcClient(deployUrl);
 
   // deno-lint-ignore no-explicit-any
   const sub = await (trpcClient.revisions as any).watchUntilReady.subscribe({
