@@ -10,7 +10,9 @@ import {
   retryLink,
   splitLink,
   TRPCClientError,
+  type TRPCLink,
 } from "@trpc/client";
+import { observable } from "@trpc/server/observable";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
 import token_storage from "./token_storage.ts";
@@ -18,6 +20,25 @@ import { EventSourcePolyfill } from "event-source-polyfill";
 
 export function createTrpcClient(deployUrl: string) {
   let storedAuth = token_storage.get();
+
+  // deno-lint-ignore no-explicit-any
+  const errorLink: TRPCLink<any> = () => {
+    return ({ next, op }) => {
+      return observable((observer) => {
+        return next(op).subscribe({
+          next(value) {
+            observer.next(value);
+          },
+          error(err) {
+            error(err.message);
+          },
+          complete() {
+            observer.complete();
+          },
+        });
+      });
+    };
+  };
 
   const transformer: TRPCCombinedDataTransformer = {
     input: {
@@ -35,6 +56,7 @@ export function createTrpcClient(deployUrl: string) {
   // deno-lint-ignore no-explicit-any
   return createTRPCClient<any>({
     links: [
+      errorLink,
       retryLink({
         retry({ error }) {
           if (error.message !== "Unauthorized") {

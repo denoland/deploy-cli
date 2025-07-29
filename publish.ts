@@ -103,7 +103,6 @@ export async function publish(
     }
   }
   hashesSpinner.stop();
-  console.log(`${green("✔")} Generated hashes`);
 
   const trpcClient = createTrpcClient(deployUrl);
 
@@ -115,6 +114,9 @@ export async function publish(
       production: prod,
       manifest,
     });
+
+  // doing this after we initiate the cli revision in case it fails (ie app not existing).
+  console.log(`${green("✔")} Generated hashes`);
 
   console.log(
     `You can view your application overview here:\n  ${deployUrl}/${org}/${app}`,
@@ -251,6 +253,9 @@ export async function publish(
   } else {
     console.log("No files were changed, so there is nothing to upload.");
   }
+  console.log(
+    "You may now cancel this command, or wait until your domains are printed out.",
+  );
 
   const completionSpinner = new Spinner({
     message: "Awaiting revision to complete...",
