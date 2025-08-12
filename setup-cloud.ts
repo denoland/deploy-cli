@@ -106,6 +106,7 @@ function log(string: string) {
 }
 
 export async function setupAws(
+  debug: boolean,
   deployUrl: string,
   org: string,
   app: string,
@@ -123,7 +124,7 @@ export async function setupAws(
   );
   console.log();
 
-  const trpcClient = createTrpcClient(deployUrl);
+  const trpcClient = createTrpcClient(debug, deployUrl);
   // deno-lint-ignore no-explicit-any
   const { oidcHostname } = await (trpcClient.cloudConnections as any).config
     .query({
@@ -413,6 +414,7 @@ export async function setupAws(
 }
 
 export async function setupGcp(
+  debug: boolean,
   deployUrl: string,
   org: string,
   app: string,
@@ -430,7 +432,7 @@ export async function setupGcp(
   );
   console.log();
 
-  const trpcClient = createTrpcClient(deployUrl);
+  const trpcClient = createTrpcClient(debug, deployUrl);
   // deno-lint-ignore no-explicit-any
   const { oidcHostname } = await (trpcClient.cloudConnections as any).config
     .query({

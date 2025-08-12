@@ -18,7 +18,7 @@ import { error } from "./util.ts";
 import token_storage from "./token_storage.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 
-export function createTrpcClient(deployUrl: string) {
+export function createTrpcClient(debug: boolean, deployUrl: string) {
   let storedAuth = token_storage.get();
 
   // deno-lint-ignore no-explicit-any
@@ -30,7 +30,10 @@ export function createTrpcClient(deployUrl: string) {
             observer.next(value);
           },
           error(err) {
-            error(err.message);
+            if (debug) {
+              console.error(err);
+            }
+            error(debug, err.message || Deno.inspect(err));
           },
           complete() {
             observer.complete();
@@ -58,17 +61,21 @@ export function createTrpcClient(deployUrl: string) {
     links: [
       errorLink,
       retryLink({
-        retry({ error }) {
-          if (error.message !== "Unauthorized") {
+        retry({ error: err }) {
+          if (err.message !== "Unauthorized") {
             return false;
           }
 
           if (typeof retryPromise !== "undefined") {
-            return false;
+            token_storage.remove();
+            error(
+              debug,
+              "Already re-attempted authorization, please re-run this command",
+            );
           }
 
           token_storage.remove();
-          retryPromise = getAuth(deployUrl).then((auth) => {
+          retryPromise = getAuth(debug, deployUrl).then((auth) => {
             storedAuth = auth;
           });
           return true;
@@ -133,7 +140,10 @@ export function createTrpcClient(deployUrl: string) {
   });
 }
 
-export async function getAuth(deployUrl: string): Promise<string> {
+export async function getAuth(
+  debug: boolean,
+  deployUrl: string,
+): Promise<string> {
   const storedAuth = token_storage.get();
   if (storedAuth) {
     return storedAuth;
@@ -149,7 +159,13 @@ export async function getAuth(deployUrl: string): Promise<string> {
 
   await open(authUrl);
 
-  return await tokenExchange(deployUrl, exchangeToken, verifier, spinner);
+  return await tokenExchange(
+    debug,
+    deployUrl,
+    exchangeToken,
+    verifier,
+    spinner,
+  );
 }
 
 export async function interactive(deployUrl: string): Promise<
@@ -180,6 +196,7 @@ export async function interactive(deployUrl: string): Promise<
 }
 
 export function tokenExchange(
+  debug: boolean,
   deployUrl: string,
   exchangeToken: string,
   verifier: string,
@@ -216,7 +233,7 @@ export function tokenExchange(
         ) {
           clearInterval(interval);
           spinner.stop();
-          error(err.message, res);
+          error(debug, err.message, res);
         }
       }
     }, 2000);
@@ -224,6 +241,7 @@ export function tokenExchange(
 }
 
 export async function authedFetch(
+  debug: boolean,
   deployUrl: string,
   endpoint: string,
   init: RequestInit,
@@ -231,7 +249,7 @@ export async function authedFetch(
   let auth = await token_storage.get();
 
   if (!auth) {
-    auth = await getAuth(deployUrl);
+    auth = await getAuth(debug, deployUrl);
   }
 
   const headers = new Headers(init.headers);
@@ -257,7 +275,7 @@ export async function authedFetch(
   if (res.status === 401) {
     console.log(await res.text());
     token_storage.remove();
-    auth = await getAuth(deployUrl);
+    auth = await getAuth(debug, deployUrl);
 
     const headers = new Headers(init.headers);
     headers.set(
@@ -272,7 +290,7 @@ export async function authedFetch(
 
     if (retryRes.status === 401) {
       const err = await retryRes.json();
-      error(`unexpected authentication failure\n${err.message}`);
+      error(debug, `unexpected authentication failure\n${err.message}`);
     } else {
       return retryRes;
     }

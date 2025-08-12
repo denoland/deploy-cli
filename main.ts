@@ -15,6 +15,7 @@ import {
   envUpdateValueCommand,
 } from "./env.ts";
 import { createTrpcClient } from "./auth.ts";
+import token_storage from "./token_storage.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -24,11 +25,17 @@ if (
   )
 ) {
   error(
+    false,
     `Minimum Deno version required is ${MINIMUM_DENO_VERSION} (found ${Deno.version.deno}).`,
   );
 }
 
-const createCommand = new Command<{ endpoint: string }>()
+export type GlobalOptions = {
+  debug: boolean;
+  endpoint: string;
+};
+
+const createCommand = new Command<GlobalOptions>()
   .description("Create a new application")
   .option(
     "--org <name:string>",
@@ -37,7 +44,7 @@ const createCommand = new Command<{ endpoint: string }>()
   .arguments("[root-path:string]")
   .action(
     async (
-      { endpoint, org: initOrg },
+      { debug, endpoint, org: initOrg },
       rootPath = Deno.cwd(),
     ) => {
       const configContent = await readConfig(rootPath);
@@ -49,11 +56,11 @@ const createCommand = new Command<{ endpoint: string }>()
         Deno.exit(1);
       }
 
-      await create(endpoint, rootPath, configContent, initOrg);
+      await create(debug, endpoint, rootPath, configContent, initOrg);
     },
   );
 
-const setupAWSCommand = new Command<{ endpoint: string }>()
+const setupAWSCommand = new Command<GlobalOptions>()
   .description("Setup AWS")
   .option("--org <name:string>", "The name of the organization", {
     required: true,
@@ -69,15 +76,22 @@ const setupAWSCommand = new Command<{ endpoint: string }>()
       )
       : [];
     const gottenApp = await withApp(
+      options.debug,
       options.endpoint,
       false,
       options.org,
       options.app,
     );
-    await setupAws(options.endpoint, gottenApp.org, gottenApp.app, contextList);
+    await setupAws(
+      options.debug,
+      options.endpoint,
+      gottenApp.org,
+      gottenApp.app,
+      contextList,
+    );
   });
 
-const setupGCPCommand = new Command<{ endpoint: string }>()
+const setupGCPCommand = new Command<GlobalOptions>()
   .description("Setup GCP")
   .option("--org <name:string>", "The name of the organization", {
     required: true,
@@ -93,25 +107,38 @@ const setupGCPCommand = new Command<{ endpoint: string }>()
       )
       : [];
     const gottenApp = await withApp(
+      options.debug,
       options.endpoint,
       false,
       options.org,
       options.app,
     );
-    await setupGcp(options.endpoint, gottenApp.org, gottenApp.app, contextList);
+    await setupGcp(
+      options.debug,
+      options.endpoint,
+      gottenApp.org,
+      gottenApp.app,
+      contextList,
+    );
   });
 
-const tunnelLoginCommand = new Command<{ endpoint: string }>()
+const tunnelLoginCommand = new Command<GlobalOptions>()
   .arguments("[root-path:string]")
   .hidden()
   .action(async (options, rootPath = Deno.cwd()) => {
     const configContent = await readConfig(rootPath);
     const { org, app } = getAppFromConfig(configContent);
-    const gottenApp = await withApp(options.endpoint, false, org, app);
+    const gottenApp = await withApp(
+      options.debug,
+      options.endpoint,
+      false,
+      org,
+      app,
+    );
     await writeConfig(configContent, rootPath, gottenApp.org, gottenApp.app);
   });
 
-const envCommand = new Command<{ endpoint: string }>()
+const envCommand = new Command<GlobalOptions>()
   .description("Modify environmental variables")
   .globalOption("--org <name:string>", "The name of the organization")
   .globalOption("--app <name:string>", "The name of the application")
@@ -125,7 +152,7 @@ const envCommand = new Command<{ endpoint: string }>()
   .command("delete", envDeleteCommand)
   .command("load", envLoadCommand);
 
-const logsCommand = new Command<{ endpoint: string }>()
+const logsCommand = new Command<GlobalOptions>()
   .description("Stream logs from an application")
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
@@ -138,7 +165,13 @@ const logsCommand = new Command<{ endpoint: string }>()
     let { org, app } = getAppFromConfig(configContent);
     org ??= options.org;
     app ??= options.app;
-    const gottenApp = await withApp(options.endpoint, false, org, app);
+    const gottenApp = await withApp(
+      options.debug,
+      options.endpoint,
+      false,
+      org,
+      app,
+    );
 
     interface LogEntry {
       Timestamp: string;
@@ -153,7 +186,7 @@ const logsCommand = new Command<{ endpoint: string }>()
       Revision: string;
     }
 
-    const trpcClient = createTrpcClient(options.endpoint);
+    const trpcClient = createTrpcClient(options.debug, options.endpoint);
 
     const seenIds = new Set();
     let onceConnected = false;
@@ -204,12 +237,19 @@ const logsCommand = new Command<{ endpoint: string }>()
       },
       onError: (err: unknown) => {
         sub.unsubscribe();
-        error(Deno.inspect(err));
+        error(options.debug, Deno.inspect(err));
       },
       onStopped: () => {
         sub.unsubscribe();
       },
     });
+  });
+
+const logoutCommand = new Command()
+  .description("Revoke the Deno Deploy token if one is present.")
+  .action(() => {
+    token_storage.remove();
+    console.log("Successfully logged out");
   });
 
 await new Command()
@@ -221,6 +261,10 @@ deploy your local directory to the specified application.`)
   .globalOption("--endpoint <endpoint:string>", "the endpoint", {
     default: "https://app.deno.com",
     hidden: true,
+  })
+  .globalOption("--debug", "Enable debug output", {
+    hidden: true,
+    default: false,
   })
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
@@ -237,6 +281,7 @@ deploy your local directory to the specified application.`)
       app ??= options.app;
 
       const orgAndApp = await withApp(
+        options.debug,
         options.endpoint as string,
         true,
         org,
@@ -245,6 +290,7 @@ deploy your local directory to the specified application.`)
 
       if (orgAndApp.app === null) {
         await create(
+          options.debug,
           options.endpoint as string,
           rootPath,
           configContent,
@@ -252,6 +298,7 @@ deploy your local directory to the specified application.`)
         );
       } else {
         await publish(
+          options.debug,
           options.endpoint as string,
           rootPath,
           configContent,
@@ -268,4 +315,5 @@ deploy your local directory to the specified application.`)
   .command("setup-aws", setupAWSCommand)
   .command("setup-gcp", setupGCPCommand)
   .command("tunnel-login", tunnelLoginCommand)
+  .command("logout", logoutCommand)
   .parse(Deno.args);

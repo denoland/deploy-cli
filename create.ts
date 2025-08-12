@@ -11,6 +11,7 @@ import type { Config } from "./config.ts";
 import token_storage from "./token_storage.ts";
 
 export async function create(
+  debug: boolean,
   deployUrl: string,
   rootPath: string,
   configContent: Config | null,
@@ -81,7 +82,7 @@ export async function create(
     appCreationPromise,
     storedAuth
       ? undefined
-      : tokenExchange(deployUrl, exchangeToken!, verifier!, spinner),
+      : tokenExchange(debug, deployUrl, exchangeToken!, verifier!, spinner),
   ]);
 
   spinner.stop();
@@ -89,5 +90,5 @@ export async function create(
     `${green("✔")} App '${app}' created in the '${org}' organization.\n`,
   );
 
-  await publish(deployUrl, rootPath, configContent, org, app, true);
+  await publish(debug, deployUrl, rootPath, configContent, org, app, true);
 }

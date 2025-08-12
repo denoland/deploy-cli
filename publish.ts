@@ -19,6 +19,7 @@ type Chunk =
   });
 
 export async function publish(
+  debug: boolean,
   deployUrl: string,
   rootPath: string,
   configContent: Config | null,
@@ -104,7 +105,7 @@ export async function publish(
   }
   hashesSpinner.stop();
 
-  const trpcClient = createTrpcClient(deployUrl);
+  const trpcClient = createTrpcClient(debug, deployUrl);
 
   // deno-lint-ignore no-explicit-any
   const revisionId: string = await (trpcClient.apps as any).initiateCliRevision
@@ -149,7 +150,7 @@ export async function publish(
     },
     onError: (err: unknown) => {
       sub.unsubscribe();
-      error(Deno.inspect(err));
+      error(debug, Deno.inspect(err));
     },
     onStopped: () => {
       sub.unsubscribe();
@@ -225,6 +226,7 @@ export async function publish(
       .pipeThrough(new CompressionStream("gzip"));
 
     const resp = await authedFetch(
+      debug,
       deployUrl,
       `api/diffsync/${org}/${app}/${revisionId}`,
       {
@@ -246,7 +248,7 @@ export async function publish(
 
     if (!resp.ok) {
       const resBody = await resp.json();
-      error(resBody.message, resp);
+      error(debug, resBody.message, resp);
     }
 
     console.log("Successfully uploaded your application!");
@@ -280,7 +282,7 @@ export async function publish(
       },
       onError: (err: unknown) => {
         completionSub.unsubscribe();
-        error(Deno.inspect(err));
+        error(debug, Deno.inspect(err));
       },
       onComplete: () => {
         completionPromise.resolve();

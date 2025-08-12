@@ -7,10 +7,18 @@ import { Temporal } from "temporal-polyfill";
 
 import { createTrpcClient, getAuth } from "./auth.ts";
 
-export function error(error: string, response?: Response): never {
+export function error(
+  debug: boolean,
+  error: string,
+  response?: Response,
+): never {
+  console.error();
   console.error(`${red("✗")} An error occurred:`);
   console.error(`  ${error.replaceAll("\n", "\n  ")}`);
   const trace = response?.headers.get("x-deno-trace-id");
+  if (debug) {
+    console.error(`  stack:\n${new Error().stack}`);
+  }
   if (trace) {
     console.error(`  trace id: ${trace}`);
   }
@@ -18,27 +26,30 @@ export function error(error: string, response?: Response): never {
 }
 
 export async function withApp(
+  debug: boolean,
   deployUrl: string,
   canCreate: false,
   org?: string,
   app?: string | null,
 ): Promise<{ org: string; app: string }>;
 export async function withApp(
+  debug: boolean,
   deployUrl: string,
   canCreate: true,
   org?: string,
   app?: string | null,
 ): Promise<{ org: string; app: string | null }>;
 export async function withApp(
+  debug: boolean,
   deployUrl: string,
   canCreate: boolean,
   org?: string,
   app?: string | null,
 ): Promise<{ org: string; app: string | null }> {
-  await getAuth(deployUrl);
+  await getAuth(debug, deployUrl);
 
   if (!org || !app) {
-    const trpcClient = createTrpcClient(deployUrl);
+    const trpcClient = createTrpcClient(debug, deployUrl);
 
     const orgs: Array<{
       name: string;

@@ -3,6 +3,7 @@ import { parse as dotEnvParse } from "@std/dotenv";
 import { getAppFromConfig, readConfig } from "./config.ts";
 import { error, withApp } from "./util.ts";
 import { createTrpcClient } from "./auth.ts";
+import type { GlobalOptions } from "./main.ts";
 
 interface EnvVar {
   id: string;
@@ -16,8 +17,7 @@ interface Context {
   name: string;
 }
 
-type EnvCommandContext = {
-  endpoint: string;
+type EnvCommandContext = GlobalOptions & {
   org?: string;
   app?: string;
 };
@@ -30,8 +30,14 @@ export const envListCommand = new Command<EnvCommandContext>()
     org ??= options.org;
     app ??= options.app;
 
-    const orgAndApp = await withApp(options.endpoint, false, org, app);
-    const trpcClient = createTrpcClient(options.endpoint);
+    const orgAndApp = await withApp(
+      options.debug,
+      options.endpoint,
+      false,
+      org,
+      app,
+    );
+    const trpcClient = createTrpcClient(options.debug, options.endpoint);
 
     // deno-lint-ignore no-explicit-any
     const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
@@ -111,8 +117,14 @@ export const envAddCommand = new Command<EnvCommandContext>()
     org ??= options.org;
     app ??= options.app;
 
-    const orgAndApp = await withApp(options.endpoint, false, org, app);
-    const trpcClient = createTrpcClient(options.endpoint);
+    const orgAndApp = await withApp(
+      options.debug,
+      options.endpoint,
+      false,
+      org,
+      app,
+    );
+    const trpcClient = createTrpcClient(options.debug, options.endpoint);
 
     // deno-lint-ignore no-explicit-any
     const fullApp = await (trpcClient.apps as any).get.query({
@@ -152,8 +164,14 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
     org ??= options.org;
     app ??= options.app;
 
-    const orgAndApp = await withApp(options.endpoint, false, org, app);
-    const trpcClient = createTrpcClient(options.endpoint);
+    const orgAndApp = await withApp(
+      options.debug,
+      options.endpoint,
+      false,
+      org,
+      app,
+    );
+    const trpcClient = createTrpcClient(options.debug, options.endpoint);
 
     // deno-lint-ignore no-explicit-any
     const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
@@ -165,7 +183,7 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      error(`Environment variable '${variable}' not found`);
+      error(options.debug, `Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
@@ -196,8 +214,14 @@ You can define no contexts, which is the equivalent to "All"`,
     org ??= options.org;
     app ??= options.app;
 
-    const orgAndApp = await withApp(options.endpoint, false, org, app);
-    const trpcClient = createTrpcClient(options.endpoint);
+    const orgAndApp = await withApp(
+      options.debug,
+      options.endpoint,
+      false,
+      org,
+      app,
+    );
+    const trpcClient = createTrpcClient(options.debug, options.endpoint);
 
     // deno-lint-ignore no-explicit-any
     const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
@@ -209,7 +233,7 @@ You can define no contexts, which is the equivalent to "All"`,
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      error(`Environment variable '${variable}' not found`);
+      error(options.debug, `Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
@@ -224,7 +248,7 @@ You can define no contexts, which is the equivalent to "All"`,
     for (const newContext of newContexts) {
       const context = contexts.find((context) => context.name === newContext);
       if (!context) {
-        error(`Context "${newContext}" not found`);
+        error(options.debug, `Context "${newContext}" not found`);
       }
 
       contextIds.push(context.id);
@@ -255,8 +279,14 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
     org ??= options.org;
     app ??= options.app;
 
-    const orgAndApp = await withApp(options.endpoint, false, org, app);
-    const trpcClient = createTrpcClient(options.endpoint);
+    const orgAndApp = await withApp(
+      options.debug,
+      options.endpoint,
+      false,
+      org,
+      app,
+    );
+    const trpcClient = createTrpcClient(options.debug, options.endpoint);
 
     // deno-lint-ignore no-explicit-any
     const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
@@ -299,8 +329,14 @@ export const envLoadCommand = new Command<EnvCommandContext>()
     org ??= options.org;
     app ??= options.app;
 
-    const orgAndApp = await withApp(options.endpoint, false, org, app);
-    const trpcClient = createTrpcClient(options.endpoint);
+    const orgAndApp = await withApp(
+      options.debug,
+      options.endpoint,
+      false,
+      org,
+      app,
+    );
+    const trpcClient = createTrpcClient(options.debug, options.endpoint);
 
     // deno-lint-ignore no-explicit-any
     const fullApp = await (trpcClient.apps as any).get.query({
