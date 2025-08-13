@@ -33,6 +33,7 @@ if (
 export type GlobalOptions = {
   debug: boolean;
   endpoint: string;
+  token: string | undefined;
 };
 
 const createCommand = new Command<GlobalOptions>()
@@ -266,10 +267,16 @@ deploy your local directory to the specified application.`)
     hidden: true,
     default: false,
   })
+  .globalOption("--token <token:string>", "Auth token to use")
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
   .option("--prod", "Deploy directly to production")
   .arguments("[root-path:string]")
+  .globalAction((options) => {
+    if (options.token) {
+      token_storage.set(options.token, true);
+    }
+  })
   .action(
     async (
       options,

@@ -22,5 +22,6 @@
     "superjson": "npm:superjson@^2.2.2",
     "@deno/framework-detect": "jsr:@deno/framework-detect@^0",
     "temporal-polyfill": "npm:temporal-polyfill@^0.3.0"
-  }
+  },
+  "exclude": ["astro-demo"]
 }

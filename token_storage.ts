@@ -1,4 +1,5 @@
 let cachedToken: string | null = null;
+let tokenIsTemp = false;
 let cannotInteractWithKeychain = false;
 
 export default {
@@ -18,19 +19,26 @@ export default {
       }
     }
   },
-  set(token: string) {
+  set(token: string, temp: boolean = false) {
     cachedToken = token;
-    try {
-      // @ts-ignore deno internals
-      Deno[Deno.internal].core.ops.op_deploy_token_set(token);
-    } catch {
-      if (!cannotInteractWithKeychain) {
-        cannotInteractWithKeychain = true;
-        console.log("Unable to interact with keychain.");
+    if (!temp) {
+      try {
+        // @ts-ignore deno internals
+        Deno[Deno.internal].core.ops.op_deploy_token_set(token);
+      } catch {
+        if (!cannotInteractWithKeychain) {
+          cannotInteractWithKeychain = true;
+          console.log("Unable to interact with keychain.");
+        }
       }
+    } else {
+      tokenIsTemp = temp;
     }
   },
   remove() {
+    if (tokenIsTemp) {
+      return;
+    }
     cachedToken = null;
     try {
       // @ts-ignore deno internals
