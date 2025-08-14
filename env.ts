@@ -25,7 +25,7 @@ type EnvCommandContext = GlobalOptions & {
 export const envListCommand = new Command<EnvCommandContext>()
   .description("List all environmental variables in an application")
   .action(async (options) => {
-    const configContent = await readConfig(Deno.cwd());
+    const configContent = await readConfig(Deno.cwd(), options.config);
     let { org, app } = getAppFromConfig(configContent);
     org ??= options.org;
     app ??= options.app;
@@ -112,7 +112,7 @@ export const envAddCommand = new Command<EnvCommandContext>()
   .option("--secret", "If the value should be secret", { default: false })
   .arguments("<variable:string> <value:string>")
   .action(async (options, variable, value) => {
-    const configContent = await readConfig(Deno.cwd());
+    const configContent = await readConfig(Deno.cwd(), options.config);
     let { org, app } = getAppFromConfig(configContent);
     org ??= options.org;
     app ??= options.app;
@@ -159,7 +159,7 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
   )
   .arguments("<variable:string> <value:string>")
   .action(async (options, variable, value) => {
-    const configContent = await readConfig(Deno.cwd());
+    const configContent = await readConfig(Deno.cwd(), options.config);
     let { org, app } = getAppFromConfig(configContent);
     org ??= options.org;
     app ??= options.app;
@@ -209,7 +209,7 @@ You can define no contexts, which is the equivalent to "All"`,
   )
   .arguments("<variable:string> [new-contexts...:string]")
   .action(async (options, variable, ...newContexts) => {
-    const configContent = await readConfig(Deno.cwd());
+    const configContent = await readConfig(Deno.cwd(), options.config);
     let { org, app } = getAppFromConfig(configContent);
     org ??= options.org;
     app ??= options.app;
@@ -274,7 +274,7 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
   .description("Delete an environmental variable in the application")
   .arguments("variable:string")
   .action(async (options, variable) => {
-    const configContent = await readConfig(Deno.cwd());
+    const configContent = await readConfig(Deno.cwd(), options.config);
     let { org, app } = getAppFromConfig(configContent);
     org ??= options.org;
     app ??= options.app;
@@ -324,7 +324,7 @@ export const envLoadCommand = new Command<EnvCommandContext>()
   )
   .arguments("<file:string>")
   .action(async (options, file) => {
-    const configContent = await readConfig(Deno.cwd());
+    const configContent = await readConfig(Deno.cwd(), options.config);
     let { org, app } = getAppFromConfig(configContent);
     org ??= options.org;
     app ??= options.app;

@@ -1,4 +1,4 @@
-import { join } from "@std/path";
+import { dirname, join } from "@std/path";
 import {
   applyEdits as applyJSONCEdits,
   modify as modifyJSONC,
@@ -10,24 +10,44 @@ export interface Config {
   content: string;
 }
 
-export async function readConfig(rootPath: string): Promise<Config | null> {
-  try {
-    const path = join(rootPath, "deno.json");
-    const content = await Deno.readTextFile(path);
-    return { path, content };
-  } catch (e) {
-    if (!(e instanceof Deno.errors.NotFound)) {
-      throw e;
-    }
+export async function readConfig(
+  rootPath: string,
+  maybeConfigPath: string | undefined,
+): Promise<Config | null> {
+  if (maybeConfigPath) {
+    const content = await Deno.readTextFile(maybeConfigPath);
+    return { path: maybeConfigPath, content };
   }
 
-  try {
-    const path = join(rootPath, "deno.jsonc");
-    const content = await Deno.readTextFile(path);
-    return { path, content };
-  } catch (e) {
-    if (!(e instanceof Deno.errors.NotFound)) {
-      throw e;
+  let currentDir = rootPath;
+
+  while (true) {
+    try {
+      const path = join(currentDir, "deno.json");
+      const content = await Deno.readTextFile(path);
+      return { path, content };
+    } catch (e) {
+      if (!(e instanceof Deno.errors.NotFound)) {
+        throw e;
+      }
+    }
+
+    try {
+      const path = join(currentDir, "deno.jsonc");
+      const content = await Deno.readTextFile(path);
+      return { path, content };
+    } catch (e) {
+      if (!(e instanceof Deno.errors.NotFound)) {
+        throw e;
+      }
+    }
+
+    const parentDir = dirname(currentDir);
+
+    if (parentDir == currentDir) {
+      break;
+    } else {
+      currentDir = parentDir;
     }
   }
 
@@ -59,7 +79,6 @@ export function getAppFromConfig(
 
 export async function writeConfig(
   configContent: Config | null,
-  rootPath: string,
   org: string,
   app: string,
 ) {
@@ -75,7 +94,13 @@ export async function writeConfig(
   });
   const out = applyJSONCEdits(content, edits);
   await Deno.writeTextFile(
-    configContent?.path ?? join(rootPath, "deno.jsonc"),
+    configContent?.path ?? join(Deno.cwd(), "deno.jsonc"),
     out,
   );
+
+  if (!configContent) {
+    console.log(
+      `Created configuration file at '${join(Deno.cwd(), "deno.jsonc")}'`,
+    );
+  }
 }

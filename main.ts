@@ -34,6 +34,7 @@ export type GlobalOptions = {
   debug: boolean;
   endpoint: string;
   token: string | undefined;
+  config: string | undefined;
 };
 
 const createCommand = new Command<GlobalOptions>()
@@ -45,10 +46,10 @@ const createCommand = new Command<GlobalOptions>()
   .arguments("[root-path:string]")
   .action(
     async (
-      { debug, endpoint, org: initOrg },
+      { debug, endpoint, org: initOrg, config },
       rootPath = Deno.cwd(),
     ) => {
-      const configContent = await readConfig(rootPath);
+      const configContent = await readConfig(rootPath, config);
       const { org, app } = getAppFromConfig(configContent);
       if (org || app) {
         console.log(
@@ -127,7 +128,7 @@ const tunnelLoginCommand = new Command<GlobalOptions>()
   .arguments("[root-path:string]")
   .hidden()
   .action(async (options, rootPath = Deno.cwd()) => {
-    const configContent = await readConfig(rootPath);
+    const configContent = await readConfig(rootPath, options.config);
     const { org, app } = getAppFromConfig(configContent);
     const gottenApp = await withApp(
       options.debug,
@@ -136,7 +137,7 @@ const tunnelLoginCommand = new Command<GlobalOptions>()
       org,
       app,
     );
-    await writeConfig(configContent, rootPath, gottenApp.org, gottenApp.app);
+    await writeConfig(configContent, gottenApp.org, gottenApp.app);
   });
 
 const envCommand = new Command<GlobalOptions>()
@@ -162,7 +163,7 @@ const logsCommand = new Command<GlobalOptions>()
     depends: ["start"],
   })
   .action(async (options, rootPath = Deno.cwd()) => {
-    const configContent = await readConfig(rootPath);
+    const configContent = await readConfig(rootPath, options.config);
     let { org, app } = getAppFromConfig(configContent);
     org ??= options.org;
     app ??= options.app;
@@ -268,6 +269,7 @@ deploy your local directory to the specified application.`)
     default: false,
   })
   .globalOption("--token <token:string>", "Auth token to use")
+  .globalOption("--config <config:string>", "Path for the config file")
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
   .option("--prod", "Deploy directly to production")
@@ -287,7 +289,7 @@ deploy your local directory to the specified application.`)
       options,
       rootPath = Deno.cwd(),
     ) => {
-      const configContent = await readConfig(rootPath);
+      const configContent = await readConfig(rootPath, options.config);
       let { org, app } = getAppFromConfig(configContent);
       org ??= options.org;
       app ??= options.app;

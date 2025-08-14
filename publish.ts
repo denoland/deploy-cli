@@ -314,5 +314,5 @@ export async function publish(
     );
   }
 
-  await writeConfig(configContent, rootPath, org, app);
+  await writeConfig(configContent, org, app);
 }
