@@ -1,4 +1,4 @@
-import { Command } from "@cliffy/command";
+import { Command } from "jsr:@cliffy/command@^1.0.0-rc.8";
 import { publish } from "./publish.ts";
 import { red, yellow } from "@std/fmt/colors";
 import { greaterOrEqual, parse as semverParse } from "@std/semver";
@@ -273,8 +273,13 @@ deploy your local directory to the specified application.`)
   .option("--prod", "Deploy directly to production")
   .arguments("[root-path:string]")
   .globalAction((options) => {
-    if (options.token) {
-      token_storage.set(options.token, true);
+    const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
+    if (endpoint) {
+      options.endpoint = endpoint;
+    }
+    const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
+    if (tokenEnv) {
+      token_storage.set(tokenEnv, true);
     }
   })
   .action(

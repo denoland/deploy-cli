@@ -48,6 +48,13 @@ export async function withApp(
 ): Promise<{ org: string; app: string | null }> {
   await getAuth(debug, deployUrl);
 
+  if (!org) {
+    org = Deno.env.get("DENO_DEPLOY_ORG");
+  }
+  if (!app) {
+    app = Deno.env.get("DENO_DEPLOY_APP");
+  }
+
   if (!org || !app) {
     const trpcClient = createTrpcClient(debug, deployUrl);
 

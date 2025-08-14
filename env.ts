@@ -298,7 +298,7 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      throw new Error(`Environment variable '${variable}' not found`);
+      error(options.debug, `Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
