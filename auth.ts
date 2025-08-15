@@ -62,7 +62,7 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
       errorLink,
       retryLink({
         retry({ error: err }) {
-          if (err.message !== "Unauthorized") {
+          if (!(err?.data?.code !== "NOT_AUTHENTICATED" && err?.data?.code !== "TOKEN_EXPIRED")) {
             return false;
           }
 
@@ -95,6 +95,16 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
                 code: -32004,
                 data: { httpStatus: 401, code: "NOT_AUTHENTICATED" },
               });
+            } else if (response.status === 403) {
+              const body = await response.clone().json();
+              console.log(body);
+              if (body.code === "TOKEN_EXPIRED") {
+                throw TRPCClientError.from({
+                  message: "Token Expired",
+                  code: -32004,
+                  data: { httpStatus: 401, code: "TOKEN_EXPIRED" },
+                });
+              }
             }
             return response;
           },
