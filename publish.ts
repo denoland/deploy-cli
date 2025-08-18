@@ -3,7 +3,7 @@ import { compile as gitignoreCompile } from "@cfa/gitignore-parser";
 import { walk, type WalkEntry } from "@std/fs";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
-import { join, relative, resolve } from "@std/path";
+import { join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, yellow } from "@std/fmt/colors";
 import { type Config, writeConfig } from "./config.ts";
 import { authedFetch, createTrpcClient } from "./auth.ts";
@@ -56,13 +56,31 @@ export async function publish(
           const path = relative(rootPath, chunk.path);
           const relativePath = join(
             "source",
-            path + (chunk.isDirectory ? "/" : ""),
+            path + (chunk.isDirectory ? SEPARATOR : ""),
           );
           if (gitignore.denies(relativePath)) {
+            if (debug) {
+              console.log(
+                `skipping ${JSON.stringify(relativePath)} (${
+                  chunk.isDirectory ? "dir" : "file"
+                })`,
+              );
+            }
             return;
+          }
+          if (debug) {
+            console.log(
+              `walking ${JSON.stringify(relativePath)} (${
+                chunk.isDirectory ? "dir" : "file"
+              })`,
+            );
           }
 
           if (!chunk.isDirectory) {
+            if (debug) {
+              console.log(`reading ${JSON.stringify(relativePath)}`);
+            }
+
             const data = await Deno.readFile(chunk.path);
 
             const hashBuffer = await crypto.subtle.digest("SHA-256", data!);
@@ -72,14 +90,14 @@ export async function publish(
 
             controller.enqueue({
               chunk,
-              relativePath,
+              relativePath: relativePath.replaceAll(SEPARATOR, "/"),
               data,
               hash,
             });
           } else {
             controller.enqueue({
               chunk,
-              relativePath,
+              relativePath: relativePath.replaceAll(SEPARATOR, "/"),
             });
           }
         },
@@ -104,6 +122,10 @@ export async function publish(
     }
   }
   hashesSpinner.stop();
+
+  if (debug) {
+    console.log("Manifest", manifest);
+  }
 
   const trpcClient = createTrpcClient(debug, deployUrl);
 
@@ -171,6 +193,10 @@ export async function publish(
       );
     }
 
+    if (debug) {
+      console.log("Missing hashes", missingHashes);
+    }
+
     const progress = new ProgressBar({
       max: missingHashes.length,
       emptyChar: " ",
@@ -194,7 +220,7 @@ export async function publish(
       },
     });
 
-    const tarball = body
+    let tarball = body
       .pipeThrough(
         new TransformStream({
           async transform({ chunk, relativePath, data, hash }, controller) {
@@ -219,11 +245,29 @@ export async function publish(
                 } satisfies TarStreamFile,
               );
             }
+
+            if (debug) {
+              console.log(
+                `uploading ${JSON.stringify(relativePath)} (${
+                  chunk.isDirectory ? "dir" : "file"
+                })`,
+              );
+            }
           },
         }),
       )
       .pipeThrough(new TarStream())
       .pipeThrough(new CompressionStream("gzip"));
+
+    if (debug) {
+      const [tb1, tb2] = tarball.tee();
+      tarball = tb1;
+      const path = await Deno.makeTempFile({
+        suffix: "debug.tar.gz",
+      });
+      await Deno.writeFile(path, tb2);
+      console.log(`Created debug tarball at '${path}'`);
+    }
 
     const resp = await authedFetch(
       debug,

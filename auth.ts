@@ -62,7 +62,10 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
       errorLink,
       retryLink({
         retry({ error: err }) {
-          if (!(err?.data?.code !== "NOT_AUTHENTICATED" && err?.data?.code !== "TOKEN_EXPIRED")) {
+          if (
+            !(err?.data?.code !== "NOT_AUTHENTICATED" &&
+              err?.data?.code !== "TOKEN_EXPIRED")
+          ) {
             return false;
           }
 
