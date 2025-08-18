@@ -4,12 +4,18 @@ import { walk, type WalkEntry } from "@std/fs";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
-import { green, yellow } from "@std/fmt/colors";
+import { green, red, yellow } from "@std/fmt/colors";
 import { type Config, writeConfig } from "./config.ts";
 import { authedFetch, createTrpcClient } from "./auth.ts";
 import { error } from "./util.ts";
 
 const SEPARATOR_PATTERN = Deno.build.os === "windows" ? "\\\\" : "/";
+
+interface Revision {
+  labels: Record<string, string>;
+  steps: { step: string }[];
+  status: "cancelled";
+}
 
 type Chunk =
   & { chunk: WalkEntry; relativePath: string }
@@ -156,13 +162,15 @@ export async function publish(
   });
   existingFilesSpinner.start();
 
+  let revision: Revision | undefined = undefined;
   // deno-lint-ignore no-explicit-any
   const sub = await (trpcClient.revisions as any).watchUntilReady.subscribe({
     org,
     app,
     revision: revisionId,
   }, {
-    onData: (data: { labels: Record<string, string> }) => {
+    onData: (data: Revision) => {
+      revision = data;
       if ("deno.diffsync.missing_hashes" in data.labels) {
         missingHashesPromise.resolve(
           JSON.parse(data.labels["deno.diffsync.missing_hashes"]),
@@ -317,7 +325,8 @@ export async function publish(
       app,
       revision: revisionId,
     }, {
-      onData: (newRevision: { steps: { step: string }[] }) => {
+      onData: (newRevision: Revision) => {
+        revision = newRevision;
         const lastStep = newRevision.steps.at(-1);
 
         if (lastStep) {
@@ -340,6 +349,15 @@ export async function publish(
   await completionPromise.promise;
 
   completionSpinner.stop();
+  if (revision!.status === "cancelled") {
+    console.log(
+      `\n${
+        red("✗")
+      } The revision was cancelled.\nPlease view the revision in the dashboard for more information.`,
+    );
+    Deno.exit(1);
+  }
+
   console.log(`\n${green("✔")} Successfully deployed your application!`);
 
   const timelines: Array<{ partition_config_name: string; domains: string[] }> =
