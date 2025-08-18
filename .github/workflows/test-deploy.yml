@@ -22,9 +22,6 @@ jobs:
       - name: Install Dependencies
         run: deno install
 
-      - name: test
-        run: echo "${{ env.DENO_DEPLOY_ORG }}"
-
       - name: Test deno deploy command in astro-demo
         working-directory: ./astro-demo
-        run: deno deploy --token=${{ secrets.DENO_DEPLOY_TOKEN }} --org=${{ env.DENO_DEPLOY_ORG }} --app=${{ env.DENO_DEPLOY_APP }}
+        run: deno deploy --token=${{ secrets.DENO_DEPLOY_TOKEN }} --org=${{ envs.DENO_DEPLOY_ORG }} --app=${{ envs.DENO_DEPLOY_APP }}
