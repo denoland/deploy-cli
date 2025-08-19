@@ -4,6 +4,11 @@
   "tasks": {
     "build": "deno run -A jsr:@deno/wasmbuild@0.19"
   },
+  "publish": {
+    "exclude": [
+      "!/lib"
+    ]
+  },
   "exports": "./main.ts",
   "imports": {
     "@cfa/gitignore-parser": "jsr:@cfa/gitignore-parser@^0.1.4",
