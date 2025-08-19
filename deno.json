@@ -1,6 +1,9 @@
 {
   "name": "@deno/deploy",
   "license": "MIT",
+  "tasks": {
+    "build": "deno run -A jsr:@deno/wasmbuild@0.19"
+  },
   "exports": "./main.ts",
   "imports": {
     "@cfa/gitignore-parser": "jsr:@cfa/gitignore-parser@^0.1.4",
