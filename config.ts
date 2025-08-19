@@ -1,4 +1,4 @@
-import { join, fromFileUrl } from "@std/path";
+import { fromFileUrl, join } from "@std/path";
 import {
   applyEdits as applyJSONCEdits,
   modify as modifyJSONC,
