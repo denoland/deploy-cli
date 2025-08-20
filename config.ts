@@ -4,7 +4,10 @@ import {
   modify as modifyJSONC,
   parse as parseJSONC,
 } from "jsonc-parser";
-import { resolve_config_with_deploy_config } from "./lib/rs_lib.js";
+import {
+  resolve_config,
+  resolve_config_with_deploy_config,
+} from "./lib/rs_lib.js";
 
 export interface Config {
   path: string;
@@ -20,10 +23,22 @@ export async function readConfig(
     return { path: maybeConfigPath, content };
   }
 
+  // we prefer the configs with the deploy key. then we fallback to a general
+  // config, so when we set the values, it uses existing config files instead
+  // of trying to create a new one (which will still happen if no config file is found)
+
   const configUrl = resolve_config_with_deploy_config(rootPath);
 
   if (configUrl) {
     const path = fromFileUrl(configUrl);
+    const content = await Deno.readTextFile(path);
+    return { path, content };
+  }
+
+  const configUrlWithoutDeployConfig = resolve_config(rootPath);
+
+  if (configUrlWithoutDeployConfig) {
+    const path = fromFileUrl(configUrlWithoutDeployConfig);
     const content = await Deno.readTextFile(path);
     return { path, content };
   }

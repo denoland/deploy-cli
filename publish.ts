@@ -353,7 +353,7 @@ export async function publish(
     console.log(
       `\n${
         red("✗")
-      } The revision was cancelled.\nPlease view the revision in the dashboard for more information.`,
+      } The revision was cancelled.\n  Please view the revision in the dashboard for more information.`,
     );
     Deno.exit(1);
   }

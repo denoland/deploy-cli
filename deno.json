@@ -1,4 +1,8 @@
 {
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "astro-demo"
+  ],
   "name": "@deno/deploy",
   "license": "MIT",
   "tasks": {
@@ -31,5 +35,7 @@
     "@deno/framework-detect": "jsr:@deno/framework-detect@^0",
     "temporal-polyfill": "npm:temporal-polyfill@^0.3.0"
   },
-  "exclude": ["astro-demo"]
+  "exclude": [
+    "astro-demo"
+  ]
 }
