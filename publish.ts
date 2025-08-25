@@ -14,7 +14,7 @@ const SEPARATOR_PATTERN = Deno.build.os === "windows" ? "\\\\" : "/";
 interface Revision {
   labels: Record<string, string>;
   steps: { step: string }[];
-  status: "cancelled";
+  status: "cancelled" | "failed";
 }
 
 type Chunk =
@@ -349,11 +349,13 @@ export async function publish(
   await completionPromise.promise;
 
   completionSpinner.stop();
-  if (revision!.status === "cancelled") {
+  if (revision!.status === "cancelled" || revision!.status === "failed") {
     console.log(
-      `\n${
-        red("✗")
-      } The revision was cancelled.\n  Please view the revision in the dashboard for more information.`,
+      `\n${red("✗")} The revision ${
+        revision!.status === "cancelled" ? "was " : ""
+      }${
+        revision!.status
+      }.\n  Please view the revision in the dashboard for more information.`,
     );
     Deno.exit(1);
   }
