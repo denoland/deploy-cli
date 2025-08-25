@@ -41,7 +41,7 @@ export async function create(
   const storedAuth = token_storage.get();
 
   if (!storedAuth) {
-    const res = await interactive(deployUrl);
+    const res = await interactive(debug, deployUrl);
     url.searchParams.set("code", res.code);
     verifier = res.verifier;
     exchangeToken = res.exchangeToken;

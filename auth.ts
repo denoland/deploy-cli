@@ -162,7 +162,7 @@ export async function getAuth(
     return storedAuth;
   }
 
-  const { code, exchangeToken, verifier } = await interactive(deployUrl);
+  const { code, exchangeToken, verifier } = await interactive(debug, deployUrl);
 
   const authUrl = `${deployUrl}/auth?code=${code}`;
 
@@ -181,7 +181,7 @@ export async function getAuth(
   );
 }
 
-export async function interactive(deployUrl: string): Promise<
+export async function interactive(debug: boolean, deployUrl: string): Promise<
   { code: string; exchangeToken: string; verifier: string }
 > {
   const verifier = crypto.randomUUID();
@@ -195,7 +195,11 @@ export async function interactive(deployUrl: string): Promise<
   });
 
   if (!res.ok) {
-    console.error("An error occured, exiting...");
+    console.error("An error occurred during authentication, exiting...");
+    if (debug) {
+      console.log(res);
+      console.log(await res.json());
+    }
     Deno.exit(1);
   }
 

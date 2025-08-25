@@ -2,6 +2,9 @@ let cachedToken: string | null = null;
 let tokenIsTemp = false;
 let cannotInteractWithKeychain = false;
 
+const KEYCHAIN_WARNING =
+  "Unable to interact with keychain.\nThe authentication will not be stored and will only work on this execution.";
+
 export default {
   get(): string | null {
     if (cachedToken) {
@@ -13,7 +16,7 @@ export default {
       } catch {
         if (!cannotInteractWithKeychain) {
           cannotInteractWithKeychain = true;
-          console.log("Unable to interact with keychain.");
+          console.log(KEYCHAIN_WARNING);
         }
         return null;
       }
@@ -28,7 +31,7 @@ export default {
       } catch {
         if (!cannotInteractWithKeychain) {
           cannotInteractWithKeychain = true;
-          console.log("Unable to interact with keychain.");
+          console.log(KEYCHAIN_WARNING);
         }
       }
     } else {
@@ -46,7 +49,7 @@ export default {
     } catch {
       if (!cannotInteractWithKeychain) {
         cannotInteractWithKeychain = true;
-        console.log("Unable to interact with keychain.");
+        console.log(KEYCHAIN_WARNING);
       }
     }
   },
