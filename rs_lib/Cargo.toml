@@ -1,0 +1,22 @@
+[package]
+name = "rs_lib"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow.workspace = true
+deno_config.workspace = true
+deno_path_util.workspace = true
+js-sys.workspace = true
+sys_traits = { workspace = true, features = ["real"] }
+serde.workspace = true
+serde-wasm-bindgen.workspace = true
+url.workspace = true
+wasm-bindgen.workspace = true
+
+[target."cfg(target_arch = \"wasm32\")".dependencies.sys_traits]
+workspace = true
+features = ["real","wasm"]
