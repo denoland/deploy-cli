@@ -15,7 +15,7 @@ import {
 import { observable } from "@trpc/server/observable";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
-import token_storage from "./token_storage.ts";
+import token_storage, { tokenIsTemp } from "./token_storage.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 
 export function createTrpcClient(debug: boolean, deployUrl: string) {
@@ -67,6 +67,13 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
               err?.data?.code !== "TOKEN_EXPIRED")
           ) {
             return false;
+          }
+
+          if (tokenIsTemp) {
+            error(
+              debug,
+              "The token specified via 'DENO_DEPLOY_TOKEN' is invalid.",
+            );
           }
 
           if (typeof retryPromise !== "undefined") {

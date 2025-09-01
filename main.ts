@@ -261,7 +261,7 @@ await new Command()
 Calling this subcommand without any further subcommands will
 deploy your local directory to the specified application.`)
   .globalOption("--endpoint <endpoint:string>", "the endpoint", {
-    default: "https://app.deno.com",
+    default: "https://console.deno.com",
     hidden: true,
   })
   .globalOption("--debug", "Enable debug output", {

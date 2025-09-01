@@ -1,5 +1,5 @@
 let cachedToken: string | null = null;
-let tokenIsTemp = false;
+export let tokenIsTemp = false;
 let cannotInteractWithKeychain = false;
 
 const KEYCHAIN_WARNING =
