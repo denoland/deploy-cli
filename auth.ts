@@ -70,17 +70,10 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
           }
 
           if (tokenIsTemp) {
-            if (token_storage.get()?.startsWith("ddo_")) {
-              error(
-                debug,
-                "Organization tokens cannot be used for the 'deno deploy' subcommand.",
-              );
-            } else {
-              error(
-                debug,
-                "The token specified via 'DENO_DEPLOY_TOKEN' or the '--token' flag is invalid.",
-              );
-            }
+            error(
+              debug,
+              "The token specified via 'DENO_DEPLOY_TOKEN' or the '--token' flag is invalid.",
+            );
           }
 
           if (typeof retryPromise !== "undefined") {
