@@ -386,7 +386,9 @@ export const envLoadCommand = new Command<EnvCommandContext>()
       }
       console.log();
       outer: while (true) {
-        const res = prompt("Would you like to replace these with your .env file? [y = Yes, n = No, s = Ignore/Skip]");
+        const res = prompt(
+          "Would you like to replace these with your .env file? [y = Yes, n = No, s = Ignore/Skip]",
+        );
         if (res) {
           switch (res.toLowerCase()) {
             case "y": {
