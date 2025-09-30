@@ -1,4 +1,4 @@
-import { Command } from "jsr:@cliffy/command@^1.0.0-rc.8";
+import { Command } from "@cliffy/command";
 import { publish } from "./publish.ts";
 import { red, yellow } from "@std/fmt/colors";
 import { greaterOrEqual, parse as semverParse } from "@std/semver";

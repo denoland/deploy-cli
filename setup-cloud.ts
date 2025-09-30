@@ -1,5 +1,5 @@
 // @ts-types="npm:@types/prompts@2.4.9"
-import prompt from "npm:prompts@2.4.2";
+import prompt from "prompts";
 
 import { gray, green, yellow } from "@std/fmt/colors";
 import { createTrpcClient } from "./auth.ts";
