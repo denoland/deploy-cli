@@ -21,8 +21,8 @@
     "jsr:@std/path@^1.0.8": "1.1.1",
     "jsr:@std/path@^1.1.1": "1.1.1",
     "jsr:@std/semver@^1.0.5": "1.0.5",
-    "jsr:@std/streams@^1.0.10": "1.0.10",
-    "jsr:@std/tar@~0.1.7": "0.1.7",
+    "jsr:@std/streams@^1.0.12": "1.0.12",
+    "jsr:@std/tar@~0.1.8": "0.1.8",
     "jsr:@std/text@~1.0.7": "1.0.15",
     "npm:@deno/astro-adapter@0.3": "0.3.1_astro@5.11.0__vite@6.3.5___picomatch@4.0.3__zod@3.25.76_@types+node@24.2.0",
     "npm:@trpc/client@^11.0.2": "11.0.2_@trpc+server@11.0.2__typescript@5.8.2_typescript@5.8.2",
@@ -133,11 +133,11 @@
     "@std/semver@1.0.5": {
       "integrity": "529f79e83705714c105ad0ba55bec0f9da0f24d2f726b6cc1c15e505cc2c0624"
     },
-    "@std/streams@1.0.10": {
-      "integrity": "75c0b1431873cd0d8b3d679015220204d36d3c7420d93b60acfc379eb0dc30af"
+    "@std/streams@1.0.12": {
+      "integrity": "ae925fa1dc459b1abf5cbaa28cc5c7b0485853af3b2a384b0dc22d86e59dfbf4"
     },
-    "@std/tar@0.1.7": {
-      "integrity": "767ed89376a9665cee6d33144d2a06619e35411ad08b363568582bbaff5b40d2",
+    "@std/tar@0.1.8": {
+      "integrity": "ada7d0ca24d8fa52c429bd9d2cc8bb2934ae54600f5f0c803aca4333204862a0",
       "dependencies": [
         "jsr:@std/streams"
       ]
@@ -2545,7 +2545,7 @@
       "jsr:@std/jsonc@^1.0.1",
       "jsr:@std/path@^1.0.8",
       "jsr:@std/semver@^1.0.5",
-      "jsr:@std/tar@~0.1.7",
+      "jsr:@std/tar@~0.1.8",
       "npm:@trpc/client@^11.0.2",
       "npm:@trpc/server@^11.0.2",
       "npm:event-source-polyfill@^1.0.31",
