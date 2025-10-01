@@ -9,6 +9,7 @@ interface EnvVar {
   id: string;
   key: string;
   value: string;
+  is_secret: boolean;
   context_ids: string[];
 }
 
@@ -347,16 +348,72 @@ export const envLoadCommand = new Command<EnvCommandContext>()
     const variables = dotEnvParse(await Deno.readTextFile(file));
 
     // deno-lint-ignore no-explicit-any
+    const existingEnvVars: EnvVar[] = await (trpcClient.envVarsContexts as any)
+      .list
+      .query({
+        org: orgAndApp.org,
+        app: orgAndApp.app,
+      });
+
+    const addEnvVars = [];
+    let updateEnvVars = [];
+
+    for (const [key, value] of Object.entries(variables)) {
+      const existing = existingEnvVars.find((envVar) => envVar.key === key);
+      if (existing) {
+        updateEnvVars.push({
+          id: existing.id,
+          key,
+          value,
+          is_secret: options.secrets?.includes(key) ?? existing.is_secret,
+          context_ids: existing.context_ids,
+        });
+      } else {
+        addEnvVars.push({
+          app_id: fullApp.id,
+          key,
+          value,
+          is_secret: options.secrets?.includes(key) ?? false,
+          context_ids: null,
+        });
+      }
+    }
+
+    if (updateEnvVars.length > 0) {
+      console.log("The following env vars are already defined:");
+      for (const updateEnvVar of updateEnvVars) {
+        console.log(` - ${updateEnvVar.key}`);
+      }
+      console.log();
+      outer: while (true) {
+        const res = prompt(
+          "Would you like to replace these with your .env file? [y = Yes, n = No, s = Ignore/Skip]",
+        );
+        if (res) {
+          switch (res.toLowerCase()) {
+            case "y": {
+              break outer;
+            }
+
+            // deno-lint-ignore no-fallthrough
+            case "n": {
+              error(options.debug, "Env vars are already defined, exiting");
+            }
+            case "s": {
+              updateEnvVars = [];
+              break outer;
+            }
+          }
+        }
+      }
+      console.log();
+    }
+
+    // deno-lint-ignore no-explicit-any
     await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
       org: orgAndApp.org,
-      add: Object.entries(variables).map(([key, value]) => ({
-        app_id: fullApp.id,
-        key,
-        value,
-        is_secret: options.secrets?.includes(key) ?? false,
-        context_ids: null,
-      })),
-      update: [],
+      add: addEnvVars,
+      update: updateEnvVars,
       remove: [],
     });
 
