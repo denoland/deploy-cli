@@ -1,4 +1,4 @@
-// @ts-types="npm:@types/prompts@2.4.9"
+// @ts-types="@types/prompts"
 import prompt from "prompts";
 
 import { gray, green, yellow } from "@std/fmt/colors";
