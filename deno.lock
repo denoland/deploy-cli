@@ -2548,9 +2548,11 @@
       "jsr:@std/tar@~0.1.8",
       "npm:@trpc/client@^11.0.2",
       "npm:@trpc/server@^11.0.2",
+      "npm:@types/prompts@2.4.9",
       "npm:event-source-polyfill@^1.0.31",
       "npm:jsonc-parser@^3.3.1",
       "npm:open@^10.1.0",
+      "npm:prompts@2.4.2",
       "npm:superjson@^2.2.2",
       "npm:temporal-polyfill@0.3"
     ],
