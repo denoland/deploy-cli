@@ -315,13 +315,22 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
     );
   });
 
+const PUBLIC_REGEX = /^PUBLIC_|^NEXT_PUBLIC_/;
+
+const COMMON_SECRET_PATTERN =
+  /^(?!.*(?:^|_)(PUBLIC|NEXT_PUBLIC|EXPOSED)(?:_|$)).*(KEY|SECRET|TOKEN|PASSWORD|PRIVATE|CREDENTIALS|AUTH)(?![A-Za-z])/i;
+
+function isSecretKey(key: string): boolean {
+  return COMMON_SECRET_PATTERN.test(key);
+}
+
 export const envLoadCommand = new Command<EnvCommandContext>()
   .description(
     "Load environmental variables from a .env file into the application",
   )
   .option(
-    "--secrets <keys...:string>",
-    "Which keys in the .env file to treat as secrets",
+    "--non-secrets <keys...:string>",
+    "Which keys in the .env file to treat as non-secrets",
   )
   .arguments("<file:string>")
   .action(async (options, file) => {
@@ -358,14 +367,30 @@ export const envLoadCommand = new Command<EnvCommandContext>()
     const addEnvVars = [];
     let updateEnvVars = [];
 
+    const hasPublicPrefix = Object.keys(variables).some((key) =>
+      PUBLIC_REGEX.test(key)
+    );
+
     for (const [key, value] of Object.entries(variables)) {
       const existing = existingEnvVars.find((envVar) => envVar.key === key);
+      let is_secret = existing?.is_secret || false;
+
+      if (!options.nonSecrets?.includes(key)) {
+        if (hasPublicPrefix) {
+          is_secret = !PUBLIC_REGEX.test(key);
+        } else {
+          is_secret = isSecretKey(key);
+        }
+      } else {
+        is_secret = false;
+      }
+
       if (existing) {
         updateEnvVars.push({
           id: existing.id,
           key,
           value,
-          is_secret: options.secrets?.includes(key) ?? existing.is_secret,
+          is_secret,
           context_ids: existing.context_ids,
         });
       } else {
@@ -373,7 +398,7 @@ export const envLoadCommand = new Command<EnvCommandContext>()
           app_id: fullApp.id,
           key,
           value,
-          is_secret: options.secrets?.includes(key) ?? false,
+          is_secret,
           context_ids: null,
         });
       }
