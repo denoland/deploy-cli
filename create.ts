@@ -15,6 +15,7 @@ export async function create(
   deployUrl: string,
   rootPath: string,
   configContent: Config | null,
+  allowNodeModules: boolean,
   initOrg?: string,
 ) {
   let verifier;
@@ -90,5 +91,14 @@ export async function create(
     `${green("✔")} App '${app}' created in the '${org}' organization.\n`,
   );
 
-  await publish(debug, deployUrl, rootPath, configContent, org, app, true);
+  await publish(
+    debug,
+    deployUrl,
+    rootPath,
+    configContent,
+    org,
+    app,
+    true,
+    allowNodeModules,
+  );
 }

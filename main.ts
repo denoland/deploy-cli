@@ -40,6 +40,10 @@ export type GlobalOptions = {
 const createCommand = new Command<GlobalOptions>()
   .description("Create a new application")
   .option(
+    "--allow-node-modules",
+    "Allow node_modules directory to be included when uploading",
+  )
+  .option(
     "--org <name:string>",
     "The name of the organization to create the application for",
   )
@@ -58,7 +62,14 @@ const createCommand = new Command<GlobalOptions>()
         Deno.exit(1);
       }
 
-      await create(debug, endpoint, rootPath, configContent, initOrg);
+      await create(
+        debug,
+        endpoint,
+        rootPath,
+        configContent,
+        options.allowNodeModules ?? false,
+        initOrg,
+      );
     },
   );
 
@@ -273,6 +284,10 @@ deploy your local directory to the specified application.`)
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
   .option("--prod", "Deploy directly to production")
+  .option(
+    "--allow-node-modules",
+    "Allow node_modules directory to be included when uploading",
+  )
   .arguments("[root-path:string]")
   .globalAction((options) => {
     const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
@@ -314,6 +329,7 @@ deploy your local directory to the specified application.`)
           options.endpoint as string,
           rootPath,
           configContent,
+          options.allowNodeModules ?? false,
           orgAndApp.org,
         );
       } else {
@@ -325,6 +341,7 @@ deploy your local directory to the specified application.`)
           orgAndApp.org,
           orgAndApp.app,
           options.prod ?? false,
+          options.allowNodeModules ?? false,
         );
       }
     },

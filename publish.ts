@@ -32,24 +32,37 @@ export async function publish(
   org: string,
   app: string,
   prod: boolean,
+  allowNodeModules: boolean,
 ) {
   let gitignore: { denies(input: string): boolean } = {
     denies: () => false,
   };
 
+  const gitignorePath = join(rootPath, ".gitignore");
   try {
-    gitignore = gitignoreCompile(
-      Deno.readTextFileSync(join(rootPath, ".gitignore")),
-    );
+    if (debug) {
+      console.log(`Using .gitignore at '${gitignorePath}'`);
+    }
+
+    gitignore = gitignoreCompile(Deno.readTextFileSync(gitignorePath));
   } catch (_) {
+    if (debug) {
+      console.log(`No .gitignore found at '${gitignorePath}'`);
+    }
+
     //
   }
 
   const excludes = [
-    new RegExp(`${SEPARATOR_PATTERN}node_modules(:?${SEPARATOR_PATTERN}|$)`),
     new RegExp(`${SEPARATOR_PATTERN}\.git(:?${SEPARATOR_PATTERN}|$)`),
     new RegExp(`${SEPARATOR_PATTERN}\.DS_Store`),
   ];
+
+  if (!allowNodeModules) {
+    excludes.push(
+      new RegExp(`${SEPARATOR_PATTERN}node_modules(:?${SEPARATOR_PATTERN}|$)`),
+    );
+  }
 
   console.log(`Publishing '${resolve(rootPath)}'`);
 
