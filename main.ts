@@ -50,7 +50,7 @@ const createCommand = new Command<GlobalOptions>()
   .arguments("[root-path:string]")
   .action(
     async (
-      { debug, endpoint, org: initOrg, config },
+      { debug, endpoint, org: initOrg, config, allowNodeModules },
       rootPath = Deno.cwd(),
     ) => {
       const configContent = await readConfig(rootPath, config);
@@ -67,7 +67,7 @@ const createCommand = new Command<GlobalOptions>()
         endpoint,
         rootPath,
         configContent,
-        options.allowNodeModules ?? false,
+        allowNodeModules ?? false,
         initOrg,
       );
     },
