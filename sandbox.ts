@@ -25,6 +25,7 @@ export const sandboxListCommand = new Command()
       status: "running" | "stopped";
       created_at: Date;
       stopped_at: Date | null;
+      // deno-lint-ignore no-explicit-any
     }> = await (client.sandboxes as any).list.query({
       org: orgAndApp.org,
     });
