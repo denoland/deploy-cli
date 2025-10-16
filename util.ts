@@ -51,7 +51,7 @@ export async function withApp(
   if (!org) {
     org = Deno.env.get("DENO_DEPLOY_ORG");
   }
-  if (!app) {
+  if (app !== null) {
     app = Deno.env.get("DENO_DEPLOY_APP");
   }
 
@@ -79,6 +79,13 @@ export async function withApp(
 
     org = selectedOrg.value.slug;
     console.log(`Selected organization '${selectedOrg.value.name}'`);
+
+    if (app === null) {
+      return {
+        org,
+        app: null,
+      };
+    }
 
     const apps: Array<{ name: string; slug: string }> =
       // deno-lint-ignore no-explicit-any
