@@ -62,9 +62,8 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
       errorLink,
       retryLink({
         retry({ error: err }) {
-          const code = err?.data?.code;
+          const code = err?.data?.code ?? err?.cause?.data?.code;
           if (!(code === "NOT_AUTHENTICATED" || code === "TOKEN_EXPIRED")) {
-            return false;
           }
 
           if (tokenIsTemp) {
@@ -105,7 +104,6 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
               });
             } else if (response.status === 403) {
               const body = await response.clone().json();
-              console.log(body);
               if (body.code === "TOKEN_EXPIRED") {
                 throw TRPCClientError.from({
                   message: "Token Expired",
