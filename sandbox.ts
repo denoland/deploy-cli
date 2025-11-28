@@ -54,7 +54,7 @@ export const sandboxListCommand = new Command<SandboxContext>()
       const createdAt = renderTemporalTimestamp(
         sandbox.created_at.toISOString(),
       );
-      const formattedDuration = formatPassedTime(duration);
+      const formattedDuration = formatDuration(duration);
 
       createdAtHeaderLength = Math.max(createdAt.length, createdAtHeaderLength);
       statusHeaderLength = Math.max(sandbox.status.length, statusHeaderLength);
@@ -191,7 +191,14 @@ export const sandboxSshCommand = new Command<SandboxContext>()
     }
   });
 
-export function formatPassedTime(ms: number, roundToSeconds = false) {
+/**
+ * Format duration in ms to human readable string
+ *
+ * e.g. 1d 2h 3m 4s 500ms
+ *
+ * @param ms
+ */
+export function formatDuration(ms: number): string {
   if (ms === 0) return "0s";
 
   const secondsMs = 1000;
@@ -229,10 +236,10 @@ export function formatPassedTime(ms: number, roundToSeconds = false) {
   if (count > 1 || (count > 0 && mins === 0)) return str;
 
   const seconds = Math.floor(ms / secondsMs);
-  if (seconds > 0 || roundToSeconds) {
+  if (seconds > 0) {
     const tmp = ms - seconds * secondsMs;
 
-    if (count < 1 && tmp > 0 && !roundToSeconds) {
+    if (count < 1 && tmp > 0) {
       const v = Math.round((ms / 1000) * 10) / 10;
       if (count > 0) str += " ";
       str += `${v}s`;
@@ -240,7 +247,6 @@ export function formatPassedTime(ms: number, roundToSeconds = false) {
     }
     if (count > 0) str += " ";
     str += `${seconds}s`;
-    if (roundToSeconds) return str;
     ms = tmp;
     count++;
   }
