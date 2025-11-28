@@ -1,10 +1,16 @@
 import { Command } from "@cliffy/command";
+import { Sandbox } from "@deno/sandbox";
+
 import { getAppFromConfig, readConfig } from "./config.ts";
 import { renderTemporalTimestamp, withApp } from "./util.ts";
 import { createTrpcClient } from "./auth.ts";
-import { Sandbox } from "@deno/sandbox";
+import type { GlobalOptions } from "./main.ts";
 
-export const sandboxListCommand = new Command()
+type SandboxContext = GlobalOptions & {
+  org?: string;
+};
+
+export const sandboxListCommand = new Command<SandboxContext>()
   .description("List all sandboxes in an organization")
   .action(async (options) => {
     const configContent = await readConfig(Deno.cwd(), options.config);
@@ -83,7 +89,7 @@ export const sandboxListCommand = new Command()
     }
   });
 
-export const sandboxKillCommand = new Command()
+export const sandboxKillCommand = new Command<SandboxContext>()
   .description("Kill a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(async (options, sandboxId) => {
@@ -119,7 +125,7 @@ export const sandboxKillCommand = new Command()
     }
   });
 
-export const sandboxSshCommand = new Command()
+export const sandboxSshCommand = new Command<SandboxContext>()
   .description("SSH into a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(async (options, sandboxId) => {
