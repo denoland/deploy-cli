@@ -72,19 +72,21 @@ export const sandboxListCommand = new Command<SandboxContext>()
       };
     });
 
-    console.log(
-      `${"ID".padEnd(idHeaderLength)}   ${
-        "Created At".padEnd(createdAtHeaderLength)
-      }   ${"Status".padEnd(statusHeaderLength)}   ${
-        "Uptime".padEnd(uptimeHeaderLength)
-      }\n`,
-    );
+    console.log([
+      "ID".padEnd(idHeaderLength),
+      "CREATED".padEnd(createdAtHeaderLength),
+      "STATUS".padEnd(statusHeaderLength),
+      "UPTIME".padEnd(uptimeHeaderLength),
+    ].join("   "));
 
     for (const sandbox of processed) {
       console.log(
-        `${sandbox.id}   ${sandbox.createdAt.padEnd(createdAtHeaderLength)}   ${
-          sandbox.status.padEnd(statusHeaderLength)
-        }   ${sandbox.duration.padEnd(uptimeHeaderLength)}`,
+        [
+          sandbox.id.padEnd(idHeaderLength),
+          sandbox.createdAt.padEnd(createdAtHeaderLength),
+          sandbox.status.padEnd(statusHeaderLength),
+          sandbox.duration.padEnd(uptimeHeaderLength),
+        ].join("   "),
       );
     }
   });
