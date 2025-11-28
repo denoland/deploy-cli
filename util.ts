@@ -55,7 +55,7 @@ export async function withApp(
     app = Deno.env.get("DENO_DEPLOY_APP");
   }
 
-  if (!org || !app) {
+  if (org === undefined || app === undefined) {
     const trpcClient = createTrpcClient(debug, deployUrl);
 
     const orgs: Array<{
