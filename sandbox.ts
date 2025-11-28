@@ -1,11 +1,11 @@
 import { Command } from "@cliffy/command";
 import { Sandbox } from "@deno/sandbox";
+import { green, magenta, red } from "@std/fmt/colors";
 
 import { getAppFromConfig, readConfig } from "./config.ts";
 import { renderTemporalTimestamp, withApp } from "./util.ts";
 import { createTrpcClient } from "./auth.ts";
 import type { GlobalOptions } from "./main.ts";
-import { get } from "node:http";
 
 type SandboxContext = GlobalOptions & {
   org?: string;
@@ -68,11 +68,13 @@ export const sandboxListCommand = new Command<SandboxContext>()
     ].join("   "));
 
     for (const sandbox of processed) {
+      const isRunning = sandbox.status === "running";
+      const status = sandbox.status.padEnd(statusHeaderLength);
       console.log(
         [
           sandbox.id.padEnd(idHeaderLength),
           sandbox.createdAt.padEnd(createdAtHeaderLength),
-          sandbox.status.padEnd(statusHeaderLength),
+          isRunning ? green(status) : red(status),
           sandbox.duration.padEnd(uptimeHeaderLength),
         ].join("   "),
       );
@@ -141,6 +143,7 @@ export const sandboxSshCommand = new Command<SandboxContext>()
 
     if (which.success) {
       // If ssh is available, directly spawn ssh process
+      console.log(`ssh ${connectInfo}`);
       const command = new Deno.Command("ssh", {
         args: [connectInfo],
         stdin: "inherit",
@@ -150,8 +153,12 @@ export const sandboxSshCommand = new Command<SandboxContext>()
 
       const _sshProcess = command.spawn();
     } else {
+      // Fallback: just print the connection info
       console.log(
-        `Started ssh session, you can now connect to ${connectInfo}.\nUse Ctrl+C to exit.`,
+        `Started ssh session. You can now connect to ${magenta(connectInfo)}
+
+Example:
+  ssh ${connectInfo}`,
       );
     }
   });
