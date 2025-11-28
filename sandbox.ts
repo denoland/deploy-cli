@@ -13,18 +13,7 @@ type SandboxContext = GlobalOptions & {
 export const sandboxListCommand = new Command<SandboxContext>()
   .description("List all sandboxes in an organization")
   .action(async (options) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org } = getAppFromConfig(configContent);
-    org ??= options.org;
-
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      null,
-    );
-
+    const org = await ensureOrg(options);
     const client = createTrpcClient(options.debug, options.endpoint);
 
     const list: Array<{
@@ -33,9 +22,7 @@ export const sandboxListCommand = new Command<SandboxContext>()
       created_at: Date;
       stopped_at: Date | null;
       // deno-lint-ignore no-explicit-any
-    }> = await (client.sandboxes as any).list.query({
-      org: orgAndApp.org,
-    });
+    }> = await (client.sandboxes as any).list.query({ org });
 
     let createdAtHeaderLength = 0;
     let statusHeaderLength = 0;
@@ -95,29 +82,18 @@ export const sandboxKillCommand = new Command<SandboxContext>()
   .description("Kill a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(async (options, sandboxId) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org } = getAppFromConfig(configContent);
-    org ??= options.org;
-
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      null,
-    );
-
+    const org = await ensureOrg(options);
     const client = createTrpcClient(options.debug, options.endpoint);
 
     // deno-lint-ignore no-explicit-any
     const cluster = await (client.sandboxes as any).findHostname.query({
-      org: orgAndApp.org,
+      org,
       sandboxId,
     });
 
     // deno-lint-ignore no-explicit-any
     const res = await (client.sandboxes as any).kill.mutate({
-      org: orgAndApp.org,
+      org,
       sandboxId,
       clusterHostname: [cluster.hostname],
     });
@@ -131,29 +107,15 @@ export const sandboxSshCommand = new Command<SandboxContext>()
   .description("SSH into a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(async (options, sandboxId) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org } = getAppFromConfig(configContent);
-    org ??= options.org;
-
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      null,
-    );
-
+    const org = await ensureOrg(options);
     const client = createTrpcClient(options.debug, options.endpoint);
 
     const [cluster, token] = await Promise.all([
       // deno-lint-ignore no-explicit-any
-      (client.sandboxes as any).findHostname.query({
-        org: orgAndApp.org,
-        sandboxId,
-      }),
+      (client.sandboxes as any).findHostname.query({ org, sandboxId }),
       // deno-lint-ignore no-explicit-any
       (client.orgs as any).accessTokens.create.mutate({
-        org: orgAndApp.org,
+        org,
         description: "$$DENO_DEPLOY_CLI_SSH_TOKEN$$",
         expiresAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
       }),
@@ -193,10 +155,28 @@ export const sandboxSshCommand = new Command<SandboxContext>()
     }
   });
 
+async function ensureOrg(options: SandboxContext) {
+  let { org } = getAppFromConfig(await readConfig(Deno.cwd(), options.config));
+  org ??= options.org;
+
+  return (await withApp(
+    options.debug,
+    options.endpoint,
+    false,
+    org,
+    null,
+  )).org;
+}
+
 /**
  * Format duration in ms to human readable string
  *
- * e.g. 1d 2h 3m 4s 500ms
+ * @example
+ *   86400000 => 1d
+ *    7200000 => 2h
+ *     180000 => 3m
+ *       4000 => 4s
+ *          5 => 5ms
  *
  * @param ms
  */
