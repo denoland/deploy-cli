@@ -98,7 +98,7 @@ export const sandboxKillCommand = new Command<SandboxContext>()
     const res = await (client.sandboxes as any).kill.mutate({
       org,
       sandboxId,
-      clusterHostname: [cluster.hostname],
+      clusterHostname: cluster.hostname,
     });
 
     if (res.success) {
