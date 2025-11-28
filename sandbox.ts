@@ -101,11 +101,13 @@ export const sandboxKillCommand = new Command()
 
     const client = createTrpcClient(options.debug, options.endpoint);
 
+    // deno-lint-ignore no-explicit-any
     const cluster = await (client.sandboxes as any).findHostname.query({
       org: orgAndApp.org,
       sandboxId,
     });
 
+    // deno-lint-ignore no-explicit-any
     const res = await (client.sandboxes as any).kill.mutate({
       org: orgAndApp.org,
       sandboxId,
@@ -136,10 +138,12 @@ export const sandboxSshCommand = new Command()
     const client = createTrpcClient(options.debug, options.endpoint);
 
     const [cluster, token] = await Promise.all([
+      // deno-lint-ignore no-explicit-any
       (client.sandboxes as any).findHostname.query({
         org: orgAndApp.org,
         sandboxId,
       }),
+      // deno-lint-ignore no-explicit-any
       (client.orgs as any).accessTokens.create.mutate({
         org: orgAndApp.org,
         description: "$$DENO_DEPLOY_CLI_SSH_TOKEN$$",
