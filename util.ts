@@ -25,6 +25,17 @@ export function error(
   Deno.exit(1);
 }
 
+/**
+ * Ensure app and org are selected
+ *
+ * If app is specified as null, it will not be selected and returned as null.
+ *
+ * @param debug
+ * @param deployUrl
+ * @param canCreate
+ * @param org
+ * @param app
+ */
 export async function withApp(
   debug: boolean,
   deployUrl: string,
