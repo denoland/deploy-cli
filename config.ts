@@ -1,4 +1,4 @@
-import { fromFileUrl, join } from "@std/path";
+import { fromFileUrl, join, resolve } from "@std/path";
 import {
   applyEdits as applyJSONCEdits,
   modify as modifyJSONC,
@@ -18,6 +18,7 @@ export async function readConfig(
   rootPath: string,
   maybeConfigPath: string | undefined,
 ): Promise<Config | null> {
+  rootPath = resolve(rootPath);
   if (maybeConfigPath) {
     const content = await Deno.readTextFile(maybeConfigPath);
     return { path: maybeConfigPath, content };
