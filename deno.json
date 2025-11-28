@@ -17,7 +17,7 @@
   "imports": {
     "@cfa/gitignore-parser": "jsr:@cfa/gitignore-parser@^0.1.4",
     "@cliffy/command": "jsr:@cliffy/command@^1.0.0-rc.8",
-    "@deno/sandbox": "jsr:@deno/sandbox@^0",
+    "@deno/sandbox": "jsr:@deno/sandbox@^0.2.1",
     "@std/cli": "jsr:@std/cli@1.0.22",
     "@std/dotenv": "jsr:@std/dotenv@^0.225.5",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",

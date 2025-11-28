@@ -109,7 +109,7 @@ export const sandboxKillCommand = new Command()
     const res = await (client.sandboxes as any).kill.mutate({
       org: orgAndApp.org,
       sandboxId,
-      clusterHostname: [cluster.hostname]
+      clusterHostname: [cluster.hostname],
     });
 
     if (res.success) {
@@ -143,22 +143,42 @@ export const sandboxSshCommand = new Command()
       (client.orgs as any).accessTokens.create.mutate({
         org: orgAndApp.org,
         description: "$$DENO_DEPLOY_CLI_SSH_TOKEN$$",
-        expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+        expiresAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
       }),
     ]);
 
-    await using sandbox = Sandbox.connect({
+    await using sandbox = await Sandbox.connect({
       id: sandboxId,
-      endpoint: cluster.hostname,
+      region: cluster.region,
       debug: options.debug,
       token: token.token,
     });
 
     const ssh = await sandbox.exposeSsh();
 
-    console.log(
-      `Started ssh session, you can now connect to ${ssh.username}@${ssh.hostname}.\nUse Ctrl+C to exit.`,
-    );
+    const connectInfo = ssh.username + "@" + ssh.hostname;
+
+    const which = await new Deno.Command("which", {
+      args: ["ssh"],
+      stdout: "null",
+      stderr: "null",
+    }).output();
+
+    if (which.success) {
+      // If ssh is available, directly spawn ssh process
+      const command = new Deno.Command("ssh", {
+        args: [connectInfo],
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+
+      const _sshProcess = command.spawn();
+    } else {
+      console.log(
+        `Started ssh session, you can now connect to ${connectInfo}.\nUse Ctrl+C to exit.`,
+      );
+    }
   });
 
 export function formatPassedTime(ms: number, roundToSeconds = false) {
