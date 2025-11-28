@@ -173,7 +173,6 @@ const envCommand = new Command<GlobalOptions>()
 const sandboxCommand = new Command<GlobalOptions>()
   .description("Interact with sandboxes")
   .globalOption("--org <name:string>", "The name of the organization")
-  .globalOption("--app <name:string>", "The name of the application")
   .action(() => {
     sandboxCommand.showHelp();
   })
