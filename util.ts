@@ -25,6 +25,17 @@ export function error(
   Deno.exit(1);
 }
 
+/**
+ * Ensure app and org are selected
+ *
+ * If app is specified as null, it will not be selected and returned as null.
+ *
+ * @param debug
+ * @param deployUrl
+ * @param canCreate
+ * @param org
+ * @param app
+ */
 export async function withApp(
   debug: boolean,
   deployUrl: string,
@@ -51,11 +62,11 @@ export async function withApp(
   if (!org) {
     org = Deno.env.get("DENO_DEPLOY_ORG");
   }
-  if (!app) {
+  if (app === undefined) {
     app = Deno.env.get("DENO_DEPLOY_APP");
   }
 
-  if (!org || !app) {
+  if (org === undefined || app === undefined) {
     const trpcClient = createTrpcClient(debug, deployUrl);
 
     const orgs: Array<{
@@ -79,6 +90,13 @@ export async function withApp(
 
     org = selectedOrg.value.slug;
     console.log(`Selected organization '${selectedOrg.value.name}'`);
+
+    if (app === null) {
+      return {
+        org,
+        app: null,
+      };
+    }
 
     const apps: Array<{ name: string; slug: string }> =
       // deno-lint-ignore no-explicit-any

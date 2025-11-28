@@ -16,6 +16,11 @@ import {
 } from "./env.ts";
 import { createTrpcClient } from "./auth.ts";
 import token_storage from "./token_storage.ts";
+import {
+  sandboxKillCommand,
+  sandboxListCommand,
+  sandboxSshCommand,
+} from "./sandbox.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -164,6 +169,16 @@ const envCommand = new Command<GlobalOptions>()
   .command("update-contexts", envUpdateContextsCommand)
   .command("delete", envDeleteCommand)
   .command("load", envLoadCommand);
+
+const sandboxCommand = new Command<GlobalOptions>()
+  .description("Interact with sandboxes")
+  .globalOption("--org <name:string>", "The name of the organization")
+  .action(() => {
+    sandboxCommand.showHelp();
+  })
+  .command("list", sandboxListCommand)
+  .command("kill", sandboxKillCommand)
+  .command("ssh", sandboxSshCommand);
 
 const logsCommand = new Command<GlobalOptions>()
   .description("Stream logs from an application")
@@ -348,6 +363,7 @@ deploy your local directory to the specified application.`)
   )
   .command("create", createCommand)
   .command("env", envCommand)
+  .command("sandbox", sandboxCommand)
   .command("logs", logsCommand)
   .command("setup-aws", setupAWSCommand)
   .command("setup-gcp", setupGCPCommand)
