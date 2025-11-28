@@ -16,7 +16,11 @@ import {
 } from "./env.ts";
 import { createTrpcClient } from "./auth.ts";
 import token_storage from "./token_storage.ts";
-import { sandboxListCommand } from "./sandbox.ts";
+import {
+  sandboxKillCommand,
+  sandboxListCommand,
+  sandboxSshCommand,
+} from "./sandbox.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -173,9 +177,9 @@ const sandboxCommand = new Command<GlobalOptions>()
   .action(() => {
     sandboxCommand.showHelp();
   })
-  .command("list", sandboxListCommand);
-/*.command("kill", sandboxKillCommand)
-  .command("ssh", sandboxSshCommand);*/
+  .command("list", sandboxListCommand)
+  .command("kill", sandboxKillCommand)
+  .command("ssh", sandboxSshCommand);
 
 const logsCommand = new Command<GlobalOptions>()
   .description("Stream logs from an application")
