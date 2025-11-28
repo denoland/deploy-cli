@@ -51,7 +51,7 @@ export async function withApp(
   if (!org) {
     org = Deno.env.get("DENO_DEPLOY_ORG");
   }
-  if (app !== null) {
+  if (app === undefined) {
     app = Deno.env.get("DENO_DEPLOY_APP");
   }
 
