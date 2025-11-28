@@ -5,6 +5,7 @@ import { getAppFromConfig, readConfig } from "./config.ts";
 import { renderTemporalTimestamp, withApp } from "./util.ts";
 import { createTrpcClient } from "./auth.ts";
 import type { GlobalOptions } from "./main.ts";
+import { get } from "node:http";
 
 type SandboxContext = GlobalOptions & {
   org?: string;
@@ -156,8 +157,8 @@ export const sandboxSshCommand = new Command<SandboxContext>()
   });
 
 async function ensureOrg(options: SandboxContext) {
-  let { org } = getAppFromConfig(await readConfig(Deno.cwd(), options.config));
-  org ??= options.org;
+  const org = options.org ??
+    getAppFromConfig(await readConfig(Deno.cwd(), options.config)).org;
 
   return (await withApp(
     options.debug,
