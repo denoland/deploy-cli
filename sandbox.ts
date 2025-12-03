@@ -11,6 +11,41 @@ type SandboxContext = GlobalOptions & {
   org?: string;
 };
 
+export const sandboxNewCommand = new Command<SandboxContext>()
+  .description("Create a new sandbox in an organization")
+  .action(async (options) => {
+    const org = await ensureOrg(options);
+    const client = createTrpcClient(options.debug, options.endpoint);
+
+    // deno-lint-ignore no-explicit-any
+    const token = await (client.orgs as any).accessTokens.create.mutate({
+      org,
+      description: "$$DENO_DEPLOY_CLI_SSH_TOKEN$$",
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(), // 1 hour
+    });
+
+    const sandbox = await Sandbox.create({
+      debug: options.debug,
+      token: token.token,
+    });
+
+    const success = await sshIntoSandbox(sandbox);
+    const stopMessage = "Stopping the sandbox...";
+    if (success) {
+      // Closes the sandbox only when ssh session was established and finished successfully
+      await sandbox.close();
+      console.log(stopMessage);
+    } else {
+      // Otherwise, keep the sandbox running and wait for Ctrl+C
+      console.log("\nCtrl+C to stop the sandbox.");
+      Deno.addSignalListener("SIGINT", async () => {
+        console.log("\n" + stopMessage);
+        await sandbox.close();
+        Deno.exit();
+      });
+    }
+  });
+
 export const sandboxListCommand = new Command<SandboxContext>()
   .description("List all sandboxes in an organization")
   .action(async (options) => {
@@ -130,37 +165,7 @@ export const sandboxSshCommand = new Command<SandboxContext>()
       debug: options.debug,
       token: token.token,
     });
-
-    const ssh = await sandbox.exposeSsh();
-
-    const connectInfo = ssh.username + "@" + ssh.hostname;
-
-    const which = await new Deno.Command("which", {
-      args: ["ssh"],
-      stdout: "null",
-      stderr: "null",
-    }).output();
-
-    if (which.success) {
-      // If ssh is available, directly spawn ssh process
-      console.log(`ssh ${connectInfo}`);
-      const command = new Deno.Command("ssh", {
-        args: [connectInfo],
-        stdin: "inherit",
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-
-      const _sshProcess = command.spawn();
-    } else {
-      // Fallback: just print the connection info
-      console.log(
-        `Started ssh session. You can now connect to ${magenta(connectInfo)}
-
-Example:
-  ssh ${connectInfo}`,
-      );
-    }
+    await sshIntoSandbox(sandbox);
   });
 
 async function ensureOrg(options: SandboxContext) {
@@ -174,6 +179,43 @@ async function ensureOrg(options: SandboxContext) {
     org,
     null,
   )).org;
+}
+
+/**
+ * Make an ssh connection to the running sandbox. Returns true if ssh session
+ * was successfully created and finished, false when ssh is not available and
+ * connection info was printed instead.
+ */
+async function sshIntoSandbox(sandbox: Sandbox): Promise<boolean> {
+  const ssh = await sandbox.exposeSsh();
+  const connectInfo = ssh.username + "@" + ssh.hostname;
+
+  const which = await new Deno.Command("which", {
+    args: ["ssh_"],
+    stdout: "null",
+    stderr: "null",
+  }).output();
+  if (which.success) {
+    console.log(`ssh ${connectInfo}`);
+    const command = new Deno.Command("ssh", {
+      args: [connectInfo],
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const sshProcess = await command.spawn();
+    await sshProcess.output();
+    await sandbox.close();
+    return true;
+  } else {
+    console.log(
+      `Started ssh session. You can now connect to ${magenta(connectInfo)}
+
+Example:
+  ssh ${connectInfo}`,
+    );
+    return false;
+  }
 }
 
 /**
