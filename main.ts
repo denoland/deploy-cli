@@ -52,10 +52,11 @@ const createCommand = new Command<GlobalOptions>()
     "--org <name:string>",
     "The name of the organization to create the application for",
   )
+  .option("--no-wait", "Skip waiting for the build to complete")
   .arguments("[root-path:string]")
   .action(
     async (
-      { debug, endpoint, org: initOrg, config, allowNodeModules },
+      { debug, endpoint, org: initOrg, config, allowNodeModules, wait },
       rootPath = Deno.cwd(),
     ) => {
       const configContent = await readConfig(rootPath, config);
@@ -73,13 +74,14 @@ const createCommand = new Command<GlobalOptions>()
         rootPath,
         configContent,
         allowNodeModules ?? false,
+        wait ?? true,
         initOrg,
       );
     },
   );
 
 const setupAWSCommand = new Command<GlobalOptions>()
-  .description("Setup AWS")
+  .description("Setup cloud connections for AWS")
   .option("--org <name:string>", "The name of the organization", {
     required: true,
   })
@@ -110,7 +112,7 @@ const setupAWSCommand = new Command<GlobalOptions>()
   });
 
 const setupGCPCommand = new Command<GlobalOptions>()
-  .description("Setup GCP")
+  .description("Setup cloud connections for GCP")
   .option("--org <name:string>", "The name of the organization", {
     required: true,
   })
@@ -274,7 +276,7 @@ const logsCommand = new Command<GlobalOptions>()
   });
 
 const logoutCommand = new Command()
-  .description("Revoke the Deno Deploy token if one is present.")
+  .description("Revoke the Deno Deploy token if one is present")
   .action(() => {
     token_storage.remove();
     console.log("Successfully logged out");
@@ -303,6 +305,7 @@ deploy your local directory to the specified application.`)
     "--allow-node-modules",
     "Allow node_modules directory to be included when uploading",
   )
+  .option("--no-wait", "Skip waiting for the build to complete")
   .arguments("[root-path:string]")
   .globalAction((options) => {
     const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
@@ -345,6 +348,7 @@ deploy your local directory to the specified application.`)
           rootPath,
           configContent,
           options.allowNodeModules ?? false,
+          options.wait ?? true,
           orgAndApp.org,
         );
       } else {
@@ -357,6 +361,7 @@ deploy your local directory to the specified application.`)
           orgAndApp.app,
           options.prod ?? false,
           options.allowNodeModules ?? false,
+          options.wait ?? true,
         );
       }
     },

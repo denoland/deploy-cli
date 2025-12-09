@@ -16,6 +16,7 @@ export async function create(
   rootPath: string,
   configContent: Config | null,
   allowNodeModules: boolean,
+  wait: boolean,
   initOrg?: string,
 ) {
   let verifier;
@@ -48,8 +49,10 @@ export async function create(
     exchangeToken = res.exchangeToken;
   }
 
-  console.log(`Visit ${url.href} to create a new application.\x07`);
-  const spinner = new Spinner({ message: "Waiting...", color: "yellow" });
+  const spinner = new Spinner({
+    message: `Visit ${url.href} to create a new application.\x07`,
+    color: "yellow",
+  });
   spinner.start();
 
   await open(url.href);
@@ -100,5 +103,6 @@ export async function create(
     app,
     true,
     allowNodeModules,
+    wait,
   );
 }

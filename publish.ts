@@ -33,6 +33,7 @@ export async function publish(
   app: string,
   prod: boolean,
   allowNodeModules: boolean,
+  wait: boolean,
 ) {
   let gitignore: { denies(input: string): boolean } = {
     denies: () => false,
@@ -64,7 +65,11 @@ export async function publish(
     );
   }
 
-  console.log(`Publishing '${resolve(rootPath)}'`);
+  const spinner = new Spinner({
+    message: `Publishing '${resolve(rootPath)}'`,
+    color: "yellow",
+  });
+  spinner.start();
 
   const stream: ReadableStream<Chunk> = ReadableStream.from(
     walk(rootPath, { skip: excludes }),
@@ -128,10 +133,8 @@ export async function publish(
   const manifest: Record<string, string> = {};
   let total = 0;
 
-  const hashesSpinner = new Spinner({
-    message: "Generating hashes...",
-  });
-  hashesSpinner.start();
+  spinner.message = "Generating hashes...";
+
   for await (const { chunk, hash, relativePath } of counter) {
     if (!chunk.isDirectory) {
       total++;
@@ -140,7 +143,6 @@ export async function publish(
       manifest[parts.join("/")] = hash!;
     }
   }
-  hashesSpinner.stop();
 
   if (debug) {
     console.log("Manifest", manifest);
@@ -158,15 +160,12 @@ export async function publish(
     });
 
   // doing this after we initiate the cli revision in case it fails (ie app not existing).
-  console.log(`${green("✔")} Generated hashes`);
+  spinner.message = `${green("✔")} Generated hashes`;
+  spinner.stop();
 
   console.log(
-    `You can view your application overview here:\n  ${deployUrl}/${org}/${app}`,
+    `You can view the revision here:\n  ${deployUrl}/${org}/${app}/builds/${revisionId}\n`,
   );
-  console.log(
-    `You can view the revision here:\n  ${deployUrl}/${org}/${app}/builds/${revisionId}`,
-  );
-  console.log();
 
   const missingHashesPromise = Promise.withResolvers<string[]>();
 
@@ -320,74 +319,85 @@ export async function publish(
   } else {
     console.log("No files were changed, so there is nothing to upload.");
   }
-  console.log(
-    "You may now cancel this command, or wait until your domains are printed out.",
-  );
 
-  const completionSpinner = new Spinner({
-    message: "Awaiting revision to complete...",
-  });
-  completionSpinner.start();
+  console.log();
 
-  const completionPromise = Promise.withResolvers<void>();
-
-  // deno-lint-ignore no-explicit-any
-  const completionSub = await (trpcClient.revisions as any).watchUntilReady
-    .subscribe({
-      org,
-      app,
-      revision: revisionId,
-    }, {
-      onData: (newRevision: Revision) => {
-        revision = newRevision;
-        const lastStep = newRevision.steps.at(-1);
-
-        if (lastStep) {
-          completionSpinner.message = lastStep.step;
-        }
-      },
-      onError: (err: unknown) => {
-        completionSub.unsubscribe();
-        error(debug, Deno.inspect(err));
-      },
-      onComplete: () => {
-        completionPromise.resolve();
-        completionSub.unsubscribe();
-      },
-      onStopped: () => {
-        completionSub.unsubscribe();
-      },
-    });
-
-  await completionPromise.promise;
-
-  completionSpinner.stop();
-  if (revision!.status === "cancelled" || revision!.status === "failed") {
+  if (wait) {
     console.log(
-      `\n${red("✗")} The revision ${
-        revision!.status === "cancelled" ? "was " : ""
-      }${
-        revision!.status
-      }.\n  Please view the revision in the dashboard for more information.`,
+      "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
     );
-    Deno.exit(1);
-  }
 
-  console.log(`\n${green("✔")} Successfully deployed your application!`);
-
-  const timelines: Array<{ partition_config_name: string; domains: string[] }> =
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.revisions as any).listTimelines.query({
-      org,
-      app,
-      revision: revisionId,
+    const completionSpinner = new Spinner({
+      message: "Awaiting revision to complete...",
     });
+    completionSpinner.start();
 
-  for (const timeline of timelines) {
+    const completionPromise = Promise.withResolvers<void>();
+
+    // deno-lint-ignore no-explicit-any
+    const completionSub = await (trpcClient.revisions as any).watchUntilReady
+      .subscribe({
+        org,
+        app,
+        revision: revisionId,
+      }, {
+        onData: (newRevision: Revision) => {
+          revision = newRevision;
+          const lastStep = newRevision.steps.at(-1);
+
+          if (lastStep) {
+            completionSpinner.message = lastStep.step;
+          }
+        },
+        onError: (err: unknown) => {
+          completionSub.unsubscribe();
+          error(debug, Deno.inspect(err));
+        },
+        onComplete: () => {
+          completionPromise.resolve();
+          completionSub.unsubscribe();
+        },
+        onStopped: () => {
+          completionSub.unsubscribe();
+        },
+      });
+
+    await completionPromise.promise;
+
+    completionSpinner.stop();
+    if (revision!.status === "cancelled" || revision!.status === "failed") {
+      console.log(
+        `\n${red("✗")} The revision ${
+          revision!.status === "cancelled" ? "was " : ""
+        }${
+          revision!.status
+        }.\n  Please view the revision in the dashboard for more information.`,
+      );
+      Deno.exit(1);
+    }
+
+    console.log(`\n${green("✔")} Successfully deployed your application!`);
+
+    const timelines: Array<
+      { partition_config_name: string; domains: string[] }
+    > =
+      // deno-lint-ignore no-explicit-any
+      await (trpcClient.revisions as any).listTimelines.query({
+        org,
+        app,
+        revision: revisionId,
+      });
+
+    for (const timeline of timelines) {
+      console.log(
+        `${timeline.partition_config_name} url:${
+          timeline.domains.map((domain) => `\n  https://${domain}`)
+        }`,
+      );
+    }
+  } else {
     console.log(
-      `${timeline.partition_config_name} url:${
-        timeline.domains.map((domain) => `\n  https://${domain}`)
-      }`,
+      "To see the deployment, go to the revision page and wait for the build to complete.",
     );
   }
 
