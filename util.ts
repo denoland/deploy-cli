@@ -57,7 +57,7 @@ export async function withApp(
   org?: string,
   app?: string | null,
 ): Promise<{ org: string; app: string | null }> {
-  const token = await getAuth(debug, deployUrl);
+  await getAuth(debug, deployUrl);
 
   if (!org) {
     org = Deno.env.get("DENO_DEPLOY_ORG");
