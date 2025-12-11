@@ -314,12 +314,6 @@ deploy your local directory to the specified application.`)
     }
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
-      if (tokenEnv.startsWith("ddo_")) {
-        error(
-          options.debug,
-          "Organization tokens cannot be used for the 'deno deploy' subcommand.",
-        );
-      }
       token_storage.set(tokenEnv, true);
     }
   })
