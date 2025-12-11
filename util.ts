@@ -77,7 +77,7 @@ export async function withApp(
     }> = await (trpcClient.orgs as any).list.query();
 
     let fullOrg;
-    if (token.startsWith("ddo_")) {
+    if (orgs.length === 1) {
       fullOrg = orgs[0];
       org = orgs[0].slug;
     } else {
