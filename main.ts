@@ -19,6 +19,7 @@ import token_storage from "./token_storage.ts";
 import {
   sandboxKillCommand,
   sandboxListCommand,
+  sandboxNewCommand,
   sandboxSshCommand,
 } from "./sandbox.ts";
 
@@ -178,6 +179,7 @@ const sandboxCommand = new Command<GlobalOptions>()
   .action(() => {
     sandboxCommand.showHelp();
   })
+  .command("new", sandboxNewCommand)
   .command("list", sandboxListCommand)
   .command("kill", sandboxKillCommand)
   .command("ssh", sandboxSshCommand);
