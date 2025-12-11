@@ -76,20 +76,27 @@ export async function withApp(
       // deno-lint-ignore no-explicit-any
     }> = await (trpcClient.orgs as any).list.query();
 
-    const selectedOrg = promptSelect(
-      "Select an organization:",
-      orgs.map((org) => ({ label: `${org.name} (${org.slug})`, value: org })),
-      {
-        clear: true,
-      },
-    );
-    if (!selectedOrg) {
-      console.error("No organization was selected.");
-      Deno.exit(1);
-    }
+    let fullOrg;
+    if (orgs.length === 1) {
+      fullOrg = orgs[0];
+      org = orgs[0].slug;
+    } else {
+      const selectedOrg = promptSelect(
+        "Select an organization:",
+        orgs.map((org) => ({ label: `${org.name} (${org.slug})`, value: org })),
+        {
+          clear: true,
+        },
+      );
+      if (!selectedOrg) {
+        console.error("No organization was selected.");
+        Deno.exit(1);
+      }
 
-    org = selectedOrg.value.slug;
-    console.log(`Selected organization '${selectedOrg.value.name}'`);
+      fullOrg = selectedOrg.value;
+      org = selectedOrg.value.slug;
+      console.log(`Selected organization '${selectedOrg.value.name}'`);
+    }
 
     if (app === null) {
       return {
@@ -102,7 +109,7 @@ export async function withApp(
       // deno-lint-ignore no-explicit-any
       await (trpcClient.apps as any)
         .list.query({
-          org: selectedOrg.value.id,
+          org: fullOrg.id,
         });
     const appStrings: PromptEntry<{ name: string; slug: string } | null>[] =
       apps.map((app) => ({ label: app.slug, value: app }));
