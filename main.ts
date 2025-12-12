@@ -14,7 +14,7 @@ import {
   envUpdateContextsCommand,
   envUpdateValueCommand,
 } from "./env.ts";
-import { createTrpcClient } from "./auth.ts";
+import { createTrpcClient, getAuth } from "./auth.ts";
 import token_storage from "./token_storage.ts";
 import {
   sandboxKillCommand,
@@ -142,6 +142,8 @@ const setupGCPCommand = new Command<GlobalOptions>()
 
 const tunnelLoginCommand = new Command<GlobalOptions>()
   .arguments("[root-path:string]")
+  .option("--really-no-config", "really no config")
+  .option("--out <file:string>", "out file")
   .hidden()
   .action(async (options, rootPath = Deno.cwd()) => {
     const configContent = await readConfig(rootPath, options.config);
@@ -153,7 +155,16 @@ const tunnelLoginCommand = new Command<GlobalOptions>()
       org,
       app,
     );
-    await writeConfig(configContent, gottenApp.org, gottenApp.app);
+    if (options.reallyNoConfig !== true) {
+      await writeConfig(configContent, gottenApp.org, gottenApp.app);
+    }
+    const token = await getAuth(options.debug, options.endpoint);
+    if (options.out) {
+      await Deno.writeTextFile(
+        options.out,
+        JSON.stringify({ org: gottenApp.org, app: gottenApp.app, token }),
+      );
+    }
   });
 
 const envCommand = new Command<GlobalOptions>()
@@ -283,7 +294,7 @@ const logoutCommand = new Command()
 await new Command()
   .name("deno deploy")
   .description(`Interact with Deno Deploy
-  
+
 Calling this subcommand without any further subcommands will
 deploy your local directory to the specified application.`)
   .globalOption("--endpoint <endpoint:string>", "the endpoint", {
