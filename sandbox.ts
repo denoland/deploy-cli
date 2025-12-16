@@ -4,7 +4,7 @@ import { green, magenta, red } from "@std/fmt/colors";
 
 import { getAppFromConfig, readConfig } from "./config.ts";
 import { renderTemporalTimestamp, withApp } from "./util.ts";
-import { createTrpcClient } from "./auth.ts";
+import { createTrpcClient, getAuth } from "./auth.ts";
 import type { GlobalOptions } from "./main.ts";
 
 type SandboxContext = GlobalOptions & {
@@ -15,18 +15,12 @@ export const sandboxNewCommand = new Command<SandboxContext>()
   .description("Create a new sandbox in an organization")
   .action(async (options) => {
     const org = await ensureOrg(options);
-    const client = createTrpcClient(options.debug, options.endpoint);
-
-    // deno-lint-ignore no-explicit-any
-    const token = await (client.orgs as any).accessTokens.create.mutate({
-      org,
-      description: "$$DENO_DEPLOY_CLI_SSH_TOKEN$$",
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(), // 1 hour
-    });
+    const token = await getAuth(options.debug, options.endpoint);
 
     const sandbox = await Sandbox.create({
       debug: options.debug,
-      token: token.token,
+      token: token,
+      org,
     });
 
     const success = await sshIntoSandbox(sandbox);
@@ -147,23 +141,19 @@ export const sandboxSshCommand = new Command<SandboxContext>()
   .action(async (options, sandboxId) => {
     const org = await ensureOrg(options);
     const client = createTrpcClient(options.debug, options.endpoint);
-
-    const [cluster, token] = await Promise.all([
-      // deno-lint-ignore no-explicit-any
-      (client.sandboxes as any).findHostname.query({ org, sandboxId }),
-      // deno-lint-ignore no-explicit-any
-      (client.orgs as any).accessTokens.create.mutate({
-        org,
-        description: "$$DENO_DEPLOY_CLI_SSH_TOKEN$$",
-        expiresAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
-      }),
-    ]);
+    const token = await getAuth(options.debug, options.endpoint);
+    // deno-lint-ignore no-explicit-any
+    const cluster = await (client.sandboxes as any).findHostname.query({
+      org,
+      sandboxId,
+    });
 
     await using sandbox = await Sandbox.connect({
       id: sandboxId,
       region: cluster.region,
       debug: options.debug,
-      token: token.token,
+      token: token,
+      org,
     });
     await sshIntoSandbox(sandbox);
   });
