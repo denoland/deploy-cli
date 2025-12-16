@@ -3,9 +3,10 @@ import { Sandbox } from "@deno/sandbox";
 import { green, magenta, red } from "@std/fmt/colors";
 
 import { getAppFromConfig, readConfig } from "./config.ts";
-import { renderTemporalTimestamp, withApp } from "./util.ts";
+import { error, renderTemporalTimestamp, withApp } from "./util.ts";
 import { createTrpcClient, getAuth } from "./auth.ts";
 import type { GlobalOptions } from "./main.ts";
+import { Spinner } from "@std/cli/unstable-spinner";
 
 type SandboxContext = GlobalOptions & {
   org?: string;
@@ -13,15 +14,24 @@ type SandboxContext = GlobalOptions & {
 
 export const sandboxNewCommand = new Command<SandboxContext>()
   .description("Create a new sandbox in an organization")
+  .option("--copy <path:string>", "Copy a file or directory to the sandbox")
+  .example(
+    "Copying files from a local directory",
+    "new --copy ./app"
+  )
   .action(async (options) => {
     const org = await ensureOrg(options);
     const token = await getAuth(options.debug, options.endpoint);
 
     const sandbox = await Sandbox.create({
       debug: options.debug,
-      token: token,
+      token,
       org,
     });
+
+    if (options.copy) {
+      await sandbox.upload(options.copy, "/app");
+    }
 
     const success = await sshIntoSandbox(sandbox);
     const stopMessage = "Stopping the sandbox...";
@@ -139,24 +149,216 @@ export const sandboxSshCommand = new Command<SandboxContext>()
   .description("SSH into a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(async (options, sandboxId) => {
-    const org = await ensureOrg(options);
-    const client = createTrpcClient(options.debug, options.endpoint);
-    const token = await getAuth(options.debug, options.endpoint);
-    // deno-lint-ignore no-explicit-any
-    const cluster = await (client.sandboxes as any).findHostname.query({
-      org,
-      sandboxId,
-    });
-
-    await using sandbox = await Sandbox.connect({
-      id: sandboxId,
-      region: cluster.region,
-      debug: options.debug,
-      token: token,
-      org,
-    });
+    await using sandbox = await connectToSandbox(options, sandboxId);
     await sshIntoSandbox(sandbox);
   });
+
+export const sandboxCopyCommand = new Command<SandboxContext>()
+  .description("Copy files from or to a running sandbox")
+  .example(
+    "Copy a file from a sandbox to the local machine",
+    "cp someSandboxId:/app/remote-file.txt ./local-file.txt"
+  )
+  .example(
+    "Copy a file from the local machine to a sandbox",
+    "cp ./local-file.txt someSandboxId:/app/remote-file.txt"
+  )
+  .example(
+    "Copy multiple files from a sandbox to the local machine",
+    "cp someSandboxId:/app/remote-file.txt someSandboxId:/app/another-remote-file.txt ./"
+  )
+  .example(
+    "Copy multiple files from the local machine to a sandbox",
+    "cp ./local-file.txt ./another-local-file.txt someSandboxId:/app/"
+  )
+  .example(
+    "Copy a directory from the local machine to a sandbox",
+    "cp ./ ./another-local-file.txt someSandboxId:/app/"
+  )
+  .example(
+    "Copy files from a sandbox to another sandbox",
+    "cp someSandboxId:/app/remote-file.txt anotherSandboxId:/app/remote-file.txt"
+  )
+  .arguments("<paths...:string>")
+  .action(async (options, ...paths) => {
+    if (paths.length < 2) {
+      error(options.debug, "Not enough paths were specified");
+    }
+
+    const target = paths.pop()!;
+
+    if (target.includes(":/")) {
+      const [sandboxId, sandboxPath] = target.split(":");
+      await using sandbox = await connectToSandbox(options, sandboxId);
+
+      const sourceSandboxPaths = [];
+      const localPaths = [];
+
+      for (const path of paths) {
+        if (path.includes(":/")) {
+          sourceSandboxPaths.push(path);
+        } else {
+          localPaths.push(path);
+        }
+      }
+
+      const sourceSandboxGroups = groupPathsBySandbox(sourceSandboxPaths);
+      const sourceSandboxes: Record<string, Sandbox> = {};
+
+      for (const sandboxId of Object.keys(sourceSandboxGroups)) {
+        sourceSandboxes[sandboxId] = await connectToSandbox(options, sandboxId);
+      }
+
+      await Promise.all([
+        ...localPaths.map((path) => {
+          return sandbox.upload(path, sandboxPath);
+        }),
+        ...Object.entries(sourceSandboxGroups).map(
+          async ([sandboxId, sourceSandboxPaths]) => {
+            const sourceSandbox = sourceSandboxes[sandboxId];
+
+            await Promise.all(
+              sourceSandboxPaths.map(async (sourceSandboxPath) => {
+                const tempDir = await Deno.makeTempDir();
+                await sourceSandbox.download(sourceSandboxPath, tempDir);
+                await sandbox.upload(tempDir, target);
+              }),
+            );
+
+            await sandbox.close();
+          },
+        ),
+      ]);
+    } else {
+      for (const path of paths) {
+        if (!path.includes(":/")) {
+          error(
+            options.debug,
+            "Source paths must be in the format <sandbox-id>:<path>",
+          );
+        }
+      }
+
+      const groups = groupPathsBySandbox(paths);
+      const sandboxes: Record<string, Sandbox> = {};
+
+      for (const sandboxId of Object.keys(groups)) {
+        sandboxes[sandboxId] = await connectToSandbox(options, sandboxId);
+      }
+
+      await Promise.all(
+        Object.entries(groups).map(async ([sandboxId, sandboxPaths]) => {
+          const sandbox = sandboxes[sandboxId];
+
+          await Promise.all(sandboxPaths.map((sandboxPath) => {
+            return sandbox.download(sandboxPath, target);
+          }));
+
+          await sandbox.close();
+        }),
+      );
+    }
+  });
+
+export const sandboxExecCommand = new Command<SandboxContext>()
+  .description("Execute a command in a running sandbox")
+  .example(
+    "Execute a command in a sandbox",
+    "exec someSandboxId ls"
+  )
+  .example(
+    "Using a specific working directory",
+    "exec --cwd /app someSandboxId ls"
+  )
+  .option("-q, --quiet", "Don't pipe the command to the console")
+  .option("--cwd <path:string>", "Working directory of the command")
+  .arguments("<sandbox-id:string> <command...:string>")
+  .action(async (options, sandboxId, ...command) => {
+    await using sandbox = await connectToSandbox(options, sandboxId);
+
+    const child = await sandbox.spawn("bash", {
+      cwd: options.cwd,
+      args: ["-c", command.join(" ")],
+      stdout: options.quiet ? "null" : "inherit",
+      stderr: options.quiet ? "null" : "inherit",
+    });
+
+    const status = await child.status;
+    Deno.exit(status.code);
+  });
+
+export const sandboxRunCommand = new Command<SandboxContext>()
+  .description("Create a sandbox and run a command")
+  .example(
+    "Create a sandbox and run a command",
+    "run ls /"
+  )
+  .example(
+    "Copying files from a local directory and then running a command",
+    "run --copy ./app ls"
+  )
+  .option("-q, --quiet", "Don't pipe the command to the console")
+  .option("--cwd <path:string>", "Working directory of the command")
+  .option("--copy <path:string>", "Copy a file or directory to the sandbox before running the command")
+  .option("--lifetime <duration:string>", "The lifetime of the sandbox", { default: "2m" })
+  .option("--expose-http <port:number>", "Expose the specified port")
+  .arguments("<command...>")
+  .action(async function (options, ...command)  {
+    const org = await ensureOrg(options);
+    const token = await getAuth(options.debug, options.endpoint);
+
+    const sandbox = await Sandbox.create({
+      debug: options.debug,
+      token,
+      org,
+      lifetime: options.lifetime,
+    });
+
+    console.log(`Created sandbox with id '${sandbox.id}'`);
+
+    if (options.copy) {
+      const spinner = new Spinner({
+        message: "Copying files to the sandbox...",
+        color: "yellow",
+      });
+      spinner.start();
+
+      await sandbox.upload(options.copy, "/app");
+
+      spinner.stop();
+    }
+
+    if (options.exposeHttp) {
+      const url = await sandbox.exposeHttp({ port: options.exposeHttp });
+      console.log(`Exposed port ${options.exposeHttp} to ${url}`);
+    }
+
+    console.log();
+
+    const child = await sandbox.spawn("bash", {
+      cwd: options.cwd,
+      args: ["-c", command.join(" ")],
+      stdout: options.quiet ? "null" : "inherit",
+      stderr: options.quiet ? "null" : "inherit",
+    });
+
+    const status = await child.status;
+    Deno.exit(status.code);
+  });
+
+function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
+  const groups = {};
+
+  for (const path of paths) {
+    const [sandboxId, sandboxPath] = target.split(":");
+    if (!groups[sandboxId]) {
+      groups[sandboxId] = [];
+    }
+    groups[sandboxId].push(sandboxPath);
+  }
+
+  return groups;
+}
 
 async function ensureOrg(options: SandboxContext) {
   const org = options.org ??
@@ -169,6 +371,29 @@ async function ensureOrg(options: SandboxContext) {
     org,
     null,
   )).org;
+}
+
+async function connectToSandbox(
+  options: SandboxContext,
+  sandboxId: string,
+): Promise<Sandbox> {
+  const org = await ensureOrg(options);
+  const client = createTrpcClient(options.debug, options.endpoint);
+  const token = await getAuth(options.debug, options.endpoint);
+  // deno-lint-ignore no-explicit-any
+
+  const cluster = await (client.sandboxes as any).findHostname.query({
+    org,
+    sandboxId,
+  });
+
+  return await Sandbox.connect({
+    id: sandboxId,
+    region: cluster.region,
+    debug: options.debug,
+    token,
+    org,
+  });
 }
 
 /**
@@ -282,3 +507,22 @@ export function formatDuration(ms: number): string {
 
   return str;
 }
+
+export const sandboxCommand = new Command<GlobalOptions>()
+  .description("Interact with sandboxes")
+  .globalOption("--org <name:string>", "The name of the organization")
+  .action(() => {
+    sandboxCommand.showHelp();
+  })
+  .command("create", sandboxNewCommand)
+  .alias("new")
+  .command("list", sandboxListCommand)
+  .alias("ls")
+  .command("kill", sandboxKillCommand)
+  .alias("remove")
+  .alias("rm")
+  .command("copy", sandboxCopyCommand)
+  .alias("cp")
+  .command("exec", sandboxExecCommand)
+  .command("run", sandboxRunCommand)
+  .command("ssh", sandboxSshCommand);

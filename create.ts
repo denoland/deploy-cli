@@ -50,7 +50,7 @@ export async function create(
   }
 
   const spinner = new Spinner({
-    message: `Visit ${url.href} to create a new application.\x07`,
+    message: `Visit ${url.href} to create a new application.`,
     color: "yellow",
   });
   spinner.start();

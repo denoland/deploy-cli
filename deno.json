@@ -40,5 +40,9 @@
   },
   "exclude": [
     "astro-demo"
-  ]
+  ],
+  "deploy": {
+    "org": "crowlkats",
+    "app": "foo"
+  }
 }

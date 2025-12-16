@@ -61,7 +61,15 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
     links: [
       errorLink,
       retryLink({
-        retry() {
+        retry(opts) {
+          if (opts.error.data.httpStatus !== 401) {
+            return false;
+          }
+
+          if (debug) {
+            console.log(opts);
+          }
+
           if (tokenIsTemp) {
             error(
               debug,
@@ -113,7 +121,6 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
           async headers() {
             if (retryPromise) {
               await retryPromise;
-              retryPromise = undefined;
             }
 
             if (storedAuth) {
@@ -166,7 +173,7 @@ export async function getAuth(
   const authUrl = `${deployUrl}/auth?code=${code}`;
 
   const spinner = new Spinner({
-    message: `Visit ${authUrl} to authorize deploying your project.\x07`,
+    message: `Visit ${authUrl} to authorize deploying your project.`,
     color: "yellow",
   });
   spinner.start();
