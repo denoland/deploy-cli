@@ -181,7 +181,7 @@ async function sshIntoSandbox(sandbox: Sandbox): Promise<boolean> {
   const connectInfo = ssh.username + "@" + ssh.hostname;
 
   const which = await new Deno.Command("which", {
-    args: ["ssh_"],
+    args: ["ssh"],
     stdout: "null",
     stderr: "null",
   }).output();
