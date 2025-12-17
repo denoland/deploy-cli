@@ -50,7 +50,7 @@ export async function create(
   }
 
   const spinner = new Spinner({
-    message: `Visit ${url.href} to create a new application.\x07`,
+    message: `Visit ${url.href} to create a new application.`,
     color: "yellow",
   });
   spinner.start();
@@ -84,9 +84,14 @@ export async function create(
 
   const [{ org, app }] = await Promise.all([
     appCreationPromise,
-    storedAuth
-      ? undefined
-      : tokenExchange(debug, deployUrl, exchangeToken!, verifier!, spinner),
+    storedAuth ? undefined : tokenExchange(
+      debug,
+      deployUrl,
+      exchangeToken!,
+      verifier!,
+      spinner,
+      false,
+    ),
   ]);
 
   spinner.stop();
