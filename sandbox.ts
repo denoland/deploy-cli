@@ -365,6 +365,17 @@ export const sandboxRunCommand = new Command<SandboxContext>()
   });
 
 /*
+export const sandboxExtendCommand = new Command<SandboxContext>()
+  .description("Extend the lifetime of a running sandbox")
+  .arguments("<sandbox-id:string> <lifetime:string>")
+  .action(async (options, sandboxId, lifetime) => {
+    await using sandbox = await connectToSandbox(options, sandboxId);
+
+    console.log(await sandbox.extendLifetime(lifetime));
+  });
+*/
+
+/*
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
   const groups = {};
 
@@ -550,4 +561,5 @@ export const sandboxCommand = new Command<GlobalOptions>()
   .alias("cp")
   .command("exec", sandboxExecCommand)
   .command("run", sandboxRunCommand)
+  //.command("extend", sandboxExtendCommand)
   .command("ssh", sandboxSshCommand);
