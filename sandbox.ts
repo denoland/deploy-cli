@@ -3,7 +3,7 @@ import { Sandbox } from "@deno/sandbox";
 import { green, magenta, red } from "@std/fmt/colors";
 
 import { getAppFromConfig, readConfig, writeConfig } from "./config.ts";
-import { renderTemporalTimestamp, withApp } from "./util.ts";
+import { error, renderTemporalTimestamp, withApp } from "./util.ts";
 import { createTrpcClient, getAuth } from "./auth.ts";
 import type { GlobalOptions } from "./main.ts";
 import { Spinner } from "@std/cli/unstable-spinner";
@@ -157,33 +157,32 @@ export const sandboxSshCommand = new Command<SandboxContext>()
     await sshIntoSandbox(sandbox);
   });
 
-/*
 export const sandboxCopyCommand = new Command<SandboxContext>()
   .description("Copy files from or to a running sandbox")
-  .example(
+  /*.example(
     "Copy a file from a sandbox to the local machine",
-    "copy someSandboxId:/app/remote-file.txt ./local-file.txt"
-  )
+    "copy someSandboxId:/app/remote-file.txt ./local-file.txt",
+  )*/
   .example(
     "Copy a file from the local machine to a sandbox",
-    "copy ./local-file.txt someSandboxId:/app/remote-file.txt"
+    "copy ./local-file.txt someSandboxId:/app/remote-file.txt",
   )
-  .example(
+  /*.example(
     "Copy multiple files from a sandbox to the local machine",
-    "copy someSandboxId:/app/remote-file.txt someSandboxId:/app/another-remote-file.txt ./"
-  )
+    "copy someSandboxId:/app/remote-file.txt someSandboxId:/app/another-remote-file.txt ./",
+  )*/
   .example(
     "Copy multiple files from the local machine to a sandbox",
-    "copy ./local-file.txt ./another-local-file.txt someSandboxId:/app/"
+    "copy ./local-file.txt ./another-local-file.txt someSandboxId:/app/",
   )
   .example(
     "Copy a directory from the local machine to a sandbox",
-    "copy ./ ./another-local-file.txt someSandboxId:/app/"
+    "copy ./ ./another-local-file.txt someSandboxId:/app/",
   )
-  .example(
+  /*.example(
     "Copy files from a sandbox to another sandbox",
-    "copy someSandboxId:/app/remote-file.txt anotherSandboxId:/app/remote-file.txt"
-  )
+    "copy someSandboxId:/app/remote-file.txt anotherSandboxId:/app/remote-file.txt",
+  )*/
   .arguments("<paths...:string>")
   .action(async (options, ...paths) => {
     if (paths.length < 2) {
@@ -196,29 +195,34 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
       const [sandboxId, sandboxPath] = target.split(":");
       await using sandbox = await connectToSandbox(options, sandboxId);
 
-      const sourceSandboxPaths = [];
+      //const sourceSandboxPaths = [];
       const localPaths = [];
 
       for (const path of paths) {
         if (path.includes(":")) {
-          sourceSandboxPaths.push(path);
+          error(
+            options.debug,
+            "Copying between sandboxes is currently not supported",
+          );
+
+          //sourceSandboxPaths.push(path);
         } else {
           localPaths.push(path);
         }
       }
 
-      const sourceSandboxGroups = groupPathsBySandbox(sourceSandboxPaths);
+      /*const sourceSandboxGroups = groupPathsBySandbox(sourceSandboxPaths);
       const sourceSandboxes: Record<string, Sandbox> = {};
 
       for (const sandboxId of Object.keys(sourceSandboxGroups)) {
         sourceSandboxes[sandboxId] = await connectToSandbox(options, sandboxId);
-      }
+      }*/
 
       await Promise.all([
         ...localPaths.map((path) => {
           return sandbox.upload(path, sandboxPath);
         }),
-        ...Object.entries(sourceSandboxGroups).map(
+        /*...Object.entries(sourceSandboxGroups).map(
           async ([sandboxId, sourceSandboxPaths]) => {
             const sourceSandbox = sourceSandboxes[sandboxId];
 
@@ -232,10 +236,12 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
 
             await sandbox.close();
           },
-        ),
+        ),*/
       ]);
     } else {
-      for (const path of paths) {
+      error(options.debug, "Copying from sandboxes is currently not supported");
+
+      /*for (const path of paths) {
         if (!path.includes(":")) {
           error(
             options.debug,
@@ -261,10 +267,9 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
 
           await sandbox.close();
         }),
-      );
+      );*/
     }
   });
-*/
 
 export const sandboxExecCommand = new Command<SandboxContext>()
   .description("Execute a command in a running sandbox")
@@ -541,8 +546,8 @@ export const sandboxCommand = new Command<GlobalOptions>()
   .command("kill", sandboxKillCommand)
   .alias("remove")
   .alias("rm")
-  /*.command("copy", sandboxCopyCommand)
-  .alias("cp")*/
+  .command("copy", sandboxCopyCommand)
+  .alias("cp")
   .command("exec", sandboxExecCommand)
   .command("run", sandboxRunCommand)
   .command("ssh", sandboxSshCommand);
