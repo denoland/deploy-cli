@@ -7,6 +7,7 @@ import { error, renderTemporalTimestamp, withApp } from "./util.ts";
 import { createTrpcClient, getAuth } from "./auth.ts";
 import type { GlobalOptions } from "./main.ts";
 import { Spinner } from "@std/cli/unstable-spinner";
+import token_storage from "./token_storage.ts";
 
 type SandboxContext = GlobalOptions & {
   org?: string;
@@ -545,8 +546,29 @@ export function formatDuration(ms: number): string {
 }
 
 export const sandboxCommand = new Command<GlobalOptions>()
+  .name("deno sandbox")
   .description("Interact with sandboxes")
+  .globalOption("--endpoint <endpoint:string>", "the endpoint", {
+    default: "https://console.deno.com",
+    hidden: true,
+  })
+  .globalOption("--debug", "Enable debug output", {
+    hidden: true,
+    default: false,
+  })
+  .globalOption("--token <token:string>", "Auth token to use")
+  .globalOption("--config <config:string>", "Path for the config file")
   .globalOption("--org <name:string>", "The name of the organization")
+  .globalAction((options) => {
+    const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
+    if (endpoint) {
+      options.endpoint = endpoint;
+    }
+    const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
+    if (tokenEnv) {
+      token_storage.set(tokenEnv, true);
+    }
+  })
   .action(() => {
     sandboxCommand.showHelp();
   })

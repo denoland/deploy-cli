@@ -279,90 +279,94 @@ const logoutCommand = new Command()
     console.log("Successfully logged out");
   });
 
-await new Command()
-  .name("deno deploy")
-  .description(`Interact with Deno Deploy
+if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
+  await sandboxCommand.parse(Deno.args);
+} else {
+  await new Command()
+    .name("deno deploy")
+    .description(`Interact with Deno Deploy
 
 Calling this subcommand without any further subcommands will
 deploy your local directory to the specified application.`)
-  .globalOption("--endpoint <endpoint:string>", "the endpoint", {
-    default: "https://console.deno.com",
-    hidden: true,
-  })
-  .globalOption("--debug", "Enable debug output", {
-    hidden: true,
-    default: false,
-  })
-  .globalOption("--token <token:string>", "Auth token to use")
-  .globalOption("--config <config:string>", "Path for the config file")
-  .option("--org <name:string>", "The name of the organization")
-  .option("--app <name:string>", "The name of the application")
-  .option("--prod", "Deploy directly to production")
-  .option(
-    "--allow-node-modules",
-    "Allow node_modules directory to be included when uploading",
-  )
-  .option("--no-wait", "Skip waiting for the build to complete")
-  .arguments("[root-path:string]")
-  .globalAction((options) => {
-    const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
-    if (endpoint) {
-      options.endpoint = endpoint;
-    }
-    const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
-    if (tokenEnv) {
-      token_storage.set(tokenEnv, true);
-    }
-  })
-  .action(
-    async (
-      options,
-      rootPath = Deno.cwd(),
-    ) => {
-      const configContent = await readConfig(rootPath, options.config);
-      let { org, app } = getAppFromConfig(configContent);
-      org ??= options.org;
-      app ??= options.app;
-
-      const orgAndApp = await withApp(
-        options.debug,
-        options.endpoint as string,
-        true,
-        org,
-        app,
-      );
-
-      if (orgAndApp.app === null) {
-        await create(
-          options.debug,
-          options.endpoint as string,
-          rootPath,
-          configContent,
-          options.allowNodeModules ?? false,
-          options.wait ?? true,
-          orgAndApp.org,
-        );
-      } else {
-        await publish(
-          options.debug,
-          options.endpoint as string,
-          rootPath,
-          configContent,
-          orgAndApp.org,
-          orgAndApp.app,
-          options.prod ?? false,
-          options.allowNodeModules ?? false,
-          options.wait ?? true,
-        );
+    .globalOption("--endpoint <endpoint:string>", "the endpoint", {
+      default: "https://console.deno.com",
+      hidden: true,
+    })
+    .globalOption("--debug", "Enable debug output", {
+      hidden: true,
+      default: false,
+    })
+    .globalOption("--token <token:string>", "Auth token to use")
+    .globalOption("--config <config:string>", "Path for the config file")
+    .option("--org <name:string>", "The name of the organization")
+    .option("--app <name:string>", "The name of the application")
+    .option("--prod", "Deploy directly to production")
+    .option(
+      "--allow-node-modules",
+      "Allow node_modules directory to be included when uploading",
+    )
+    .option("--no-wait", "Skip waiting for the build to complete")
+    .arguments("[root-path:string]")
+    .globalAction((options) => {
+      const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
+      if (endpoint) {
+        options.endpoint = endpoint;
       }
-    },
-  )
-  .command("create", createCommand)
-  .command("env", envCommand)
-  .command("sandbox", sandboxCommand)
-  .command("logs", logsCommand)
-  .command("setup-aws", setupAWSCommand)
-  .command("setup-gcp", setupGCPCommand)
-  .command("tunnel-login", tunnelLoginCommand)
-  .command("logout", logoutCommand)
-  .parse(Deno.args);
+      const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
+      if (tokenEnv) {
+        token_storage.set(tokenEnv, true);
+      }
+    })
+    .action(
+      async (
+        options,
+        rootPath = Deno.cwd(),
+      ) => {
+        const configContent = await readConfig(rootPath, options.config);
+        let { org, app } = getAppFromConfig(configContent);
+        org ??= options.org;
+        app ??= options.app;
+
+        const orgAndApp = await withApp(
+          options.debug,
+          options.endpoint as string,
+          true,
+          org,
+          app,
+        );
+
+        if (orgAndApp.app === null) {
+          await create(
+            options.debug,
+            options.endpoint as string,
+            rootPath,
+            configContent,
+            options.allowNodeModules ?? false,
+            options.wait ?? true,
+            orgAndApp.org,
+          );
+        } else {
+          await publish(
+            options.debug,
+            options.endpoint as string,
+            rootPath,
+            configContent,
+            orgAndApp.org,
+            orgAndApp.app,
+            options.prod ?? false,
+            options.allowNodeModules ?? false,
+            options.wait ?? true,
+          );
+        }
+      },
+    )
+    .command("create", createCommand)
+    .command("env", envCommand)
+    .command("sandbox", sandboxCommand)
+    .command("logs", logsCommand)
+    .command("setup-aws", setupAWSCommand)
+    .command("setup-gcp", setupGCPCommand)
+    .command("tunnel-login", tunnelLoginCommand)
+    .command("logout", logoutCommand)
+    .parse(Deno.args);
+}
