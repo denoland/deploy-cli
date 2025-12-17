@@ -84,9 +84,14 @@ export async function create(
 
   const [{ org, app }] = await Promise.all([
     appCreationPromise,
-    storedAuth
-      ? undefined
-      : tokenExchange(debug, deployUrl, exchangeToken!, verifier!, spinner),
+    storedAuth ? undefined : tokenExchange(
+      debug,
+      deployUrl,
+      exchangeToken!,
+      verifier!,
+      spinner,
+      false,
+    ),
   ]);
 
   spinner.stop();

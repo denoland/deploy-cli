@@ -73,13 +73,17 @@ export function getAppFromConfig(
 export async function writeConfig(
   configContent: Config | null,
   org: string,
-  app: string,
+  app?: string | undefined,
 ) {
   const content = configContent?.content ?? "{}\n";
-  const edits = modifyJSONC(content, ["deploy"], {
-    org,
-    app,
-  }, {
+
+  const newConfig: Record<string, string> = { org };
+
+  if (app) {
+    newConfig.app = app;
+  }
+
+  const edits = modifyJSONC(content, ["deploy"], newConfig, {
     formattingOptions: {
       insertSpaces: true,
       tabSize: 2,

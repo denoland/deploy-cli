@@ -18,7 +18,11 @@ import { error } from "./util.ts";
 import token_storage, { tokenIsTemp } from "./token_storage.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 
-export function createTrpcClient(debug: boolean, deployUrl: string) {
+export function createTrpcClient(
+  debug: boolean,
+  deployUrl: string,
+  quiet: boolean = false,
+) {
   let storedAuth = token_storage.get();
 
   // deno-lint-ignore no-explicit-any
@@ -86,7 +90,7 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
           }
 
           token_storage.remove();
-          retryPromise = getAuth(debug, deployUrl).then((auth) => {
+          retryPromise = getAuth(debug, deployUrl, quiet).then((auth) => {
             storedAuth = auth;
           });
           return true;
@@ -162,6 +166,7 @@ export function createTrpcClient(debug: boolean, deployUrl: string) {
 export async function getAuth(
   debug: boolean,
   deployUrl: string,
+  quiet: boolean = false,
 ): Promise<string> {
   const storedAuth = token_storage.get();
   if (storedAuth) {
@@ -186,6 +191,7 @@ export async function getAuth(
     exchangeToken,
     verifier,
     spinner,
+    quiet,
   );
 }
 
@@ -226,6 +232,7 @@ export function tokenExchange(
   exchangeToken: string,
   verifier: string,
   spinner: Spinner,
+  quiet: boolean,
 ): Promise<string> {
   return new Promise((resolve) => {
     const interval = setInterval(async () => {
@@ -240,11 +247,13 @@ export function tokenExchange(
       if (res.ok) {
         const { token, user } = await res.json();
         spinner.stop();
-        console.log(
-          `${
-            green("✔")
-          } Authorization successful. Authenticated as ${user.name}\n`,
-        );
+        if (!quiet) {
+          console.log(
+            `${
+              green("✔")
+            } Authorization successful. Authenticated as ${user.name}\n`,
+          );
+        }
         clearInterval(interval);
         token_storage.set(token);
         resolve(token);

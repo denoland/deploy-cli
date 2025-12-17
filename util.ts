@@ -35,6 +35,7 @@ export function error(
  * @param canCreate
  * @param org
  * @param app
+ * @param quiet
  */
 export async function withApp(
   debug: boolean,
@@ -42,6 +43,7 @@ export async function withApp(
   canCreate: false,
   org?: string,
   app?: string | null,
+  quiet?: boolean,
 ): Promise<{ org: string; app: string }>;
 export async function withApp(
   debug: boolean,
@@ -49,6 +51,7 @@ export async function withApp(
   canCreate: true,
   org?: string,
   app?: string | null,
+  quiet?: boolean,
 ): Promise<{ org: string; app: string | null }>;
 export async function withApp(
   debug: boolean,
@@ -56,8 +59,9 @@ export async function withApp(
   canCreate: boolean,
   org?: string,
   app?: string | null,
+  quiet?: boolean,
 ): Promise<{ org: string; app: string | null }> {
-  await getAuth(debug, deployUrl);
+  await getAuth(debug, deployUrl, quiet);
 
   if (!org) {
     org = Deno.env.get("DENO_DEPLOY_ORG");
