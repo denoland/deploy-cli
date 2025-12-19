@@ -66,12 +66,14 @@ export function createTrpcClient(
       errorLink,
       retryLink({
         retry(opts) {
-          if (opts.error.data.httpStatus !== 401) {
-            return false;
-          }
-
           if (debug) {
             console.log(opts);
+          }
+
+          if (
+            opts.error?.data?.httpStatus && opts.error.data.httpStatus !== 401
+          ) {
+            return false;
           }
 
           if (tokenIsTemp) {

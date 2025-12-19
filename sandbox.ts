@@ -14,7 +14,9 @@ type SandboxContext = GlobalOptions & {
 };
 
 export const sandboxCreateCommand = new Command<SandboxContext>()
-  .description("Create a new sandbox in an organization")
+  .description(
+    "Create a new sandbox in an organization\n\nIf Lifetime is 'session', it will start a SSH session.",
+  )
   .option("--lifetime <duration:string>", "The lifetime of the sandbox", {
     default: "session",
   })
@@ -26,8 +28,9 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     "new --copy ./app",
   )
   .action(async (options) => {
-    const org = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
+    const quiet = options.lifetime === "session";
+    const org = await ensureOrg(options, quiet);
+    const token = await getAuth(options.debug, options.endpoint, quiet);
 
     const sandbox = await Sandbox.create({
       debug: options.debug,
@@ -43,14 +46,25 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       );
     }
 
-    console.log(sandbox.id);
-
     if (options.lifetime === "session") {
-      Deno.addSignalListener("SIGINT", async () => {
+      const success = await sshIntoSandbox(sandbox);
+      const stopMessage = "Stopping the sandbox...";
+      if (success) {
+        // Closes the sandbox only when ssh session was established and finished successfully
         await sandbox.close();
-        Deno.exit();
-      });
+        console.log(stopMessage);
+      } else {
+        // Otherwise, keep the sandbox running and wait for Ctrl+C
+        console.log("\nCtrl+C to stop the sandbox.");
+        Deno.addSignalListener("SIGINT", async () => {
+          console.log("\n" + stopMessage);
+          await sandbox.close();
+          Deno.exit();
+        });
+      }
     } else {
+      console.log(sandbox.id);
+
       Deno.exit();
     }
   });
@@ -391,7 +405,7 @@ function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
   return groups;
 }*/
 
-async function ensureOrg(options: SandboxContext) {
+async function ensureOrg(options: SandboxContext, quiet: boolean = true) {
   const config = await readConfig(Deno.cwd(), options.config);
   const configContent = getAppFromConfig(config);
 
