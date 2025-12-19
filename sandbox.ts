@@ -415,10 +415,10 @@ async function ensureOrg(options: SandboxContext, quiet: boolean = true) {
     false,
     options.org ?? configContent.org,
     null,
-    true,
+    quiet,
   );
 
-  if (!configContent.org && app.org) {
+  if (config && !configContent.org && app.org) {
     await writeConfig(config, app.org);
   }
 
