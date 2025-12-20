@@ -332,11 +332,14 @@ export const sandboxExecCommand = new Command<SandboxContext>()
     const child = await sandbox.spawn("bash", {
       cwd: options.cwd,
       args: ["-c", command.join(" ")],
+      stdin: "piped",
       stdout: options.quiet ? "null" : "inherit",
       stderr: options.quiet ? "null" : "inherit",
     });
 
-    const status = await child.status;
+    const write = Deno.stdin.readable.pipeTo(child.stdin!);
+
+    const [status] = await Promise.all([child.status, write]);
     Deno.exit(status.code);
   });
 
@@ -398,11 +401,14 @@ export const sandboxRunCommand = new Command<SandboxContext>()
     const child = await sandbox.spawn("bash", {
       cwd: options.cwd,
       args: ["-c", command.join(" ")],
+      stdin: "piped",
       stdout: options.quiet ? "null" : "inherit",
       stderr: options.quiet ? "null" : "inherit",
     });
 
-    const status = await child.status;
+    const write = Deno.stdin.readable.pipeTo(child.stdin!);
+
+    const [status] = await Promise.all([child.status, write]);
     Deno.exit(status.code);
   });
 
