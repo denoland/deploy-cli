@@ -204,7 +204,7 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
     "copy someSandboxId:/app/remote-file.txt anotherSandboxId:/app/remote-file.txt",
   )
   .example(
-    "Copy a all files from a directory in a sandbox to the local machine",
+    "Copy all files from a directory in a sandbox to the local machine",
     "copy someSandboxId:/app/* ./",
   )
   .arguments("<paths...:string>")
