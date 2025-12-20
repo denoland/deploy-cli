@@ -412,6 +412,7 @@ export const sandboxExtendCommand = new Command<SandboxContext>()
   .action(async (options, sandboxId, lifetime) => {
     await using sandbox = await connectToSandbox(options, sandboxId);
 
+    // deno-lint-ignore no-explicit-any
     console.log(await sandbox.extendLifetime(lifetime as any));
   });
 
