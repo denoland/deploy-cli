@@ -7,7 +7,8 @@
     "jsr:@cliffy/internal@1.0.0-rc.8": "1.0.0-rc.8",
     "jsr:@cliffy/table@1.0.0-rc.8": "1.0.0-rc.8",
     "jsr:@deno/framework-detect@0": "0.2.0",
-    "jsr:@deno/sandbox@~0.4.3": "0.4.3",
+    "jsr:@deno/sandbox@*": "0.4.4",
+    "jsr:@deno/sandbox@~0.4.4": "0.4.4",
     "jsr:@std/async@^1.0.15": "1.0.15",
     "jsr:@std/cli@1.0.22": "1.0.22",
     "jsr:@std/dotenv@~0.225.5": "0.225.5",
@@ -78,8 +79,8 @@
         "jsr:@std/path@^1.0.8"
       ]
     },
-    "@deno/sandbox@0.4.3": {
-      "integrity": "b8683bb75d9169c75d628dbc59d8c51de21871519b3c012c780e675a0323b0b4",
+    "@deno/sandbox@0.4.4": {
+      "integrity": "d3c243b35c2f3fa7915105211afa87dff27c15c2948a01f650c2926ca0333c23",
       "dependencies": [
         "jsr:@std/async",
         "jsr:@std/encoding",
@@ -2516,7 +2517,8 @@
       "jsr:@cfa/gitignore-parser@~0.1.4",
       "jsr:@cliffy/command@^1.0.0-rc.8",
       "jsr:@deno/framework-detect@0",
-      "jsr:@deno/sandbox@~0.4.3",
+      "jsr:@deno/sandbox@~0.4.4",
+      "jsr:@std/async@^1.0.15",
       "jsr:@std/cli@1.0.22",
       "jsr:@std/dotenv@~0.225.5",
       "jsr:@std/encoding@^1.0.10",

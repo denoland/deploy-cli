@@ -1,6 +1,9 @@
 import { Command } from "@cliffy/command";
 import { Sandbox } from "@deno/sandbox";
 import { green, magenta, red } from "@std/fmt/colors";
+import { pooledMap } from "@std/async";
+import { expandGlob } from "@std/fs";
+import { join } from "@std/path";
 
 import { getAppFromConfig, readConfig, writeConfig } from "./config.ts";
 import { error, renderTemporalTimestamp, withApp } from "./util.ts";
@@ -47,6 +50,8 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     }
 
     if (options.lifetime === "session") {
+      console.log(`Created sandbox with id '${sandbox.id}'`);
+
       const success = await sshIntoSandbox(sandbox);
       const stopMessage = "Stopping the sandbox...";
       if (success) {
@@ -174,18 +179,18 @@ export const sandboxSshCommand = new Command<SandboxContext>()
 
 export const sandboxCopyCommand = new Command<SandboxContext>()
   .description("Copy files from or to a running sandbox")
-  /*.example(
+  .example(
     "Copy a file from a sandbox to the local machine",
     "copy someSandboxId:/app/remote-file.txt ./local-file.txt",
-  )*/
+  )
   .example(
     "Copy a file from the local machine to a sandbox",
     "copy ./local-file.txt someSandboxId:/app/remote-file.txt",
   )
-  /*.example(
+  .example(
     "Copy multiple files from a sandbox to the local machine",
     "copy someSandboxId:/app/remote-file.txt someSandboxId:/app/another-remote-file.txt ./",
-  )*/
+  )
   .example(
     "Copy multiple files from the local machine to a sandbox",
     "copy ./local-file.txt ./another-local-file.txt someSandboxId:/app/",
@@ -194,10 +199,14 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
     "Copy a directory from the local machine to a sandbox",
     "copy ./ ./another-local-file.txt someSandboxId:/app/",
   )
-  /*.example(
+  .example(
     "Copy files from a sandbox to another sandbox",
     "copy someSandboxId:/app/remote-file.txt anotherSandboxId:/app/remote-file.txt",
-  )*/
+  )
+  .example(
+    "Copy a all files from a directory in a sandbox to the local machine",
+    "copy someSandboxId:/app/* ./",
+  )
   .arguments("<paths...:string>")
   .action(async (options, ...paths) => {
     if (paths.length < 2) {
@@ -207,56 +216,70 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
     const target = paths.pop()!;
 
     if (target.includes(":")) {
-      const [sandboxId, sandboxPath] = target.split(":");
-      await using sandbox = await connectToSandbox(options, sandboxId);
+      const [sandboxId, targetSandboxPath] = target.split(":");
+      await using targetSandbox = await connectToSandbox(options, sandboxId);
 
-      //const sourceSandboxPaths = [];
+      const sourceSandboxPaths = [];
       const localPaths = [];
 
       for (const path of paths) {
         if (path.includes(":")) {
-          error(
-            options.debug,
-            "Copying between sandboxes is currently not supported",
-          );
-
-          //sourceSandboxPaths.push(path);
+          sourceSandboxPaths.push(path);
         } else {
           localPaths.push(path);
         }
       }
 
-      /*const sourceSandboxGroups = groupPathsBySandbox(sourceSandboxPaths);
+      const sourceSandboxGroups = groupPathsBySandbox(sourceSandboxPaths);
       const sourceSandboxes: Record<string, Sandbox> = {};
 
       for (const sandboxId of Object.keys(sourceSandboxGroups)) {
         sourceSandboxes[sandboxId] = await connectToSandbox(options, sandboxId);
-      }*/
+      }
 
       await Promise.all([
         ...localPaths.map((path) => {
-          return sandbox.upload(path, sandboxPath);
+          return targetSandbox.upload(path, targetSandboxPath);
         }),
-        /*...Object.entries(sourceSandboxGroups).map(
+        ...Object.entries(sourceSandboxGroups).map(
           async ([sandboxId, sourceSandboxPaths]) => {
             const sourceSandbox = sourceSandboxes[sandboxId];
 
             await Promise.all(
               sourceSandboxPaths.map(async (sourceSandboxPath) => {
                 const tempDir = await Deno.makeTempDir();
-                await sourceSandbox.download(sourceSandboxPath, tempDir);
-                await sandbox.upload(tempDir, target);
+
+                await Array.fromAsync(pooledMap(
+                  Infinity,
+                  sourceSandbox.expandGlob(sourceSandboxPath),
+                  async (sandboxEntry) => {
+                    await sourceSandbox.download(sandboxEntry.path, tempDir);
+
+                    await Array.fromAsync(pooledMap(
+                      Infinity,
+                      expandGlob(`${tempDir}/*`),
+                      (localEntry) =>
+                        targetSandbox.upload(
+                          localEntry.path,
+                          join(
+                            targetSandboxPath,
+                            localEntry.isDirectory
+                              ? "./"
+                              : `./${localEntry.name}`,
+                          ),
+                        ),
+                    ));
+                  },
+                ));
               }),
             );
 
-            await sandbox.close();
+            await sourceSandbox.close();
           },
-        ),*/
+        ),
       ]);
     } else {
-      error(options.debug, "Copying from sandboxes is currently not supported");
-
-      /*for (const path of paths) {
+      for (const path of paths) {
         if (!path.includes(":")) {
           error(
             options.debug,
@@ -276,13 +299,17 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
         Object.entries(groups).map(async ([sandboxId, sandboxPaths]) => {
           const sandbox = sandboxes[sandboxId];
 
-          await Promise.all(sandboxPaths.map((sandboxPath) => {
-            return sandbox.download(sandboxPath, target);
+          await Promise.all(sandboxPaths.map(async (sandboxPath) => {
+            await Array.fromAsync(pooledMap(
+              Infinity,
+              sandbox.expandGlob(sandboxPath),
+              (entry) => sandbox.download(entry.path, target),
+            ));
           }));
 
           await sandbox.close();
         }),
-      );*/
+      );
     }
   });
 
@@ -379,20 +406,17 @@ export const sandboxRunCommand = new Command<SandboxContext>()
     Deno.exit(status.code);
   });
 
-/*
 export const sandboxExtendCommand = new Command<SandboxContext>()
   .description("Extend the lifetime of a running sandbox")
   .arguments("<sandbox-id:string> <lifetime:string>")
   .action(async (options, sandboxId, lifetime) => {
     await using sandbox = await connectToSandbox(options, sandboxId);
 
-    console.log(await sandbox.extendLifetime(lifetime));
+    console.log(await sandbox.extendLifetime(lifetime as any));
   });
-*/
 
-/*
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
-  const groups = {};
+  const groups: Record<string, string[]> = {};
 
   for (const path of paths) {
     const [sandboxId, sandboxPath] = path.split(":");
@@ -403,7 +427,7 @@ function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
   }
 
   return groups;
-}*/
+}
 
 async function ensureOrg(options: SandboxContext, quiet: boolean = true) {
   const config = await readConfig(Deno.cwd(), options.config);
@@ -440,6 +464,7 @@ async function connectToSandbox(
 
   return await Sandbox.connect({
     id: sandboxId,
+    apiEndpoint: options.endpoint,
     region: cluster.region,
     debug: options.debug,
     token,
@@ -597,5 +622,5 @@ export const sandboxCommand = new Command<GlobalOptions>()
   .alias("cp")
   .command("exec", sandboxExecCommand)
   .command("run", sandboxRunCommand)
-  //.command("extend", sandboxExtendCommand)
+  .command("extend", sandboxExtendCommand)
   .command("ssh", sandboxSshCommand);
