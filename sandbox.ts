@@ -39,8 +39,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       debug: options.debug,
       token,
       org,
-      // deno-lint-ignore no-explicit-any
-      lifetime: options.lifetime as any,
+      lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
     });
 
     if (options.copy) {
@@ -216,7 +215,10 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
     const target = paths.pop()!;
 
     if (target.includes(":")) {
-      const [sandboxId, targetSandboxPath] = target.split(":");
+      const separatorIndex = target.indexOf(":");
+      const sandboxId = target.slice(0, separatorIndex);
+      const targetSandboxPath = target.slice(separatorIndex + 1);
+
       await using targetSandbox = await connectToSandbox(options, sandboxId);
 
       const sourceSandboxPaths = [];
@@ -253,11 +255,12 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
                   Infinity,
                   sourceSandbox.expandGlob(sourceSandboxPath),
                   async (sandboxEntry) => {
-                    await sourceSandbox.download(sandboxEntry.path, tempDir);
+                    const tempPath = join(tempDir, sandboxEntry.path);
+                    await sourceSandbox.download(sandboxEntry.path, tempPath);
 
                     await Array.fromAsync(pooledMap(
                       Infinity,
-                      expandGlob(`${tempDir}/*`),
+                      expandGlob(`${tempPath}/*`),
                       (localEntry) =>
                         targetSandbox.upload(
                           localEntry.path,
@@ -371,8 +374,7 @@ export const sandboxRunCommand = new Command<SandboxContext>()
       debug: options.debug,
       token,
       org,
-      // deno-lint-ignore no-explicit-any
-      lifetime: options.lifetime as any,
+      lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
     });
 
     console.log(`Created sandbox with id '${sandbox.id}'`);
@@ -418,18 +420,23 @@ export const sandboxExtendCommand = new Command<SandboxContext>()
   .action(async (options, sandboxId, lifetime) => {
     await using sandbox = await connectToSandbox(options, sandboxId);
 
-    // deno-lint-ignore no-explicit-any
-    console.log(await sandbox.extendLifetime(lifetime as any));
+    console.log(
+      await sandbox.extendLifetime(lifetime as `${number}s` | `${number}m`),
+    );
   });
 
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
   const groups: Record<string, string[]> = {};
 
   for (const path of paths) {
-    const [sandboxId, sandboxPath] = path.split(":");
+    const separatorIndex = path.indexOf(":");
+    const sandboxId = path.slice(0, separatorIndex);
+    const sandboxPath = path.slice(separatorIndex + 1);
+
     if (!groups[sandboxId]) {
       groups[sandboxId] = [];
     }
+
     groups[sandboxId].push(sandboxPath);
   }
 
