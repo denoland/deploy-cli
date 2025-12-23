@@ -256,6 +256,7 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
                   sourceSandbox.expandGlob(sourceSandboxPath),
                   async (sandboxEntry) => {
                     const tempPath = join(tempDir, sandboxEntry.path);
+                    await Deno.mkdir(tempPath, { recursive: true });
                     await sourceSandbox.download(sandboxEntry.path, tempPath);
 
                     await Array.fromAsync(pooledMap(
