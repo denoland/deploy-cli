@@ -88,9 +88,9 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       Deno.exit(status.code);
     }
 
+    const stopMessage = "Stopping the sandbox...";
     if (options.ssh) {
       const success = await sshIntoSandbox(sandbox);
-      const stopMessage = "Stopping the sandbox...";
       if (success) {
         // Closes the sandbox only when ssh session was established and finished successfully
         await sandbox.close();
@@ -104,6 +104,14 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
           Deno.exit();
         });
       }
+    } else if (options.lifetime === "session") {
+      // Otherwise, keep the sandbox running and wait for Ctrl+C
+      console.log("\nCtrl+C to stop the sandbox.");
+      Deno.addSignalListener("SIGINT", async () => {
+        console.log("\n" + stopMessage);
+        await sandbox.close();
+        Deno.exit();
+      });
     } else {
       console.log(sandbox.id);
 
