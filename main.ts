@@ -16,7 +16,7 @@ import {
 } from "./env.ts";
 import { createTrpcClient, getAuth } from "./auth.ts";
 import token_storage from "./token_storage.ts";
-import { sandboxCommand } from "./sandbox.ts";
+import { sandboxCommand } from "./sandbox/mod.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (

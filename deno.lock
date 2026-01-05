@@ -7,22 +7,20 @@
     "jsr:@cliffy/internal@1.0.0-rc.8": "1.0.0-rc.8",
     "jsr:@cliffy/table@1.0.0-rc.8": "1.0.0-rc.8",
     "jsr:@deno/framework-detect@0": "0.2.0",
-    "jsr:@deno/sandbox@*": "0.4.4",
-    "jsr:@deno/sandbox@~0.4.4": "0.4.4",
-    "jsr:@std/async@^1.0.15": "1.0.15",
+    "jsr:@deno/sandbox@0.5": "0.5.0",
+    "jsr:@std/async@^1.0.15": "1.0.16",
     "jsr:@std/cli@1.0.22": "1.0.22",
     "jsr:@std/dotenv@~0.225.5": "0.225.5",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/fmt@^1.0.8": "1.0.8",
     "jsr:@std/fmt@~1.0.2": "1.0.8",
-    "jsr:@std/fs@^1.0.19": "1.0.20",
+    "jsr:@std/fs@^1.0.19": "1.0.21",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/json@^1.0.2": "1.0.2",
     "jsr:@std/jsonc@^1.0.1": "1.0.2",
-    "jsr:@std/jsonc@^1.0.2": "1.0.2",
-    "jsr:@std/path@^1.0.8": "1.1.3",
-    "jsr:@std/path@^1.1.2": "1.1.3",
-    "jsr:@std/path@^1.1.3": "1.1.3",
+    "jsr:@std/path@^1.0.8": "1.1.4",
+    "jsr:@std/path@^1.1.2": "1.1.4",
+    "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/semver@^1.0.5": "1.0.7",
     "jsr:@std/streams@^1.0.13": "1.0.14",
     "jsr:@std/tar@~0.1.8": "0.1.9",
@@ -75,14 +73,13 @@
     "@deno/framework-detect@0.2.0": {
       "integrity": "d226ea0c1ff4d7be556f6d11b11194d1534c1963ce4c1da14f24d48b667810b8",
       "dependencies": [
-        "jsr:@std/jsonc@^1.0.1",
+        "jsr:@std/jsonc",
         "jsr:@std/path@^1.0.8"
       ]
     },
-    "@deno/sandbox@0.4.4": {
-      "integrity": "d3c243b35c2f3fa7915105211afa87dff27c15c2948a01f650c2926ca0333c23",
+    "@deno/sandbox@0.5.0": {
+      "integrity": "fdffd6ca64189bc4c67533cb429b3ff0d860b4c2b41388db1177d8d2a6163027",
       "dependencies": [
-        "jsr:@std/async",
         "jsr:@std/encoding",
         "jsr:@std/fs",
         "jsr:@std/path@^1.1.2",
@@ -91,8 +88,8 @@
         "npm:zod"
       ]
     },
-    "@std/async@1.0.15": {
-      "integrity": "55d1d9d04f99403fe5730ab16bdcc3c47f658a6bf054cafb38a50f046238116e"
+    "@std/async@1.0.16": {
+      "integrity": "6c9e43035313b67b5de43e2b3ee3eadb39a488a0a0a3143097f112e025d3ee9a"
     },
     "@std/cli@1.0.22": {
       "integrity": "50d1e4f87887cb8a8afa29b88505ab5081188f5cad3985460c3b471fa49ff21a"
@@ -106,11 +103,11 @@
     "@std/fmt@1.0.8": {
       "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
     },
-    "@std/fs@1.0.20": {
-      "integrity": "e953206aae48d46ee65e8783ded459f23bec7dd1f3879512911c35e5484ea187",
+    "@std/fs@1.0.21": {
+      "integrity": "d720fe1056d78d43065a4d6e0eeb2b19f34adb8a0bc7caf3a4dbf1d4178252cd",
       "dependencies": [
         "jsr:@std/internal",
-        "jsr:@std/path@^1.1.3"
+        "jsr:@std/path@^1.1.4"
       ]
     },
     "@std/internal@1.0.12": {
@@ -125,8 +122,8 @@
         "jsr:@std/json"
       ]
     },
-    "@std/path@1.1.3": {
-      "integrity": "b015962d82a5e6daea980c32b82d2c40142149639968549c649031a230b1afb3",
+    "@std/path@1.1.4": {
+      "integrity": "1d2d43f39efb1b42f0b1882a25486647cb851481862dc7313390b2bb044314b5",
       "dependencies": [
         "jsr:@std/internal"
       ]
@@ -2517,7 +2514,7 @@
       "jsr:@cfa/gitignore-parser@~0.1.4",
       "jsr:@cliffy/command@^1.0.0-rc.8",
       "jsr:@deno/framework-detect@0",
-      "jsr:@deno/sandbox@~0.4.4",
+      "jsr:@deno/sandbox@0.5",
       "jsr:@std/async@^1.0.15",
       "jsr:@std/cli@1.0.22",
       "jsr:@std/dotenv@~0.225.5",

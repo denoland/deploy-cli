@@ -1,7 +1,7 @@
 import { Command } from "@cliffy/command";
 import { parse as dotEnvParse } from "@std/dotenv";
 import { getAppFromConfig, readConfig } from "./config.ts";
-import { error, withApp } from "./util.ts";
+import { error, tablePrinter, withApp } from "./util.ts";
 import { createTrpcClient } from "./auth.ts";
 import type { GlobalOptions } from "./main.ts";
 
@@ -61,51 +61,33 @@ export const envListCommand = new Command<EnvCommandContext>()
         org: orgAndApp.org,
       });
 
-    const processed = envVars.map((envVar) => {
-      const contextNames = [];
-
-      if (envVar.context_ids) {
-        for (const contextId of envVar.context_ids) {
-          contextNames.push(
-            contexts.find((context) => context.id === contextId)!.name,
-          );
-        }
-      } else {
-        contextNames.push("All");
-      }
-
-      return {
-        key: envVar.key,
-        value: envVar.value ?? "***",
-        contexts: contextNames.join(", "),
-      };
-    });
-
-    const contextTitle = `Contexts (${
+    const contextTitle = `CONTEXTS (${
       contexts.map((context) => context.name).join(", ")
     })`;
 
-    let keyLength = 3;
-    let valueLength = 5;
+    tablePrinter(
+      ["KEY", "VALUE", contextTitle],
+      envVars,
+      (envVar) => {
+        const contextNames = [];
 
-    for (const processedElement of processed) {
-      keyLength = Math.max(keyLength, processedElement.key.length);
-      valueLength = Math.max(valueLength, processedElement.value.length);
-    }
+        if (envVar.context_ids) {
+          for (const contextId of envVar.context_ids) {
+            contextNames.push(
+              contexts.find((context) => context.id === contextId)!.name,
+            );
+          }
+        } else {
+          contextNames.push("All");
+        }
 
-    console.log(
-      `${"Key".padEnd(keyLength)}   ${
-        "Value".padEnd(valueLength)
-      }   ${contextTitle}`,
+        return [
+          envVar.key,
+          envVar.value ?? "***",
+          contextNames.join(", "),
+        ];
+      },
     );
-
-    for (const env of processed) {
-      console.log(
-        `${env.key.padEnd(keyLength)}   ${
-          env.value.padEnd(valueLength)
-        }   ${env.contexts}`,
-      );
-    }
   });
 
 export const envAddCommand = new Command<EnvCommandContext>()
