@@ -30,6 +30,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--cwd <path:string>", "Working directory of the command")
   .option("--ssh", "SSH into the sandbox")
   .option("--expose-http <port:number>", "Expose the specified port")
+  .option("--memory <value:string>", "Memory limit for the sandbox")
   .arguments("<command...>")
   .example(
     "Create a sandbox and run a command",
@@ -38,6 +39,10 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .example(
     "Copying files from a local directory",
     "new --copy ./app",
+  )
+  .example(
+    "Create a sandbox with a custom memory limit",
+    "new --memory 2gb",
   )
   .action(async (options, ...command) => {
     const quiet = options.lifetime === "session";
@@ -49,6 +54,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       token,
       org,
       lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
+      memoryMb: parseSize(options.memory),
     });
     if (options.lifetime === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
@@ -601,6 +607,28 @@ export function formatDuration(ms: number): string {
   }
 
   return str;
+}
+
+function parseSize(size: string | undefined): number | undefined {
+  if (size === undefined) return undefined;
+
+  const regex = /^(\d+)(gb|mb)$/i;
+  const res = regex.exec(size);
+
+  if (res === null) {
+    // error
+    error(
+      false,
+      "Invalid size format. Examples of valid size: '2gb', '1024mb'",
+    );
+  }
+
+  switch (res[2].toLowerCase()) {
+    case "gb":
+      return parseInt(res[1]) * 1024;
+    case "mb":
+      return parseInt(res[1]);
+  }
 }
 
 export const sandboxCommand = new Command<GlobalOptions>()
