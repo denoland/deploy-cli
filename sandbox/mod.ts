@@ -19,9 +19,7 @@ export type SandboxContext = GlobalOptions & {
 };
 
 export const sandboxCreateCommand = new Command<SandboxContext>()
-  .description(
-    "Create a new sandbox in an organization\n\nIf Lifetime is 'session', it will start a SSH session.",
-  )
+  .description("Create a new sandbox in an organization")
   .option("--lifetime <duration:string>", "The lifetime of the sandbox", {
     default: "session",
   })
@@ -30,7 +28,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   })
   .option("-q, --quiet", "Don't pipe the command to the console")
   .option("--cwd <path:string>", "Working directory of the command")
-  .option("--ssh", "SSH into the the sandbox")
+  .option("--ssh", "SSH into the sandbox")
   .option("--expose-http <port:number>", "Expose the specified port")
   .arguments("<command...>")
   .example(
@@ -52,7 +50,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       org,
       lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
     });
-    if (options.lifetime === "session") {
+    if (options.lifetime === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
     }
 
@@ -90,7 +88,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       Deno.exit(status.code);
     }
 
-    if (options.lifetime === "session" && options.ssh) {
+    if (options.ssh) {
       const success = await sshIntoSandbox(sandbox);
       const stopMessage = "Stopping the sandbox...";
       if (success) {
