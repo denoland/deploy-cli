@@ -1,5 +1,5 @@
-import { $ } from "jsr:@david/dax";
-import { assertEquals, assertExists } from "jsr:@std/assert";
+import { $ } from "dax";
+import { assertEquals, assertExists } from "@std/assert";
 
 if (!Deno.env.get("DENO_DEPLOY_TOKEN")) {
   console.error("DENO_DEPLOY_TOKEN environment variable is required.");
