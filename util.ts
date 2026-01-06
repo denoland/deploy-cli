@@ -220,7 +220,7 @@ export function parseSize(size: string): number {
       return num * KIBIBYTE;
   }
 
-  return 0;
+  throw new Error("unreachable");
 }
 
 export function tablePrinter<T>(
