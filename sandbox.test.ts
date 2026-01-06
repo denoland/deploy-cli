@@ -11,23 +11,6 @@ const sandbox = async (...args: string[]) => {
   return await $.raw`deno sandbox ${args.join(" ")}`.text();
 };
 
-Deno.test("volumes create", async () => {
-  const volumeName = `test-vol-${crypto.randomUUID()}`.slice(0, 32);
-
-  const volumeId = await sandbox(
-    "volumes",
-    "create",
-    volumeName,
-    "--capacity",
-    "1gb",
-    "--region",
-    "ord",
-  );
-  assertExists(volumeId.trim());
-
-  await sandbox("volumes", "delete", volumeId.trim());
-});
-
 Deno.test("sandbox create", async () => {
   const sandboxId = await sandbox(
     "create",
@@ -85,6 +68,62 @@ Deno.test("sandbox extend", async () => {
   await sandbox("kill", cleanId);
 });
 
+Deno.test("sandbox exec with complex commands", async () => {
+  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "60s");
+  const cleanId = sandboxId.trim();
+
+  const result = await sandbox("exec", cleanId, "'echo hello && echo world'");
+  assertEquals(result.includes("hello"), true);
+  assertEquals(result.includes("world"), true);
+
+  await sandbox("kill", cleanId);
+});
+
+Deno.test("sandbox copy directory structure", async () => {
+  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "60s");
+  const cleanId = sandboxId.trim();
+
+  await Deno.mkdir("testdir", { recursive: true });
+  await Deno.writeTextFile("testdir/file1.txt", "content1");
+  await Deno.writeTextFile("testdir/file2.txt", "content2");
+
+  await sandbox("exec", cleanId, "'mkdir -p /tmp/testdir'");
+  await sandbox(
+    "copy",
+    "testdir/file1.txt",
+    `${cleanId}:/tmp/testdir/file1.txt`,
+  );
+  await sandbox(
+    "copy",
+    "testdir/file2.txt",
+    `${cleanId}:/tmp/testdir/file2.txt`,
+  );
+
+  const result = await sandbox("exec", cleanId, "ls", "/tmp/testdir");
+  assertEquals(result.includes("file1.txt"), true);
+  assertEquals(result.includes("file2.txt"), true);
+
+  await Deno.remove("testdir", { recursive: true });
+  await sandbox("kill", cleanId);
+});
+
+Deno.test("volumes create", async () => {
+  const volumeName = `test-vol-${crypto.randomUUID()}`.slice(0, 32);
+
+  const volumeId = await sandbox(
+    "volumes",
+    "create",
+    volumeName,
+    "--capacity",
+    "1gb",
+    "--region",
+    "ord",
+  );
+  assertExists(volumeId.trim());
+
+  await sandbox("volumes", "delete", volumeId.trim());
+});
+
 Deno.test("sandbox with volume mount", async () => {
   const volumeName = `test-vol-${crypto.randomUUID()}`.slice(0, 32);
 
@@ -124,43 +163,4 @@ Deno.test("sandbox with volume mount", async () => {
 
   await sandbox("kill", cleanId);
   await sandbox("volumes", "delete", cleanVolumeId);
-});
-
-Deno.test("sandbox exec with complex commands", async () => {
-  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "60s");
-  const cleanId = sandboxId.trim();
-
-  const result = await sandbox("exec", cleanId, "'echo hello && echo world'");
-  assertEquals(result.includes("hello"), true);
-  assertEquals(result.includes("world"), true);
-
-  await sandbox("kill", cleanId);
-});
-
-Deno.test("sandbox copy directory structure", async () => {
-  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "60s");
-  const cleanId = sandboxId.trim();
-
-  await Deno.mkdir("testdir", { recursive: true });
-  await Deno.writeTextFile("testdir/file1.txt", "content1");
-  await Deno.writeTextFile("testdir/file2.txt", "content2");
-
-  await sandbox("exec", cleanId, "'mkdir -p /tmp/testdir'");
-  await sandbox(
-    "copy",
-    "testdir/file1.txt",
-    `${cleanId}:/tmp/testdir/file1.txt`,
-  );
-  await sandbox(
-    "copy",
-    "testdir/file2.txt",
-    `${cleanId}:/tmp/testdir/file2.txt`,
-  );
-
-  const result = await sandbox("exec", cleanId, "ls", "/tmp/testdir");
-  assertEquals(result.includes("file1.txt"), true);
-  assertEquals(result.includes("file2.txt"), true);
-
-  await Deno.remove("testdir", { recursive: true });
-  await sandbox("kill", cleanId);
 });
