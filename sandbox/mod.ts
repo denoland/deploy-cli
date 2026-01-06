@@ -9,7 +9,8 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
 import {
   error,
-  parseSizeToMib,
+  MEBIBYTE,
+  parseSize,
   renderTemporalTimestamp,
   withApp,
 } from "../util.ts";
@@ -54,12 +55,18 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     const org = await ensureOrg(options, quiet);
     const token = await getAuth(options.debug, options.endpoint, quiet);
 
+    let memoryMb = undefined;
+
+    if (options.memory) {
+      memoryMb = parseSize(options.memory) / MEBIBYTE;
+    }
+
     const sandbox = await Sandbox.create({
       debug: options.debug,
       token,
       org,
       lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
-      memoryMb: parseSizeToMib(options.memory),
+      memoryMb,
     });
     if (options.lifetime === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
@@ -93,10 +100,13 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
         stderr: options.quiet ? "null" : "inherit",
       });
 
-      const write = Deno.stdin.readable.pipeTo(child.stdin!);
+      Deno.stdin.readable.pipeTo(child.stdin!);
 
-      const [status] = await Promise.all([child.status, write]);
-      Deno.exit(status.code);
+      const status = await child.status;
+
+      if (!status.success) {
+        Deno.exit(status.code);
+      }
     }
 
     const stopMessage = "Stopping the sandbox...";
@@ -398,9 +408,9 @@ export const sandboxExecCommand = new Command<SandboxContext>()
       stderr: options.quiet ? "null" : "inherit",
     });
 
-    const write = Deno.stdin.readable.pipeTo(child.stdin!);
+    Deno.stdin.readable.pipeTo(child.stdin!);
 
-    const [status] = await Promise.all([child.status, write]);
+    const status = await child.status;
     Deno.exit(status.code);
   });
 

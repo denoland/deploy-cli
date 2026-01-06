@@ -29,6 +29,12 @@ jobs:
       - name: check
         run: deno check
 
+      - name: run tests
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          DENO_DEPLOY_CLI_SPECIFIER: file://${{ github.workspace }}/main.ts
+        run: deno test --allow-all
+
   jsr:
     runs-on: ubuntu-latest
     permissions:
