@@ -6,12 +6,12 @@ import { tablePrinter } from "../util.ts";
 
 export const volumesCreateCommand = new Command<SandboxContext>()
   .description("Create a volume")
-  .option("--name <string>", "The name of the volume", { required: true })
   .option("--capacity <string|number>", "The capacity of the volume", {
     required: true,
   })
   .option("--region <string>", "The region of the volume", { required: true })
-  .action(async (options) => {
+  .arguments("<name:string>")
+  .action(async (options, name) => {
     const org = await ensureOrg(options);
     const token = await getAuth(options.debug, options.endpoint, true);
 
@@ -22,7 +22,7 @@ export const volumesCreateCommand = new Command<SandboxContext>()
     });
 
     const volume = await client.volumes.create({
-      slug: options.name,
+      slug: name,
       capacity: options.capacity as VolumeInit["capacity"],
       region: options.region,
     });
