@@ -10,7 +10,7 @@ export const volumesCreateCommand = new Command<SandboxContext>()
     required: true,
   })
   .option("--region <string>", "The region of the volume", { required: true })
-  .arguments("<name:string>")
+  .arguments("<name>")
   .action(async (options, name) => {
     const org = await ensureOrg(options);
     const token = await getAuth(options.debug, options.endpoint, true);
