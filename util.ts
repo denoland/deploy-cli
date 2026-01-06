@@ -168,6 +168,60 @@ export function renderTemporalTimestamp(timestamp: string, hideDate = false) {
   return `${date.year}-${months}-${days} ${time}`;
 }
 
+export const KIBIBYTE = 1024;
+export const MEBIBYTE = KIBIBYTE * 1024;
+export const GIBIBYTE = MEBIBYTE * 1024;
+
+export const KILOBYTE = 1000;
+export const MEGABYTE = KILOBYTE * 1000;
+export const GIGABYTE = MEGABYTE * 1000;
+
+export function formatSize(bytes: number): string {
+  if (bytes === 0) return "0 Bytes";
+
+  if (bytes >= GIBIBYTE) {
+    return `${parseFloat((bytes / GIBIBYTE).toFixed(2))} GiB`;
+  }
+
+  if (bytes >= MEBIBYTE) {
+    return `${parseFloat((bytes / MEBIBYTE).toFixed(2))} MiB`;
+  }
+
+  if (bytes >= KIBIBYTE) {
+    return `${parseFloat((bytes / KIBIBYTE).toFixed(2))} KiB`;
+  }
+
+  return `${bytes} Bytes`;
+}
+
+export function parseSize(size: string | undefined): number | undefined {
+  if (size === undefined) return undefined;
+
+  const match = size.match(/^(\d+)(GB|MB|KB|GiB|MiB|KiB)$/i);
+  if (!match) {
+    error(
+      false,
+      "Invalid size format. Examples of valid size: '2gb', '1024mb'",
+    );
+  }
+  const [, numStr, unit] = match;
+  const num = parseInt(numStr, 10);
+  switch (unit.toLowerCase()) {
+    case "gb":
+      return num * GIGABYTE;
+    case "mb":
+      return num * MEGABYTE;
+    case "kb":
+      return num * KILOBYTE;
+    case "gib":
+      return num * GIBIBYTE;
+    case "mib":
+      return num * MEBIBYTE;
+    case "kib":
+      return num * KIBIBYTE;
+  }
+}
+
 export function tablePrinter<T>(
   headers: string[],
   values: T[],

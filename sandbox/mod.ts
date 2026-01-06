@@ -7,7 +7,7 @@ import { join } from "@std/path";
 import { Spinner } from "@std/cli/unstable-spinner";
 
 import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
-import { error, renderTemporalTimestamp, withApp } from "../util.ts";
+import { error, parseSize, renderTemporalTimestamp, withApp } from "../util.ts";
 import { createTrpcClient, getAuth } from "../auth.ts";
 import type { GlobalOptions } from "../main.ts";
 import token_storage from "../token_storage.ts";
@@ -607,28 +607,6 @@ export function formatDuration(ms: number): string {
   }
 
   return str;
-}
-
-function parseSize(size: string | undefined): number | undefined {
-  if (size === undefined) return undefined;
-
-  const regex = /^(\d+)(gb|mb)$/i;
-  const res = regex.exec(size);
-
-  if (res === null) {
-    // error
-    error(
-      false,
-      "Invalid size format. Examples of valid size: '2gb', '1024mb'",
-    );
-  }
-
-  switch (res[2].toLowerCase()) {
-    case "gb":
-      return parseInt(res[1]) * 1024;
-    case "mb":
-      return parseInt(res[1]);
-  }
 }
 
 export const sandboxCommand = new Command<GlobalOptions>()
