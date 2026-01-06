@@ -194,7 +194,7 @@ export function formatSize(bytes: number): string {
   return `${bytes} Bytes`;
 }
 
-export function parseSize(size: string | undefined): number | undefined {
+export function parseSizeToMib(size: string | undefined): number | undefined {
   if (size === undefined) return undefined;
 
   const match = size.match(/^(\d+)(GB|MB|KB|GiB|MiB|KiB)$/i);
@@ -205,21 +205,32 @@ export function parseSize(size: string | undefined): number | undefined {
     );
   }
   const [, numStr, unit] = match;
-  const num = parseInt(numStr, 10);
+  const num = parseFloat(numStr);
+
+  let bytes = 0;
+
   switch (unit.toLowerCase()) {
     case "gb":
-      return num * GIGABYTE;
+      bytes = num * GIGABYTE;
+      break;
     case "mb":
-      return num * MEGABYTE;
+      bytes = num * MEGABYTE;
+      break;
     case "kb":
-      return num * KILOBYTE;
+      bytes = num * KILOBYTE;
+      break;
     case "gib":
-      return num * GIBIBYTE;
+      bytes = num * GIBIBYTE;
+      break;
     case "mib":
-      return num * MEBIBYTE;
+      bytes = num * MEBIBYTE;
+      break;
     case "kib":
-      return num * KIBIBYTE;
+      bytes = num * KIBIBYTE;
+      break;
   }
+
+  return Math.floor(bytes / MEBIBYTE);
 }
 
 export function tablePrinter<T>(
