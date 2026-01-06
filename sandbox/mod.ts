@@ -7,7 +7,12 @@ import { join } from "@std/path";
 import { Spinner } from "@std/cli/unstable-spinner";
 
 import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
-import { error, parseSize, renderTemporalTimestamp, withApp } from "../util.ts";
+import {
+  error,
+  parseSizeToMib,
+  renderTemporalTimestamp,
+  withApp,
+} from "../util.ts";
 import { createTrpcClient, getAuth } from "../auth.ts";
 import type { GlobalOptions } from "../main.ts";
 import token_storage from "../token_storage.ts";
@@ -54,7 +59,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       token,
       org,
       lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
-      memoryMb: parseSize(options.memory),
+      memoryMb: parseSizeToMib(options.memory),
     });
     if (options.lifetime === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
