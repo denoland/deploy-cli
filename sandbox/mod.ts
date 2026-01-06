@@ -1,5 +1,5 @@
 import { Command } from "@cliffy/command";
-import { Sandbox } from "@deno/sandbox";
+import { Sandbox, type VolumeId, type VolumeSlug } from "@deno/sandbox";
 import { green, magenta, red } from "@std/fmt/colors";
 import { pooledMap } from "@std/async";
 import { expandGlob } from "@std/fs";
@@ -9,7 +9,8 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
 import {
   error,
-  parseSizeToMib,
+  MEBIBYTE,
+  parseSize,
   renderTemporalTimestamp,
   withApp,
 } from "../util.ts";
@@ -36,6 +37,25 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--ssh", "SSH into the sandbox")
   .option("--expose-http <port:number>", "Expose the specified port")
   .option("--memory <value:string>", "Memory limit for the sandbox")
+  .option(
+    "--volume <volume:string>",
+    "Mount a volume to the sandbox. Needs to be in format <idOrSlug>:<path>",
+    {
+      collect: true,
+      value: (value, previous = {}): Record<string, VolumeId | VolumeSlug> => {
+        const separatorIndex = value.indexOf(":");
+        if (separatorIndex === -1) {
+          error(false, "Volume must be specified as <idOrSlug>:<path>");
+        }
+        const name = value.slice(0, separatorIndex);
+        const path = value.slice(separatorIndex + 1);
+
+        previous[path] = name;
+
+        return previous;
+      },
+    },
+  )
   .arguments("[command...]")
   .example(
     "Create a sandbox and run a command",
@@ -54,12 +74,19 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     const org = await ensureOrg(options, quiet);
     const token = await getAuth(options.debug, options.endpoint, quiet);
 
+    let memoryMb = undefined;
+
+    if (options.memory) {
+      memoryMb = parseSize(options.memory) / MEBIBYTE;
+    }
+
     const sandbox = await Sandbox.create({
       debug: options.debug,
       token,
       org,
       lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
-      memoryMb: parseSizeToMib(options.memory),
+      memoryMb,
+      volumes: options.volume,
     });
     if (options.lifetime === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
@@ -93,10 +120,13 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
         stderr: options.quiet ? "null" : "inherit",
       });
 
-      const write = Deno.stdin.readable.pipeTo(child.stdin!);
+      Deno.stdin.readable.pipeTo(child.stdin!);
 
-      const [status] = await Promise.all([child.status, write]);
-      Deno.exit(status.code);
+      const status = await child.status;
+
+      if (!status.success) {
+        Deno.exit(status.code);
+      }
     }
 
     const stopMessage = "Stopping the sandbox...";
@@ -398,9 +428,9 @@ export const sandboxExecCommand = new Command<SandboxContext>()
       stderr: options.quiet ? "null" : "inherit",
     });
 
-    const write = Deno.stdin.readable.pipeTo(child.stdin!);
+    Deno.stdin.readable.pipeTo(child.stdin!);
 
-    const [status] = await Promise.all([child.status, write]);
+    const status = await child.status;
     Deno.exit(status.code);
   });
 

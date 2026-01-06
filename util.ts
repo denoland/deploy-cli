@@ -194,43 +194,33 @@ export function formatSize(bytes: number): string {
   return `${bytes} Bytes`;
 }
 
-export function parseSizeToMib(size: string | undefined): number | undefined {
-  if (size === undefined) return undefined;
-
+export function parseSize(size: string): number {
   const match = size.match(/^(\d+)(GB|MB|KB|GiB|MiB|KiB)$/i);
   if (!match) {
     error(
       false,
-      "Invalid size format. Examples of valid size: '2gb', '1024mb'",
+      "Invalid size format. Examples of valid size: '2gb', '1gib', '1000mb', '1024mib'",
     );
   }
   const [, numStr, unit] = match;
   const num = parseFloat(numStr);
 
-  let bytes = 0;
-
   switch (unit.toLowerCase()) {
     case "gb":
-      bytes = num * GIGABYTE;
-      break;
+      return num * GIGABYTE;
     case "mb":
-      bytes = num * MEGABYTE;
-      break;
+      return num * MEGABYTE;
     case "kb":
-      bytes = num * KILOBYTE;
-      break;
+      return num * KILOBYTE;
     case "gib":
-      bytes = num * GIBIBYTE;
-      break;
+      return num * GIBIBYTE;
     case "mib":
-      bytes = num * MEBIBYTE;
-      break;
+      return num * MEBIBYTE;
     case "kib":
-      bytes = num * KIBIBYTE;
-      break;
+      return num * KIBIBYTE;
   }
 
-  return Math.floor(bytes / MEBIBYTE);
+  throw new Error("unreachable");
 }
 
 export function tablePrinter<T>(
