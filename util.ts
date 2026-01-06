@@ -73,6 +73,7 @@ export async function withApp(
   if (org === undefined || app === undefined) {
     const trpcClient = createTrpcClient(debug, deployUrl);
 
+    let fullOrg;
     const orgs: Array<{
       name: string;
       slug: string;
@@ -80,8 +81,12 @@ export async function withApp(
       // deno-lint-ignore no-explicit-any
     }> = await (trpcClient.orgs as any).list.query();
 
-    let fullOrg;
-    if (orgs.length === 1) {
+    if (org !== undefined) {
+      fullOrg = orgs.find((fullOrg) => fullOrg.slug === org);
+      if (!fullOrg) {
+        error(debug, `Organization '${org}' does not exist.`);
+      }
+    } else if (orgs.length === 1) {
       fullOrg = orgs[0];
       org = orgs[0].slug;
     } else {
@@ -93,8 +98,7 @@ export async function withApp(
         },
       );
       if (!selectedOrg) {
-        console.error("No organization was selected.");
-        Deno.exit(1);
+        error(debug, "No organization was selected.");
       }
 
       fullOrg = selectedOrg.value;
@@ -162,4 +166,30 @@ export function renderTemporalTimestamp(timestamp: string, hideDate = false) {
   if (hideDate) return time;
 
   return `${date.year}-${months}-${days} ${time}`;
+}
+
+export function tablePrinter<T>(
+  headers: string[],
+  values: T[],
+  transformer: (value: T) => string[],
+) {
+  const padding = headers.map((header) => header.length);
+
+  const processed = values.map((value) => {
+    const transformed = transformer(value);
+
+    for (let i = 0; i < transformed.length; i++) {
+      padding[i] = Math.max(padding[i], transformed[i].length);
+    }
+
+    return transformed;
+  });
+
+  console.log(
+    headers.map((header, i) => header.padEnd(padding[i])).join("   "),
+  );
+
+  for (const row of processed) {
+    console.log(row.map((field, i) => field.padEnd(padding[i])).join("   "));
+  }
 }

@@ -4,33 +4,47 @@ import { green, magenta, red } from "@std/fmt/colors";
 import { pooledMap } from "@std/async";
 import { expandGlob } from "@std/fs";
 import { join } from "@std/path";
-
-import { getAppFromConfig, readConfig, writeConfig } from "./config.ts";
-import { error, renderTemporalTimestamp, withApp } from "./util.ts";
-import { createTrpcClient, getAuth } from "./auth.ts";
-import type { GlobalOptions } from "./main.ts";
 import { Spinner } from "@std/cli/unstable-spinner";
-import token_storage from "./token_storage.ts";
 
-type SandboxContext = GlobalOptions & {
+import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
+import { error, renderTemporalTimestamp, withApp } from "../util.ts";
+import { createTrpcClient, getAuth } from "../auth.ts";
+import type { GlobalOptions } from "../main.ts";
+import token_storage from "../token_storage.ts";
+
+import { volumesCommand } from "./volumes.ts";
+
+export type SandboxContext = GlobalOptions & {
   org?: string;
 };
 
 export const sandboxCreateCommand = new Command<SandboxContext>()
-  .description(
-    "Create a new sandbox in an organization\n\nIf Lifetime is 'session', it will start a SSH session.",
-  )
+  .description("Create a new sandbox in an organization")
   .option("--lifetime <duration:string>", "The lifetime of the sandbox", {
     default: "session",
   })
   .option("--copy <path:string>", "Copy files or directories to the sandbox", {
     collect: true,
   })
+  .option("-q, --quiet", "Don't pipe the command to the console")
+  .option("--cwd <path:string>", "Working directory of the command")
+  .option("--ssh", "SSH into the sandbox")
+  .option("--expose-http <port:number>", "Expose the specified port")
+  .option("--memory <value:string>", "Memory limit for the sandbox")
+  .arguments("<command...>")
+  .example(
+    "Create a sandbox and run a command",
+    "new ls /",
+  )
   .example(
     "Copying files from a local directory",
     "new --copy ./app",
   )
-  .action(async (options) => {
+  .example(
+    "Create a sandbox with a custom memory limit",
+    "new --memory 2gb",
+  )
+  .action(async (options, ...command) => {
     const quiet = options.lifetime === "session";
     const org = await ensureOrg(options, quiet);
     const token = await getAuth(options.debug, options.endpoint, quiet);
@@ -40,19 +54,49 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       token,
       org,
       lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
+      memoryMb: parseSize(options.memory),
     });
+    if (options.lifetime === "session" || options.ssh) {
+      console.log(`Created sandbox with id '${sandbox.id}'`);
+    }
 
     if (options.copy) {
+      const spinner = new Spinner({
+        message: "Copying files to the sandbox...",
+        color: "yellow",
+      });
+      spinner.start();
+
       await Promise.all(
         options.copy.map((path) => sandbox.upload(path, "/app")),
       );
+
+      spinner.stop();
     }
 
-    if (options.lifetime === "session") {
-      console.log(`Created sandbox with id '${sandbox.id}'`);
+    if (options.exposeHttp) {
+      const url = await sandbox.exposeHttp({ port: options.exposeHttp });
+      console.log(`Exposed port ${options.exposeHttp} to ${url}`);
+    }
 
+    if (command.length > 0) {
+      const child = await sandbox.spawn("bash", {
+        cwd: options.cwd,
+        args: ["-c", command.join(" ")],
+        stdin: "piped",
+        stdout: options.quiet ? "null" : "inherit",
+        stderr: options.quiet ? "null" : "inherit",
+      });
+
+      const write = Deno.stdin.readable.pipeTo(child.stdin!);
+
+      const [status] = await Promise.all([child.status, write]);
+      Deno.exit(status.code);
+    }
+
+    const stopMessage = "Stopping the sandbox...";
+    if (options.ssh) {
       const success = await sshIntoSandbox(sandbox);
-      const stopMessage = "Stopping the sandbox...";
       if (success) {
         // Closes the sandbox only when ssh session was established and finished successfully
         await sandbox.close();
@@ -66,6 +110,14 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
           Deno.exit();
         });
       }
+    } else if (options.lifetime === "session") {
+      // Otherwise, keep the sandbox running and wait for Ctrl+C
+      console.log("\nCtrl+C to stop the sandbox.");
+      Deno.addSignalListener("SIGINT", async () => {
+        console.log("\n" + stopMessage);
+        await sandbox.close();
+        Deno.exit();
+      });
     } else {
       console.log(sandbox.id);
 
@@ -347,74 +399,6 @@ export const sandboxExecCommand = new Command<SandboxContext>()
     Deno.exit(status.code);
   });
 
-export const sandboxRunCommand = new Command<SandboxContext>()
-  .description("Create a sandbox and run a command")
-  .example(
-    "Create a sandbox and run a command",
-    "run ls /",
-  )
-  .example(
-    "Copying files from a local directory and then running a command",
-    "run --copy ./app ls",
-  )
-  .option("-q, --quiet", "Don't pipe the command to the console")
-  .option("--cwd <path:string>", "Working directory of the command")
-  .option("--copy <path:string>", "Copy files or directories to the sandbox", {
-    collect: true,
-  })
-  .option("--lifetime <duration:string>", "The lifetime of the sandbox", {
-    default: "session",
-  })
-  .option("--expose-http <port:number>", "Expose the specified port")
-  .arguments("<command...>")
-  .action(async function (options, ...command) {
-    const org = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
-
-    const sandbox = await Sandbox.create({
-      debug: options.debug,
-      token,
-      org,
-      lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
-    });
-
-    console.log(`Created sandbox with id '${sandbox.id}'`);
-
-    if (options.copy) {
-      const spinner = new Spinner({
-        message: "Copying files to the sandbox...",
-        color: "yellow",
-      });
-      spinner.start();
-
-      await Promise.all(
-        options.copy.map((path) => sandbox.upload(path, "/app")),
-      );
-
-      spinner.stop();
-    }
-
-    if (options.exposeHttp) {
-      const url = await sandbox.exposeHttp({ port: options.exposeHttp });
-      console.log(`Exposed port ${options.exposeHttp} to ${url}`);
-    }
-
-    console.log();
-
-    const child = await sandbox.spawn("bash", {
-      cwd: options.cwd,
-      args: ["-c", command.join(" ")],
-      stdin: "piped",
-      stdout: options.quiet ? "null" : "inherit",
-      stderr: options.quiet ? "null" : "inherit",
-    });
-
-    const write = Deno.stdin.readable.pipeTo(child.stdin!);
-
-    const [status] = await Promise.all([child.status, write]);
-    Deno.exit(status.code);
-  });
-
 export const sandboxExtendCommand = new Command<SandboxContext>()
   .description("Extend the lifetime of a running sandbox")
   .arguments("<sandbox-id:string> <lifetime:string>")
@@ -424,6 +408,29 @@ export const sandboxExtendCommand = new Command<SandboxContext>()
     console.log(
       await sandbox.extendLifetime(lifetime as `${number}s` | `${number}m`),
     );
+  });
+
+export const sandboxDeployCommand = new Command<SandboxContext>()
+  .description("Deploy a running sandbox to the specified app")
+  .option("--cwd <string>", "The directory to deploy")
+  .option("--prod", "Deploy directly to production", { default: false })
+  .option("--entrypoint <string>", "The entrypoint to use for the app")
+  .option(
+    "--args <args...:string>",
+    "Arguments to pass to the entrypoint script",
+  )
+  .arguments("<sandbox-id:string> <app:string>")
+  .action(async (options, sandboxId, app) => {
+    await using sandbox = await connectToSandbox(options, sandboxId);
+
+    await sandbox.deploy(app, {
+      path: options.cwd,
+      production: options.prod,
+      build: {
+        entrypoint: options.entrypoint,
+        args: options.args,
+      },
+    });
   });
 
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
@@ -444,7 +451,10 @@ function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
   return groups;
 }
 
-async function ensureOrg(options: SandboxContext, quiet: boolean = true) {
+export async function ensureOrg(
+  options: SandboxContext,
+  quiet: boolean = true,
+) {
   const config = await readConfig(Deno.cwd(), options.config);
   const configContent = getAppFromConfig(config);
 
@@ -599,6 +609,28 @@ export function formatDuration(ms: number): string {
   return str;
 }
 
+function parseSize(size: string | undefined): number | undefined {
+  if (size === undefined) return undefined;
+
+  const regex = /^(\d+)(gb|mb)$/i;
+  const res = regex.exec(size);
+
+  if (res === null) {
+    // error
+    error(
+      false,
+      "Invalid size format. Examples of valid size: '2gb', '1024mb'",
+    );
+  }
+
+  switch (res[2].toLowerCase()) {
+    case "gb":
+      return parseInt(res[1]) * 1024;
+    case "mb":
+      return parseInt(res[1]);
+  }
+}
+
 export const sandboxCommand = new Command<GlobalOptions>()
   .name("deno sandbox")
   .description("Interact with sandboxes")
@@ -636,6 +668,7 @@ export const sandboxCommand = new Command<GlobalOptions>()
   .command("copy", sandboxCopyCommand)
   .alias("cp")
   .command("exec", sandboxExecCommand)
-  .command("run", sandboxRunCommand)
   .command("extend", sandboxExtendCommand)
-  .command("ssh", sandboxSshCommand);
+  .command("ssh", sandboxSshCommand)
+  .command("deploy", sandboxDeployCommand)
+  .command("volumes", volumesCommand);
