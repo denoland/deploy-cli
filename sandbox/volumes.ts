@@ -1,8 +1,8 @@
 import { Command } from "@cliffy/command";
 import { ensureOrg, type SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
-import { Client, type VolumeInit } from "@deno/sandbox";
-import { tablePrinter } from "../util.ts";
+import { Client } from "@deno/sandbox";
+import { formatSize, parseSize, tablePrinter } from "../util.ts";
 
 export const volumesCreateCommand = new Command<SandboxContext>()
   .description("Create a volume")
@@ -23,7 +23,7 @@ export const volumesCreateCommand = new Command<SandboxContext>()
 
     const volume = await client.volumes.create({
       slug: name,
-      capacity: options.capacity as VolumeInit["capacity"],
+      capacity: parseSize(options.capacity)!,
       region: options.region,
     });
 
@@ -52,15 +52,12 @@ export const volumesListCommand = new Command<SandboxContext>()
       ["ID", "SLUG", "REGION", "USED", "TOTAL"],
       list.items,
       (volume) => {
-        const used = volume.used.toFixed(2).toString();
-        const total = volume.capacity.toFixed(2).toString();
-
         return [
           volume.id,
           volume.slug,
           volume.region,
-          used,
-          total,
+          formatSize(volume.used),
+          formatSize(volume.capacity),
         ];
       },
     );
