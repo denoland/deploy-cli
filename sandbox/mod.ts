@@ -31,7 +31,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--ssh", "SSH into the sandbox")
   .option("--expose-http <port:number>", "Expose the specified port")
   .option("--memory <value:string>", "Memory limit for the sandbox")
-  .arguments("<command...>")
+  .arguments("[command...]")
   .example(
     "Create a sandbox and run a command",
     "new ls /",
