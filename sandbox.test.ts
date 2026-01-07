@@ -16,15 +16,29 @@ Deno.test("sandbox create", async () => {
     "create",
     "--quiet",
     "--lifetime",
-    "60s",
+    "10s",
     "echo",
     "test",
   );
   await sandbox("kill", sandboxId);
 });
 
+Deno.test("sandbox create with arg separator", async () => {
+  const sandboxId = await sandbox(
+    "create",
+    "--quiet",
+    "--lifetime",
+    "10s",
+    "--",
+    "echo",
+    "-n",
+    "test",
+  );
+  await sandbox("kill", sandboxId);
+});
+
 Deno.test("sandbox exec", async () => {
-  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "60s");
+  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "30s");
 
   const res = await sandbox("exec", sandboxId, "echo", "'exec test'");
   assertEquals(res, "exec test");

@@ -12,6 +12,7 @@ import {
   MEBIBYTE,
   parseSize,
   renderTemporalTimestamp,
+  tablePrinter,
   withApp,
 } from "../util.ts";
 import { createTrpcClient, getAuth } from "../auth.ts";
@@ -69,7 +70,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     "Create a sandbox with a custom memory limit",
     "new --memory 2gb",
   )
-  .action(async (options, ...command) => {
+  .action(async function (options, ...command) {
     const quiet = options.lifetime === "session";
     const org = await ensureOrg(options, quiet);
     const token = await getAuth(options.debug, options.endpoint, quiet);
@@ -111,10 +112,13 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       console.log(`Exposed port ${options.exposeHttp} to ${url}`);
     }
 
-    if (command.length > 0) {
+    const args = this.getLiteralArgs().length > 0
+      ? this.getLiteralArgs()
+      : command;
+    if (args.length > 0) {
       const child = await sandbox.spawn("bash", {
         cwd: options.cwd,
-        args: ["-c", command.join(" ")],
+        args: ["-c", args.join(" ")],
         stdin: "piped",
         stdout: options.quiet ? "null" : "inherit",
         stderr: options.quiet ? "null" : "inherit",
@@ -171,63 +175,38 @@ export const sandboxListCommand = new Command<SandboxContext>()
       status: "running" | "stopped";
       created_at: Date;
       stopped_at: Date | null;
+      cluster_hostname: string;
       // deno-lint-ignore no-explicit-any
     }> = await (client.sandboxes as any).list.query({ org });
 
-    let createdAtHeaderLength = 0;
-    let statusHeaderLength = 0;
-    let idHeaderLength = 0;
-    let uptimeHeaderLength = 0;
+    tablePrinter(
+      ["ID", "CREATED", "REGION", "STATUS", "UPTIME"],
+      list,
+      (sandbox) => {
+        let duration;
 
-    const processed = list.map((sandbox) => {
-      let duration;
+        if (sandbox.stopped_at) {
+          duration = sandbox.stopped_at.getTime() -
+            sandbox.created_at.getTime();
+        } else {
+          duration = new Date().getTime() - sandbox.created_at.getTime();
+        }
 
-      if (sandbox.stopped_at) {
-        duration = sandbox.stopped_at.getTime() - sandbox.created_at.getTime();
-      } else {
-        duration = new Date().getTime() - sandbox.created_at.getTime();
-      }
+        const createdAt = renderTemporalTimestamp(
+          sandbox.created_at.toISOString(),
+        );
+        const formattedDuration = formatDuration(duration);
+        const isRunning = sandbox.status === "running";
 
-      const createdAt = renderTemporalTimestamp(
-        sandbox.created_at.toISOString(),
-      );
-      const formattedDuration = formatDuration(duration);
-
-      createdAtHeaderLength = Math.max(createdAt.length, createdAtHeaderLength);
-      statusHeaderLength = Math.max(sandbox.status.length, statusHeaderLength);
-      idHeaderLength = Math.max(sandbox.id.length, idHeaderLength);
-      uptimeHeaderLength = Math.max(
-        formattedDuration.length,
-        uptimeHeaderLength,
-      );
-
-      return {
-        createdAt,
-        duration: formattedDuration,
-        id: sandbox.id,
-        status: sandbox.status,
-      };
-    });
-
-    console.log([
-      "ID".padEnd(idHeaderLength),
-      "CREATED".padEnd(createdAtHeaderLength),
-      "STATUS".padEnd(statusHeaderLength),
-      "UPTIME".padEnd(uptimeHeaderLength),
-    ].join("   "));
-
-    for (const sandbox of processed) {
-      const isRunning = sandbox.status === "running";
-      const status = sandbox.status.padEnd(statusHeaderLength);
-      console.log(
-        [
-          sandbox.id.padEnd(idHeaderLength),
-          sandbox.createdAt.padEnd(createdAtHeaderLength),
-          isRunning ? green(status) : red(status),
-          sandbox.duration.padEnd(uptimeHeaderLength),
-        ].join("   "),
-      );
-    }
+        return [
+          sandbox.id,
+          createdAt,
+          sandbox.cluster_hostname.split(".")[0],
+          isRunning ? green(sandbox.status) : red(sandbox.status),
+          formattedDuration,
+        ];
+      },
+    );
   });
 
 export const sandboxKillCommand = new Command<SandboxContext>()
@@ -417,12 +396,15 @@ export const sandboxExecCommand = new Command<SandboxContext>()
   .option("-q, --quiet", "Don't pipe the command to the console")
   .option("--cwd <path:string>", "Working directory of the command")
   .arguments("<sandbox-id:string> <command...:string>")
-  .action(async (options, sandboxId, ...command) => {
+  .action(async function (options, sandboxId, ...command) {
     await using sandbox = await connectToSandbox(options, sandboxId);
 
+    const args = this.getLiteralArgs().length > 0
+      ? this.getLiteralArgs()
+      : command;
     const child = await sandbox.spawn("bash", {
       cwd: options.cwd,
-      args: ["-c", command.join(" ")],
+      args: ["-c", args.join(" ")],
       stdin: "piped",
       stdout: options.quiet ? "null" : "inherit",
       stderr: options.quiet ? "null" : "inherit",
