@@ -1,4 +1,4 @@
-import { red } from "@std/fmt/colors";
+import { red, stripAnsiCode } from "@std/fmt/colors";
 import {
   type PromptEntry,
   promptSelect,
@@ -234,7 +234,7 @@ export function tablePrinter<T>(
     const transformed = transformer(value);
 
     for (let i = 0; i < transformed.length; i++) {
-      padding[i] = Math.max(padding[i], transformed[i].length);
+      padding[i] = Math.max(padding[i], stripAnsiCode(transformed[i]).length);
     }
 
     return transformed;
