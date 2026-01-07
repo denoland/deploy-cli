@@ -70,7 +70,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     "Create a sandbox with a custom memory limit",
     "new --memory 2gb",
   )
-  .action(async function(options, ...command) {
+  .action(async function (options, ...command) {
     const quiet = options.lifetime === "session";
     const org = await ensureOrg(options, quiet);
     const token = await getAuth(options.debug, options.endpoint, quiet);
