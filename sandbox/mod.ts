@@ -101,7 +101,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       spinner.start();
 
       await Promise.all(
-        options.copy.map((path) => sandbox.upload(path, "/app")),
+        options.copy.map((path) => sandbox.fs.upload(path, "/app")),
       );
 
       spinner.stop();
@@ -324,7 +324,7 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
 
       await Promise.all([
         ...localPaths.map((path) => {
-          return targetSandbox.upload(path, targetSandboxPath);
+          return targetSandbox.fs.upload(path, targetSandboxPath);
         }),
         ...Object.entries(sourceSandboxGroups).map(
           async ([sandboxId, sourceSandboxPaths]) => {
@@ -336,17 +336,20 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
 
                 await Array.fromAsync(pooledMap(
                   Infinity,
-                  sourceSandbox.expandGlob(sourceSandboxPath),
+                  sourceSandbox.fs.expandGlob(sourceSandboxPath),
                   async (sandboxEntry) => {
                     const tempPath = join(tempDir, sandboxEntry.path);
                     await Deno.mkdir(tempPath, { recursive: true });
-                    await sourceSandbox.download(sandboxEntry.path, tempPath);
+                    await sourceSandbox.fs.download(
+                      sandboxEntry.path,
+                      tempPath,
+                    );
 
                     await Array.fromAsync(pooledMap(
                       Infinity,
                       expandGlob(`${tempPath}/*`),
                       (localEntry) =>
-                        targetSandbox.upload(
+                        targetSandbox.fs.upload(
                           localEntry.path,
                           join(
                             targetSandboxPath,
@@ -396,8 +399,8 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
           await Promise.all(sandboxPaths.map(async (sandboxPath) => {
             await Array.fromAsync(pooledMap(
               Infinity,
-              sandbox.expandGlob(sandboxPath),
-              (entry) => sandbox.download(entry.path, target),
+              sandbox.fs.expandGlob(sandboxPath),
+              (entry) => sandbox.fs.download(entry.path, target),
             ));
           }));
 
@@ -479,7 +482,7 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
     );
     await using sandbox = tempSandbox;
 
-    await sandbox.deploy(app, {
+    await sandbox.deno.deploy(app, {
       path: options.cwd,
       production: options.prod,
       build: {
