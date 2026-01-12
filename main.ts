@@ -367,6 +367,33 @@ deploy your local directory to the specified application.`)
     .command("setup-aws", setupAWSCommand)
     .command("setup-gcp", setupGCPCommand)
     .command("tunnel-login", tunnelLoginCommand)
+    .command("switch", createSwitchCommand(true))
     .command("logout", logoutCommand)
     .parse(Deno.args);
+}
+
+export function createSwitchCommand(
+  handleApp: boolean,
+): Command<GlobalOptions> {
+  return new Command<GlobalOptions>()
+    .description("Switch between organizations and applications")
+    .action(async (options) => {
+      const config = await readConfig(Deno.cwd(), options.config);
+
+      const { org, app } = await withApp(
+        options.debug,
+        options.endpoint as string,
+        false,
+        undefined,
+        handleApp ? undefined : null,
+      );
+
+      await writeConfig(config, org, handleApp ? app : undefined);
+
+      console.log(
+        `Switched to organization '${org}'${
+          handleApp ? ` and application '${app}'` : ""
+        }.`,
+      );
+    });
 }

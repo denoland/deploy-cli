@@ -12,7 +12,7 @@ export const volumesCreateCommand = new Command<SandboxContext>()
   .option("--region <string>", "The region of the volume", { required: true })
   .arguments("<name>")
   .action(async (options, name) => {
-    const org = await ensureOrg(options);
+    const { org, saveConfig } = await ensureOrg(options);
     const token = await getAuth(options.debug, options.endpoint, true);
 
     const client = new Client({
@@ -27,6 +27,8 @@ export const volumesCreateCommand = new Command<SandboxContext>()
       region: options.region,
     });
 
+    await saveConfig();
+
     console.log(volume.id);
   });
 
@@ -34,7 +36,7 @@ export const volumesListCommand = new Command<SandboxContext>()
   .description("List volumes")
   .arguments("[search:string]")
   .action(async (options, search) => {
-    const org = await ensureOrg(options);
+    const { org, saveConfig } = await ensureOrg(options);
     const token = await getAuth(options.debug, options.endpoint, true);
 
     const client = new Client({
@@ -47,6 +49,8 @@ export const volumesListCommand = new Command<SandboxContext>()
       limit: 100,
       search,
     });
+
+    await saveConfig();
 
     tablePrinter(
       ["ID", "SLUG", "REGION", "USED", "TOTAL"],
@@ -67,7 +71,7 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
   .description("Remove a volume")
   .arguments("<idOrSlug:string>")
   .action(async (options, idOrSlug) => {
-    const org = await ensureOrg(options);
+    const { org, saveConfig } = await ensureOrg(options);
     const token = await getAuth(options.debug, options.endpoint, true);
 
     const client = new Client({
@@ -77,6 +81,7 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
     });
 
     await client.volumes.delete(idOrSlug);
+    await saveConfig();
   });
 
 export const volumesCommand = new Command<SandboxContext>()
