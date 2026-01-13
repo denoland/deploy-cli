@@ -27,7 +27,7 @@ export type SandboxContext = GlobalOptions & {
 
 export const sandboxCreateCommand = new Command<SandboxContext>()
   .description("Create a new sandbox in an organization")
-  .option("--lifetime <duration:string>", "The lifetime of the sandbox", {
+  .option("--timeout <duration:string>", "The timeout of the sandbox", {
     default: "session",
   })
   .option("--copy <path:string>", "Copy files or directories to the sandbox", {
@@ -71,7 +71,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     "new --memory 2gb",
   )
   .action(async function (options, ...command) {
-    const quiet = options.lifetime === "session";
+    const quiet = options.timeout === "session";
     const { org, saveConfig } = await ensureOrg(options, quiet);
     const token = await getAuth(options.debug, options.endpoint, quiet);
 
@@ -85,11 +85,11 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       debug: options.debug,
       token,
       org,
-      lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
+      timeout: options.timeout as `${number}s` | `${number}m` | "session",
       memoryMb,
       volumes: options.volume,
     });
-    if (options.lifetime === "session" || options.ssh) {
+    if (options.timeout === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
     }
 
@@ -151,7 +151,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
           Deno.exit();
         });
       }
-    } else if (options.lifetime === "session") {
+    } else if (options.timeout === "session") {
       // Otherwise, keep the sandbox running and wait for Ctrl+C
       console.log("\nCtrl+C to stop the sandbox.");
       Deno.addSignalListener("SIGINT", async () => {
@@ -451,16 +451,16 @@ export const sandboxExecCommand = new Command<SandboxContext>()
   });
 
 export const sandboxExtendCommand = new Command<SandboxContext>()
-  .description("Extend the lifetime of a running sandbox")
-  .arguments("<sandbox-id:string> <lifetime:string>")
-  .action(async (options, sandboxId, lifetime) => {
+  .description("Extend the timeout of a running sandbox")
+  .arguments("<sandbox-id:string> <timeout:string>")
+  .action(async (options, sandboxId, timeout) => {
     const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
       options,
       sandboxId,
     );
     await using sandbox = tempSandbox;
     console.log(
-      await sandbox.extendLifetime(lifetime as `${number}s` | `${number}m`),
+      await sandbox.extendTimeout(timeout as `${number}s` | `${number}m`),
     );
     await saveConfig();
   });
