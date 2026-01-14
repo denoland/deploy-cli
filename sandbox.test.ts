@@ -15,7 +15,7 @@ Deno.test("sandbox create", async () => {
   const sandboxId = await sandbox(
     "create",
     "--quiet",
-    "--lifetime",
+    "--timeout",
     "10s",
     "echo",
     "test",
@@ -27,7 +27,7 @@ Deno.test("sandbox create with arg separator", async () => {
   const sandboxId = await sandbox(
     "create",
     "--quiet",
-    "--lifetime",
+    "--timeout",
     "10s",
     "--",
     "echo",
@@ -38,7 +38,7 @@ Deno.test("sandbox create with arg separator", async () => {
 });
 
 Deno.test("sandbox exec", async () => {
-  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "30s");
+  const sandboxId = await sandbox("create", "--quiet", "--timeout", "30s");
 
   const res = await sandbox("exec", sandboxId, "echo", "'exec test'");
   assertEquals(res, "exec test");
@@ -47,7 +47,7 @@ Deno.test("sandbox exec", async () => {
 });
 
 Deno.test("sandbox copy", async () => {
-  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "60s");
+  const sandboxId = await sandbox("create", "--quiet", "--timeout", "60s");
 
   await Deno.writeTextFile("test.txt", "test content");
 
@@ -67,7 +67,7 @@ Deno.test("sandbox extend", async () => {
   const sandboxId = await sandbox(
     "create",
     "--quiet",
-    "--lifetime",
+    "--timeout",
     "60s",
     "sleep",
     "10",
@@ -79,7 +79,7 @@ Deno.test("sandbox extend", async () => {
 });
 
 Deno.test("sandbox exec with complex commands", async () => {
-  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "60s");
+  const sandboxId = await sandbox("create", "--quiet", "--timeout", "60s");
 
   const result = await sandbox("exec", sandboxId, "'echo hello && echo world'");
   assert(result.includes("hello"));
@@ -89,7 +89,7 @@ Deno.test("sandbox exec with complex commands", async () => {
 });
 
 Deno.test("sandbox copy directory structure", async () => {
-  const sandboxId = await sandbox("create", "--quiet", "--lifetime", "60s");
+  const sandboxId = await sandbox("create", "--quiet", "--timeout", "60s");
 
   await Deno.mkdir("testdir", { recursive: true });
   await Deno.writeTextFile("testdir/file1.txt", "content1");
@@ -147,7 +147,7 @@ Deno.test("sandbox with volume mount", async () => {
   const sandboxId = await sandbox(
     "create",
     "--quiet",
-    "--lifetime",
+    "--timeout",
     "60s",
     "--volume",
     `${volumeId}:/data/dataset`,

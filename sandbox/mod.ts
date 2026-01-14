@@ -16,7 +16,7 @@ import {
   withApp,
 } from "../util.ts";
 import { createTrpcClient, getAuth } from "../auth.ts";
-import type { GlobalOptions } from "../main.ts";
+import { createSwitchCommand, type GlobalOptions } from "../main.ts";
 import token_storage from "../token_storage.ts";
 
 import { volumesCommand } from "./volumes.ts";
@@ -27,7 +27,7 @@ export type SandboxContext = GlobalOptions & {
 
 export const sandboxCreateCommand = new Command<SandboxContext>()
   .description("Create a new sandbox in an organization")
-  .option("--lifetime <duration:string>", "The lifetime of the sandbox", {
+  .option("--timeout <duration:string>", "The timeout of the sandbox", {
     default: "session",
   })
   .option("--copy <path:string>", "Copy files or directories to the sandbox", {
@@ -71,8 +71,8 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     "new --memory 2gb",
   )
   .action(async function (options, ...command) {
-    const quiet = options.lifetime === "session";
-    const org = await ensureOrg(options, quiet);
+    const quiet = options.timeout === "session";
+    const { org, saveConfig } = await ensureOrg(options, quiet);
     const token = await getAuth(options.debug, options.endpoint, quiet);
 
     let memoryMb = undefined;
@@ -85,11 +85,11 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       debug: options.debug,
       token,
       org,
-      lifetime: options.lifetime as `${number}s` | `${number}m` | "session",
+      timeout: options.timeout as `${number}s` | `${number}m` | "session",
       memoryMb,
       volumes: options.volume,
     });
-    if (options.lifetime === "session" || options.ssh) {
+    if (options.timeout === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
     }
 
@@ -101,7 +101,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       spinner.start();
 
       await Promise.all(
-        options.copy.map((path) => sandbox.upload(path, "/app")),
+        options.copy.map((path) => sandbox.fs.upload(path, "/app")),
       );
 
       spinner.stop();
@@ -133,6 +133,8 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       }
     }
 
+    await saveConfig();
+
     const stopMessage = "Stopping the sandbox...";
     if (options.ssh) {
       const success = await sshIntoSandbox(sandbox);
@@ -149,7 +151,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
           Deno.exit();
         });
       }
-    } else if (options.lifetime === "session") {
+    } else if (options.timeout === "session") {
       // Otherwise, keep the sandbox running and wait for Ctrl+C
       console.log("\nCtrl+C to stop the sandbox.");
       Deno.addSignalListener("SIGINT", async () => {
@@ -167,7 +169,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 export const sandboxListCommand = new Command<SandboxContext>()
   .description("List all sandboxes in an organization")
   .action(async (options) => {
-    const org = await ensureOrg(options);
+    const { org, saveConfig } = await ensureOrg(options);
     const client = createTrpcClient(options.debug, options.endpoint, true);
 
     const list: Array<{
@@ -178,6 +180,8 @@ export const sandboxListCommand = new Command<SandboxContext>()
       cluster_hostname: string;
       // deno-lint-ignore no-explicit-any
     }> = await (client.sandboxes as any).list.query({ org });
+
+    await saveConfig();
 
     tablePrinter(
       ["ID", "CREATED", "REGION", "STATUS", "UPTIME"],
@@ -213,7 +217,7 @@ export const sandboxKillCommand = new Command<SandboxContext>()
   .description("Kill a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(async (options, sandboxId) => {
-    const org = await ensureOrg(options);
+    const { org, saveConfig } = await ensureOrg(options);
     const client = createTrpcClient(options.debug, options.endpoint, true);
 
     // deno-lint-ignore no-explicit-any
@@ -229,6 +233,8 @@ export const sandboxKillCommand = new Command<SandboxContext>()
       clusterHostname: cluster.hostname,
     });
 
+    await saveConfig();
+
     if (res.success) {
       console.log(`Sandbox ${sandboxId} killed successfully`);
     }
@@ -238,7 +244,12 @@ export const sandboxSshCommand = new Command<SandboxContext>()
   .description("SSH into a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(async (options, sandboxId) => {
-    await using sandbox = await connectToSandbox(options, sandboxId);
+    const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
+      options,
+      sandboxId,
+    );
+    await using sandbox = tempSandbox;
+    await saveConfig();
     await sshIntoSandbox(sandbox);
   });
 
@@ -285,7 +296,12 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
       const sandboxId = target.slice(0, separatorIndex);
       const targetSandboxPath = target.slice(separatorIndex + 1);
 
-      await using targetSandbox = await connectToSandbox(options, sandboxId);
+      const { sandbox, saveConfig } = await connectToSandbox(
+        options,
+        sandboxId,
+      );
+
+      await using targetSandbox = sandbox;
 
       const sourceSandboxPaths = [];
       const localPaths = [];
@@ -302,12 +318,13 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
       const sourceSandboxes: Record<string, Sandbox> = {};
 
       for (const sandboxId of Object.keys(sourceSandboxGroups)) {
-        sourceSandboxes[sandboxId] = await connectToSandbox(options, sandboxId);
+        sourceSandboxes[sandboxId] =
+          (await connectToSandbox(options, sandboxId)).sandbox;
       }
 
       await Promise.all([
         ...localPaths.map((path) => {
-          return targetSandbox.upload(path, targetSandboxPath);
+          return targetSandbox.fs.upload(path, targetSandboxPath);
         }),
         ...Object.entries(sourceSandboxGroups).map(
           async ([sandboxId, sourceSandboxPaths]) => {
@@ -319,17 +336,20 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
 
                 await Array.fromAsync(pooledMap(
                   Infinity,
-                  sourceSandbox.expandGlob(sourceSandboxPath),
+                  sourceSandbox.fs.expandGlob(sourceSandboxPath),
                   async (sandboxEntry) => {
                     const tempPath = join(tempDir, sandboxEntry.path);
                     await Deno.mkdir(tempPath, { recursive: true });
-                    await sourceSandbox.download(sandboxEntry.path, tempPath);
+                    await sourceSandbox.fs.download(
+                      sandboxEntry.path,
+                      tempPath,
+                    );
 
                     await Array.fromAsync(pooledMap(
                       Infinity,
                       expandGlob(`${tempPath}/*`),
                       (localEntry) =>
-                        targetSandbox.upload(
+                        targetSandbox.fs.upload(
                           localEntry.path,
                           join(
                             targetSandboxPath,
@@ -348,6 +368,7 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
           },
         ),
       ]);
+      await saveConfig();
     } else {
       for (const path of paths) {
         if (!path.includes(":")) {
@@ -357,12 +378,18 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
           );
         }
       }
+      let saveConfig: () => Promise<void>;
 
       const groups = groupPathsBySandbox(paths);
       const sandboxes: Record<string, Sandbox> = {};
 
       for (const sandboxId of Object.keys(groups)) {
-        sandboxes[sandboxId] = await connectToSandbox(options, sandboxId);
+        const { sandbox, saveConfig: tempSaveConfig } = await connectToSandbox(
+          options,
+          sandboxId,
+        );
+        sandboxes[sandboxId] = sandbox;
+        saveConfig = tempSaveConfig;
       }
 
       await Promise.all(
@@ -372,14 +399,16 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
           await Promise.all(sandboxPaths.map(async (sandboxPath) => {
             await Array.fromAsync(pooledMap(
               Infinity,
-              sandbox.expandGlob(sandboxPath),
-              (entry) => sandbox.download(entry.path, target),
+              sandbox.fs.expandGlob(sandboxPath),
+              (entry) => sandbox.fs.download(entry.path, target),
             ));
           }));
 
           await sandbox.close();
         }),
       );
+
+      await saveConfig!();
     }
   });
 
@@ -397,7 +426,11 @@ export const sandboxExecCommand = new Command<SandboxContext>()
   .option("--cwd <path:string>", "Working directory of the command")
   .arguments("<sandbox-id:string> <command...:string>")
   .action(async function (options, sandboxId, ...command) {
-    await using sandbox = await connectToSandbox(options, sandboxId);
+    const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
+      options,
+      sandboxId,
+    );
+    await using sandbox = tempSandbox;
 
     const args = this.getLiteralArgs().length > 0
       ? this.getLiteralArgs()
@@ -413,18 +446,23 @@ export const sandboxExecCommand = new Command<SandboxContext>()
     Deno.stdin.readable.pipeTo(child.stdin!);
 
     const status = await child.status;
+    await saveConfig();
     Deno.exit(status.code);
   });
 
 export const sandboxExtendCommand = new Command<SandboxContext>()
-  .description("Extend the lifetime of a running sandbox")
-  .arguments("<sandbox-id:string> <lifetime:string>")
-  .action(async (options, sandboxId, lifetime) => {
-    await using sandbox = await connectToSandbox(options, sandboxId);
-
-    console.log(
-      await sandbox.extendLifetime(lifetime as `${number}s` | `${number}m`),
+  .description("Extend the timeout of a running sandbox")
+  .arguments("<sandbox-id:string> <timeout:string>")
+  .action(async (options, sandboxId, timeout) => {
+    const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
+      options,
+      sandboxId,
     );
+    await using sandbox = tempSandbox;
+    console.log(
+      await sandbox.extendTimeout(timeout as `${number}s` | `${number}m`),
+    );
+    await saveConfig();
   });
 
 export const sandboxDeployCommand = new Command<SandboxContext>()
@@ -438,9 +476,13 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
   )
   .arguments("<sandbox-id:string> <app:string>")
   .action(async (options, sandboxId, app) => {
-    await using sandbox = await connectToSandbox(options, sandboxId);
+    const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
+      options,
+      sandboxId,
+    );
+    await using sandbox = tempSandbox;
 
-    await sandbox.deploy(app, {
+    await sandbox.deno.deploy(app, {
       path: options.cwd,
       production: options.prod,
       build: {
@@ -448,6 +490,8 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
         args: options.args,
       },
     });
+
+    await saveConfig();
   });
 
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
@@ -471,7 +515,7 @@ function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
 export async function ensureOrg(
   options: SandboxContext,
   quiet: boolean = true,
-) {
+): Promise<{ org: string; saveConfig: () => Promise<void> }> {
   const config = await readConfig(Deno.cwd(), options.config);
   const configContent = getAppFromConfig(config);
 
@@ -484,34 +528,33 @@ export async function ensureOrg(
     quiet,
   );
 
+  let saveConfig = () => Promise.resolve();
   if (config && !configContent.org && app.org) {
-    await writeConfig(config, app.org);
+    saveConfig = () => writeConfig(config, app.org);
   }
 
-  return app.org;
+  return {
+    org: app.org,
+    saveConfig,
+  };
 }
 
 async function connectToSandbox(
   options: SandboxContext,
   sandboxId: string,
-): Promise<Sandbox> {
-  const org = await ensureOrg(options);
-  const client = createTrpcClient(options.debug, options.endpoint, true);
+): Promise<{ sandbox: Sandbox; saveConfig: () => Promise<void> }> {
+  const { org, saveConfig } = await ensureOrg(options);
   const token = await getAuth(options.debug, options.endpoint, true);
-  // deno-lint-ignore no-explicit-any
-  const cluster = await (client.sandboxes as any).findHostname.query({
-    org,
-    sandboxId,
-  });
 
-  return await Sandbox.connect({
+  const sandbox = await Sandbox.connect({
     id: sandboxId,
     apiEndpoint: options.endpoint,
-    region: cluster.region,
     debug: options.debug,
     token,
     org,
   });
+
+  return { sandbox, saveConfig };
 }
 
 /**
@@ -666,4 +709,5 @@ export const sandboxCommand = new Command<GlobalOptions>()
   .command("extend", sandboxExtendCommand)
   .command("ssh", sandboxSshCommand)
   .command("deploy", sandboxDeployCommand)
-  .command("volumes", volumesCommand);
+  .command("volumes", volumesCommand)
+  .command("switch", createSwitchCommand(false));
