@@ -11,7 +11,7 @@
     "jsr:@david/path@0.2": "0.2.0",
     "jsr:@david/which@~0.4.1": "0.4.1",
     "jsr:@deno/framework-detect@0": "0.2.0",
-    "jsr:@deno/sandbox@0.7": "0.7.0",
+    "jsr:@deno/sandbox@~0.7.1": "0.7.1",
     "jsr:@std/assert@^1.0.16": "1.0.16",
     "jsr:@std/async@^1.0.15": "1.0.16",
     "jsr:@std/bytes@^1.0.5": "1.0.6",
@@ -113,8 +113,8 @@
         "jsr:@std/path@^1.0.8"
       ]
     },
-    "@deno/sandbox@0.7.0": {
-      "integrity": "dd962b28e0cf1cfe54b505705f77fe855964aa1a20ed9bb61b51c597f3c79207",
+    "@deno/sandbox@0.7.1": {
+      "integrity": "94dfb12eda1bd9f22466adb3c3bc8f3687ffc2e98cd52ae7e7361d5c29edaaf8",
       "dependencies": [
         "jsr:@std/fs@^1.0.19",
         "jsr:@std/path@^1.1.2",
@@ -2561,7 +2561,7 @@
       "jsr:@cliffy/command@^1.0.0-rc.8",
       "jsr:@david/dax@~0.44.2",
       "jsr:@deno/framework-detect@0",
-      "jsr:@deno/sandbox@0.7",
+      "jsr:@deno/sandbox@~0.7.1",
       "jsr:@std/assert@^1.0.16",
       "jsr:@std/async@^1.0.15",
       "jsr:@std/cli@1.0.22",

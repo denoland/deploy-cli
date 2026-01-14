@@ -544,18 +544,11 @@ async function connectToSandbox(
   sandboxId: string,
 ): Promise<{ sandbox: Sandbox; saveConfig: () => Promise<void> }> {
   const { org, saveConfig } = await ensureOrg(options);
-  const client = createTrpcClient(options.debug, options.endpoint, true);
   const token = await getAuth(options.debug, options.endpoint, true);
-  // deno-lint-ignore no-explicit-any
-  const cluster = await (client.sandboxes as any).findHostname.query({
-    org,
-    sandboxId,
-  });
 
   const sandbox = await Sandbox.connect({
     id: sandboxId,
     apiEndpoint: options.endpoint,
-    region: cluster.region,
     debug: options.debug,
     token,
     org,
