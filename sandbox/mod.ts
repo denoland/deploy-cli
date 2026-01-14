@@ -20,6 +20,7 @@ import { createSwitchCommand, type GlobalOptions } from "../main.ts";
 import token_storage from "../token_storage.ts";
 
 import { volumesCommand } from "./volumes.ts";
+import { snapshotsCommand } from "./snapshot.ts";
 
 export type SandboxContext = GlobalOptions & {
   org?: string;
@@ -710,4 +711,5 @@ export const sandboxCommand = new Command<GlobalOptions>()
   .command("ssh", sandboxSshCommand)
   .command("deploy", sandboxDeployCommand)
   .command("volumes", volumesCommand)
+  .command("snapshots", snapshotsCommand)
   .command("switch", createSwitchCommand(false));
