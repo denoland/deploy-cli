@@ -79,7 +79,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     let memoryMb = undefined;
 
     if (options.memory) {
-      memoryMb = parseSize(options.memory) / MEBIBYTE;
+      memoryMb = Math.floor(parseSize(options.memory) / MEBIBYTE);
     }
 
     const sandbox = await Sandbox.create({
