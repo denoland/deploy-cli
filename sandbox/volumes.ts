@@ -23,7 +23,7 @@ export const volumesCreateCommand = new Command<SandboxContext>()
 
     const volume = await client.volumes.create({
       slug: name,
-      capacity: parseSize(options.capacity),
+      capacity: Math.floor(parseSize(options.capacity)),
       region: options.region,
     });
 
