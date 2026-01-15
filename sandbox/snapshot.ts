@@ -39,6 +39,7 @@ export const snapshotsListCommand = new Command<SandboxContext>()
 
     const list = await client.snapshots.list({
       limit: 100,
+      // @ts-ignore typings mismatch. remove comment once new version is released.
       search,
     });
 
@@ -54,7 +55,7 @@ export const snapshotsListCommand = new Command<SandboxContext>()
           snapshot.region,
           formatSize(snapshot.allocatedSize),
           formatSize(snapshot.flattenedSize),
-          snapshot.bootable.toString().toUpperCase(),
+          snapshot.isBootable.toString().toUpperCase(),
           snapshot.baseSnapshot?.slug ?? "",
         ];
       },
@@ -74,6 +75,7 @@ export const snapshotsDeleteCommand = new Command<SandboxContext>()
       org,
     });
 
+    // @ts-ignore typings mismatch. remove comment once new version is released.
     await client.snapshots.delete(idOrSlug);
     await saveConfig();
   });

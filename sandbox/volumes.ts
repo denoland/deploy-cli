@@ -53,15 +53,16 @@ export const volumesListCommand = new Command<SandboxContext>()
     await saveConfig();
 
     tablePrinter(
-      ["ID", "SLUG", "REGION", "USED", "TOTAL"],
+      ["ID", "SLUG", "REGION", "USED", "TOTAL", "BASE"],
       list.items,
       (volume) => {
         return [
           volume.id,
           volume.slug,
           volume.region,
-          formatSize(volume.used),
+          formatSize(volume.estimatedFlattenedSize),
           formatSize(volume.capacity),
+          volume.baseSnapshot ? volume.baseSnapshot.slug : "",
         ];
       },
     );
