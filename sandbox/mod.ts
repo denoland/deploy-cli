@@ -689,7 +689,7 @@ export const sandboxCommand = new Command<GlobalOptions>()
       options.endpoint = endpoint;
     }
     if (options.endpoint.endsWith("/")) {
-      error(false, "The provided DENO_DEPLOY_ENDPOINT is invalid.");
+      error(false, "The provided DENO_DEPLOY_ENDPOINT is invalid, it cannot end with a slash.");
     }
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
