@@ -688,6 +688,9 @@ export const sandboxCommand = new Command<GlobalOptions>()
     if (endpoint) {
       options.endpoint = endpoint;
     }
+    if (options.endpoint.endsWith("/")) {
+      error(false, "The provided DENO_DEPLOY_ENDPOINT is invalid.");
+    }
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
       token_storage.set(tokenEnv, true);
