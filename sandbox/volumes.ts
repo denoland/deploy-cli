@@ -53,15 +53,16 @@ export const volumesListCommand = new Command<SandboxContext>()
     await saveConfig();
 
     tablePrinter(
-      ["ID", "SLUG", "REGION", "USED", "TOTAL"],
+      ["ID", "SLUG", "REGION", "USED", "TOTAL", "BASE"],
       list.items,
       (volume) => {
         return [
           volume.id,
           volume.slug,
           volume.region,
-          formatSize(volume.used),
+          formatSize(volume.estimatedFlattenedSize),
           formatSize(volume.capacity),
+          volume.baseSnapshot ? volume.baseSnapshot.slug : "",
         ];
       },
     );
@@ -84,6 +85,26 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
     await saveConfig();
   });
 
+export const volumesSnapshotCommand = new Command<SandboxContext>()
+  .description("Snapshot a volume")
+  .arguments("<volumeIdOrSlug:string> <snapshotSlug:string>")
+  .action(async (options, volumeIdOrSlug, snapshotSlug) => {
+    const { org, saveConfig } = await ensureOrg(options);
+    const token = await getAuth(options.debug, options.endpoint, true);
+
+    const client = new Client({
+      apiEndpoint: options.endpoint,
+      token,
+      org,
+    });
+
+    const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
+      slug: snapshotSlug,
+    });
+    console.log(snapshot.id);
+    await saveConfig();
+  });
+
 export const volumesCommand = new Command<SandboxContext>()
   .description("Manage sandbox volumes")
   .action(() => {
@@ -95,4 +116,5 @@ export const volumesCommand = new Command<SandboxContext>()
   .alias("ls")
   .command("delete", volumesDeleteCommand)
   .alias("remove")
-  .alias("rm");
+  .alias("rm")
+  .command("snapshot", volumesSnapshotCommand);
