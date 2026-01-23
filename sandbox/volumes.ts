@@ -10,6 +10,10 @@ export const volumesCreateCommand = new Command<SandboxContext>()
     required: true,
   })
   .option("--region <string>", "The region of the volume", { required: true })
+  .option(
+    "--from <string>",
+    'A base snapshot or image to create the volume from.\nThis can either be a snapshot, or the special string "builtin:debian-13".',
+  )
   .arguments("<name>")
   .action(async (options, name) => {
     const { org, saveConfig } = await ensureOrg(options);
@@ -25,6 +29,7 @@ export const volumesCreateCommand = new Command<SandboxContext>()
       slug: name,
       capacity: Math.floor(parseSize(options.capacity)),
       region: options.region,
+      from: options.from,
     });
 
     await saveConfig();
