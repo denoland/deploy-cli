@@ -171,6 +171,7 @@ export async function publish(
 
   const existingFilesSpinner = new Spinner({
     message: "Loading previously uploaded files...",
+    color: "yellow",
   });
   existingFilesSpinner.start();
 
@@ -329,6 +330,7 @@ export async function publish(
 
     const completionSpinner = new Spinner({
       message: "Awaiting revision to complete...",
+      color: "yellow",
     });
     completionSpinner.start();
 
