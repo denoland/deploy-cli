@@ -1,11 +1,23 @@
-import { red, stripAnsiCode } from "@std/fmt/colors";
+import { green, red, stripAnsiCode } from "@std/fmt/colors";
 import {
   type PromptEntry,
   promptSelect,
 } from "@std/cli/unstable-prompt-select";
 import { Temporal } from "temporal-polyfill";
+import {
+  detectBuildConfig,
+  FrameworkFileSystemReader,
+} from "@deno/framework-detect";
+import open from "open";
+import { Spinner } from "@std/cli/unstable-spinner";
 
-import { createTrpcClient, getAuth } from "./auth.ts";
+import {
+  createTrpcClient,
+  getAuth,
+  interactive,
+  tokenExchange,
+} from "./auth.ts";
+import token_storage from "./token_storage.ts";
 
 export function error(
   debug: boolean,
@@ -29,38 +41,34 @@ export function error(
  * Ensure app and org are selected
  *
  * If app is specified as null, it will not be selected and returned as null.
- *
- * @param debug
- * @param deployUrl
- * @param canCreate
- * @param org
- * @param app
- * @param quiet
  */
 export async function withApp(
   debug: boolean,
   deployUrl: string,
   canCreate: false,
-  org?: string,
-  app?: string | null,
+  org: string | undefined,
+  app: string | undefined | null,
   quiet?: boolean,
-): Promise<{ org: string; app: string }>;
+  rootPath?: string,
+): Promise<{ org: string; app: string; created: false }>;
 export async function withApp(
   debug: boolean,
   deployUrl: string,
   canCreate: true,
-  org?: string,
-  app?: string | null,
+  org: string | undefined,
+  app: string | undefined | null,
   quiet?: boolean,
-): Promise<{ org: string; app: string | null }>;
+  rootPath?: string,
+): Promise<{ org: string; app: string; created: true }>;
 export async function withApp(
   debug: boolean,
   deployUrl: string,
   canCreate: boolean,
-  org?: string,
-  app?: string | null,
+  org: string | undefined,
+  app: string | undefined | null,
   quiet?: boolean,
-): Promise<{ org: string; app: string | null }> {
+  rootPath = Deno.cwd(),
+): Promise<{ org: string; app: string | null; created: boolean }> {
   await getAuth(debug, deployUrl, quiet);
 
   if (!org) {
@@ -69,6 +77,8 @@ export async function withApp(
   if (app === undefined) {
     app = Deno.env.get("DENO_DEPLOY_APP");
   }
+
+  let created = false;
 
   if (org === undefined || app === undefined) {
     const trpcClient = createTrpcClient(debug, deployUrl);
@@ -110,6 +120,7 @@ export async function withApp(
       return {
         org,
         app: null,
+        created: false,
       };
     }
 
@@ -133,12 +144,108 @@ export async function withApp(
     }
 
     if (selectedApp.value === null) {
-      app = null;
+      const createdOrgAndApp = await create(debug, deployUrl, rootPath, org);
+      org = createdOrgAndApp.org;
+      app = createdOrgAndApp.app;
+      created = true;
     } else {
       app = selectedApp.value.slug;
       console.log(`Selected application '${selectedApp.value.slug}'`);
     }
   }
+
+  return {
+    org,
+    app,
+    created,
+  };
+}
+
+export async function create(
+  debug: boolean,
+  deployUrl: string,
+  rootPath: string,
+  initOrg?: string,
+): Promise<{ org: string; app: string }> {
+  let verifier;
+  let exchangeToken;
+
+  const buildConfig = await detectBuildConfig(
+    new FrameworkFileSystemReader(rootPath),
+  );
+
+  const deviceCreate = await fetch(`${deployUrl}/api/device_create`, {
+    method: "POST",
+    body: JSON.stringify({
+      buildConfig,
+    }),
+  });
+  const { id: deviceCreateId } = await deviceCreate.json();
+
+  const url = new URL(`${deployUrl!}/device-create/${deviceCreateId}`);
+
+  if (initOrg) {
+    url.searchParams.set("org", initOrg);
+  }
+
+  const storedAuth = token_storage.get();
+
+  if (!storedAuth) {
+    const res = await interactive(debug, deployUrl);
+    url.searchParams.set("code", res.code);
+    verifier = res.verifier;
+    exchangeToken = res.exchangeToken;
+  }
+
+  const spinner = new Spinner({
+    message: `Visit ${url.href} to create a new application.`,
+    color: "yellow",
+  });
+  spinner.start();
+
+  await open(url.href);
+
+  const appCreationPromise = new Promise<{ org: string; app: string }>(
+    (resolve, reject) => {
+      const interval = setInterval(async () => {
+        const res = await fetch(
+          `${deployUrl!}/api/device_create/${deviceCreateId}`,
+          {
+            method: "GET",
+          },
+        );
+
+        if (res.ok) {
+          const appCreation = await res.json();
+          clearInterval(interval);
+          resolve(appCreation);
+        } else {
+          const err = await res.json();
+          if (err.code !== "APP_CREATION_REQUEST_PENDING") {
+            clearInterval(interval);
+            reject(new Error(err.message));
+          }
+        }
+      }, 2000);
+    },
+  );
+
+  const [{ org, app }] = await Promise.all([
+    appCreationPromise,
+    storedAuth ? undefined : tokenExchange(
+      debug,
+      deployUrl,
+      exchangeToken!,
+      verifier!,
+      spinner,
+      false,
+    ),
+  ]);
+
+  spinner.stop();
+  console.log(
+    `${green("✔")} App '${app}' created in the '${org}' organization.\n`,
+  );
 
   return {
     org,

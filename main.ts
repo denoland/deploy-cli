@@ -2,8 +2,7 @@ import { Command } from "@cliffy/command";
 import { publish } from "./publish.ts";
 import { red, yellow } from "@std/fmt/colors";
 import { greaterOrEqual, parse as semverParse } from "@std/semver";
-import { create } from "./create.ts";
-import { error, renderTemporalTimestamp, withApp } from "./util.ts";
+import { create, error, renderTemporalTimestamp, withApp } from "./util.ts";
 import { setupAws, setupGcp } from "./setup-cloud.ts";
 import { getAppFromConfig, readConfig, writeConfig } from "./config.ts";
 import {
@@ -57,21 +56,30 @@ const createCommand = new Command<GlobalOptions>()
     ) => {
       const configContent = await readConfig(rootPath, config);
       const { org, app } = getAppFromConfig(configContent);
-      if (org || app) {
+      if (app) {
         console.log(
           `${red("✗")} An application already exists in this directory.`,
         );
         Deno.exit(1);
       }
 
-      await create(
+      const newOrgAndApp = await create(
+        debug,
+        endpoint,
+        rootPath,
+        initOrg ?? org,
+      );
+
+      await publish(
         debug,
         endpoint,
         rootPath,
         configContent,
+        newOrgAndApp.org,
+        newOrgAndApp.app,
+        true,
         allowNodeModules ?? false,
         wait ?? true,
-        initOrg,
       );
     },
   );
@@ -149,9 +157,11 @@ const tunnelLoginCommand = new Command<GlobalOptions>()
     const gottenApp = await withApp(
       options.debug,
       options.endpoint,
-      false,
+      true,
       org,
       app,
+      false,
+      rootPath,
     );
     if (options.reallyNoConfig !== true) {
       await writeConfig(configContent, gottenApp.org, gottenApp.app);
@@ -337,31 +347,21 @@ deploy your local directory to the specified application.`)
           true,
           org,
           app,
+          false,
+          rootPath,
         );
 
-        if (orgAndApp.app === null) {
-          await create(
-            options.debug,
-            options.endpoint as string,
-            rootPath,
-            configContent,
-            options.allowNodeModules ?? false,
-            options.wait ?? true,
-            orgAndApp.org,
-          );
-        } else {
-          await publish(
-            options.debug,
-            options.endpoint as string,
-            rootPath,
-            configContent,
-            orgAndApp.org,
-            orgAndApp.app,
-            options.prod ?? false,
-            options.allowNodeModules ?? false,
-            options.wait ?? true,
-          );
-        }
+        await publish(
+          options.debug,
+          options.endpoint as string,
+          rootPath,
+          configContent,
+          orgAndApp.org,
+          orgAndApp.app,
+          orgAndApp.created,
+          options.allowNodeModules ?? false,
+          options.wait ?? true,
+        );
       },
     )
     .command("create", createCommand)
@@ -392,7 +392,7 @@ export function createSwitchCommand(
         handleApp ? undefined : null,
       );
 
-      await writeConfig(config, org, handleApp ? app : undefined);
+      await writeConfig(config, org, handleApp ? app! : undefined);
 
       console.log(
         `Switched to organization '${org}'${
