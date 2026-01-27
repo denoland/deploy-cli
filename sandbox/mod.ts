@@ -9,7 +9,6 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
 import {
   error,
-  MEBIBYTE,
   parseSize,
   renderTemporalTimestamp,
   tablePrinter,
@@ -76,10 +75,10 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     const { org, saveConfig } = await ensureOrg(options, quiet);
     const token = await getAuth(options.debug, options.endpoint, quiet);
 
-    let memoryMb = undefined;
+    let memory = undefined;
 
     if (options.memory) {
-      memoryMb = Math.floor(parseSize(options.memory) / MEBIBYTE);
+      memory = Math.floor(parseSize(options.memory));
     }
 
     const sandbox = await Sandbox.create({
@@ -87,7 +86,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       token,
       org,
       timeout: options.timeout as `${number}s` | `${number}m` | "session",
-      memoryMb,
+      memory,
       volumes: options.volume,
     });
     if (options.timeout === "session" || options.ssh) {
@@ -141,8 +140,8 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       const success = await sshIntoSandbox(sandbox);
       if (success) {
         // Closes the sandbox only when ssh session was established and finished successfully
+        console.log("Disconnecting from the sandbox...");
         await sandbox.close();
-        console.log(stopMessage);
       } else {
         // Otherwise, keep the sandbox running and wait for Ctrl+C
         console.log("\nCtrl+C to stop the sandbox.");

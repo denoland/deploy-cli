@@ -11,8 +11,8 @@
     "jsr:@david/path@0.2": "0.2.0",
     "jsr:@david/which@~0.4.1": "0.4.1",
     "jsr:@deno/framework-detect@0": "0.2.0",
-    "jsr:@deno/sandbox@0.8": "0.8.0",
-    "jsr:@std/assert@^1.0.16": "1.0.16",
+    "jsr:@deno/sandbox@0.9": "0.9.0",
+    "jsr:@std/assert@^1.0.16": "1.0.17",
     "jsr:@std/async@^1.1.0": "1.1.0",
     "jsr:@std/bytes@^1.0.5": "1.0.6",
     "jsr:@std/cli@1.0.26": "1.0.26",
@@ -42,6 +42,7 @@
     "npm:@trpc/server@^11.0.2": "11.7.2_typescript@5.9.3",
     "npm:@types/node@*": "24.2.0",
     "npm:@types/prompts@2.4.9": "2.4.9",
+    "npm:@types/ws@^8.18.1": "8.18.1",
     "npm:astro@^5.4.2": "5.16.2_@types+node@24.2.0_vite@6.4.1__@types+node@24.2.0__picomatch@4.0.3_zod@3.25.76",
     "npm:event-source-polyfill@^1.0.31": "1.0.31",
     "npm:jsonc-parser@^3.3.1": "3.3.1",
@@ -113,17 +114,18 @@
         "jsr:@std/path@^1.0.8"
       ]
     },
-    "@deno/sandbox@0.8.0": {
-      "integrity": "e8c9987809506e3ea3a485205b283fa5631bda111e353ea3dbbdea519ffd3c68",
+    "@deno/sandbox@0.9.0": {
+      "integrity": "43a68ba9147519a5b33d05d2a7b83a70a6314995dd8469fa0a987281162adcb5",
       "dependencies": [
         "jsr:@std/fs@^1.0.19",
         "jsr:@std/path@^1.1.2",
+        "npm:@types/ws",
         "npm:ws",
         "npm:zod"
       ]
     },
-    "@std/assert@1.0.16": {
-      "integrity": "6a7272ed1eaa77defe76e5ff63ca705d9c495077e2d5fd0126d2b53fc5bd6532",
+    "@std/assert@1.0.17": {
+      "integrity": "df5ebfffe77c03b3fa1401e11c762cc8f603d51021c56c4d15a8c7ab45e90dbe",
       "dependencies": [
         "jsr:@std/internal"
       ]
@@ -810,6 +812,12 @@
     },
     "@types/unist@3.0.3": {
       "integrity": "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="
+    },
+    "@types/ws@8.18.1": {
+      "integrity": "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==",
+      "dependencies": [
+        "@types/node"
+      ]
     },
     "@ungap/structured-clone@1.3.0": {
       "integrity": "sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g=="
@@ -2564,7 +2572,7 @@
       "jsr:@cliffy/command@^1.0.0-rc.8",
       "jsr:@david/dax@~0.44.2",
       "jsr:@deno/framework-detect@0",
-      "jsr:@deno/sandbox@0.8",
+      "jsr:@deno/sandbox@0.9",
       "jsr:@std/assert@^1.0.16",
       "jsr:@std/async@^1.1.0",
       "jsr:@std/cli@1.0.26",
