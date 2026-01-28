@@ -1,5 +1,10 @@
 import { Command } from "@cliffy/command";
-import { Sandbox, type VolumeId, type VolumeSlug } from "@deno/sandbox";
+import {
+  type Region,
+  Sandbox,
+  type VolumeId,
+  type VolumeSlug,
+} from "@deno/sandbox";
 import { green, magenta, red } from "@std/fmt/colors";
 import { pooledMap } from "@std/async";
 import { expandGlob } from "@std/fs";
@@ -38,6 +43,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--ssh", "SSH into the sandbox")
   .option("--expose-http <port:number>", "Expose the specified port")
   .option("--memory <value:string>", "Memory limit for the sandbox")
+  .option("--region <string>", "The region of the sandbox")
   .option(
     "--volume <volume:string>",
     "Mount a volume to the sandbox. Needs to be in format <idOrSlug>:<path>",
@@ -88,6 +94,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       timeout: options.timeout as `${number}s` | `${number}m` | "session",
       memory,
       volumes: options.volume,
+      region: options.region as Region,
     });
     if (options.timeout === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
