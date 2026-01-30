@@ -16,6 +16,7 @@ import {
 import { createTrpcClient, getAuth } from "./auth.ts";
 import token_storage from "./token_storage.ts";
 import { sandboxCommand } from "./sandbox/mod.ts";
+import { createCli } from "./create.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -365,6 +366,16 @@ deploy your local directory to the specified application.`)
       },
     )
     .command("create", createCommand)
+    .command(
+      "create-cli",
+      new Command<GlobalOptions>().arguments("[root-path:string]").action(
+        async (options, rootPath = Deno.cwd()) => {
+          await getAuth(options.debug, options.endpoint as string);
+
+          await createCli(options.debug, options.endpoint as string, rootPath);
+        },
+      ),
+    )
     .command("env", envCommand)
     .command("sandbox", sandboxCommand)
     .command("logs", logsCommand)

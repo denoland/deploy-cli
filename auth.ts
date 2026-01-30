@@ -9,6 +9,7 @@ import {
   httpSubscriptionLink,
   retryLink,
   splitLink,
+  type TRPCClient as OriginalTRPCClient,
   TRPCClientError,
   type TRPCLink,
 } from "@trpc/client";
@@ -17,6 +18,8 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
 import token_storage, { tokenIsTemp } from "./token_storage.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
+
+export type TRPCClient = OriginalTRPCClient<any>;
 
 export function createTrpcClient(
   debug: boolean,

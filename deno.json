@@ -36,7 +36,7 @@
     "jsonc-parser": "npm:jsonc-parser@^3.3.1",
     "open": "npm:open@^10.1.0",
     "superjson": "npm:superjson@^2.2.2",
-    "@deno/framework-detect": "jsr:@deno/framework-detect@^0",
+    "@deno/framework-detect": "jsr:@deno/framework-detect@^0.3",
     "temporal-polyfill": "npm:temporal-polyfill@^0.3.0",
     "prompts": "npm:prompts@2.4.2",
     "dax": "jsr:@david/dax@^0.44.2"
