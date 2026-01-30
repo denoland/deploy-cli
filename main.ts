@@ -365,9 +365,8 @@ deploy your local directory to the specified application.`)
         );
       },
     )
-    .command("create", createCommand)
     .command(
-      "create-cli",
+      "create",
       new Command<GlobalOptions>().arguments("[root-path:string]").action(
         async (options, rootPath = Deno.cwd()) => {
           await getAuth(options.debug, options.endpoint as string);

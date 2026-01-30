@@ -1,6 +1,6 @@
 import { createTrpcClient, type TRPCClient } from "./auth.ts";
 import { green } from "@std/fmt/colors";
-import { error, formatSize } from "./util.ts";
+import { error } from "./util.ts";
 import {
   type PromptEntry,
   promptSelect,
@@ -17,6 +17,7 @@ import {
 
 const AVAILABLE_BUILD_TIMEOUTS = [5, 10, 15, 20, 25, 30];
 const AVAILABLE_BUILD_MEMORY_LIMITS = [1024, 2048, 3072, 4096];
+const REGIONS = ["us", "eu", "global"];
 
 const NA = "(n/a)";
 const TITLES = {
@@ -38,6 +39,7 @@ const TITLES = {
   spa: "single page app",
   buildTimeout: "build timeout",
   buildMemoryLimit: "build memory limit",
+  regions: "regions",
 } as const;
 type Title = typeof TITLES[(keyof typeof TITLES)];
 const TITLE_LENGTH = Object.values(TITLES).reduce(
@@ -77,6 +79,7 @@ export async function createCli(
       orgs.map((org) => ({ label: `${org.name} (${org.slug})`, value: org })),
       {
         clear: true,
+        fitToRemainingHeight: true,
       },
     );
     if (!selectedOrg) {
@@ -94,6 +97,7 @@ export async function createCli(
     ["github", "local"],
     {
       clear: true,
+      fitToRemainingHeight: true,
     },
   );
   if (!selectedSource) {
@@ -102,7 +106,7 @@ export async function createCli(
   logTitle(TITLES.source, selectedSource);
 
   let appDirectories;
-  let deviceCreation = false;
+  // let deviceCreation;
   let repo: { owner: string; repo: string } | undefined = undefined;
 
   if (selectedSource === "github") {
@@ -116,7 +120,6 @@ export async function createCli(
     appDirectories = await detectWorkspace(
       new FrameworkFileSystemReader(rootPath),
     );
-    deviceCreation = true;
   }
 
   const appDirectorySelectOptions: PromptEntry<WorkspaceMember | null>[] =
@@ -172,7 +175,7 @@ export async function createCli(
       logTitle(TITLES.installCommand, buildConfig.installCommand);
       logTitle(TITLES.buildCommand, buildConfig.buildCommand);
       logTitle(TITLES.preDeployCommand, buildConfig.preDeployCommand);
-      logTitle(TITLES.mode, buildConfig.mode ?? "internally optimized");
+      logTitle(TITLES.mode, buildConfig.mode ?? "(internally optimized)");
 
       switch (buildConfig.mode) {
         case "dynamic":
@@ -199,6 +202,7 @@ export async function createCli(
     })),
     {
       clear: true,
+      fitToRemainingHeight: true,
     },
   );
   if (!buildTimeout) {
@@ -210,11 +214,12 @@ export async function createCli(
   const buildMemoryLimit = promptSelect(
     "build memory limit:",
     AVAILABLE_BUILD_MEMORY_LIMITS.map((memory) => ({
-      label: formatSize(memory),
+      label: `${memory / 1024} GB`,
       value: memory,
     })),
     {
       clear: true,
+      fitToRemainingHeight: true,
     },
   );
   if (!buildMemoryLimit) {
@@ -222,11 +227,23 @@ export async function createCli(
   }
   logTitle(TITLES.buildMemoryLimit, buildMemoryLimit.label);
 
-  // TODO: regions
+  // TODO: check pro
+  const region = promptSelect(
+    "regions:",
+    REGIONS,
+    {
+      clear: true,
+      fitToRemainingHeight: true,
+    },
+  );
+  if (!region) {
+    error(debug, "No region was selected.");
+  }
+  logTitle(TITLES.regions, region);
 
   if (confirm("Create app?")) {
     // deno-lint-ignore no-explicit-any
-    await (trpcClient.apps as any).create.mutation({
+    await (trpcClient.apps as any).create.mutate({
       org,
       slug: appName,
       repo,
@@ -237,9 +254,11 @@ export async function createCli(
         buildMemoryLimit: buildMemoryLimit.value,
       },
       envVars: [],
-      target: undefined,
-      deviceCreation,
+      target: region,
+      deviceCreation: undefined,
     });
+
+    console.log(`Created app, view it at ${deployUrl}/${org}/${appName}`);
   }
 }
 
@@ -255,6 +274,7 @@ function getBuildConfig(
     })),
     {
       clear: true,
+      fitToRemainingHeight: true,
     },
   );
   if (!selectedFrameworkPreset) {
@@ -286,6 +306,7 @@ function getBuildConfig(
     }],
     {
       clear: true,
+      fitToRemainingHeight: true,
     },
   );
   if (!selectedRuntimeConfiguration) {
@@ -357,11 +378,11 @@ function getBuildConfig(
 }
 
 function renderBuildConfig(buildConfig: BuildConfig) {
-  const frameworkPreset = buildConfig.frameworkPreset;
+  const frameworkPreset = buildConfig.frameworkPreset || "no preset";
   const installCommand = buildConfig.installCommand;
   const buildCommand = buildConfig.buildCommand;
   const preDeployCommand = buildConfig.preDeployCommand;
-  const mode = buildConfig.mode ?? "internally optimized";
+  const mode = buildConfig.mode ?? "(internally optimized)";
 
   let titleLen = Math.max(
     TITLES.frameworkPreset.length,
@@ -447,6 +468,7 @@ async function github(
     owners.map((owner) => ({ label: owner.login, value: owner })),
     {
       clear: true,
+      fitToRemainingHeight: true,
     },
   );
   if (!selectedOwner) {
@@ -467,6 +489,7 @@ async function github(
     repos.map((repo) => ({ label: repo.name, value: repo })),
     {
       clear: true,
+      fitToRemainingHeight: true,
     },
   );
   if (!selectedRepo) {
@@ -496,6 +519,7 @@ function promptSelectWithInput<V extends object>(
 ): V | string {
   const selected = promptSelect(message, values, {
     clear: true,
+    fitToRemainingHeight: true,
   });
 
   if (!selected) {
