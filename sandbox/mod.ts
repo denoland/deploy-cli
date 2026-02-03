@@ -44,7 +44,10 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--expose-http <port:number>", "Expose the specified port")
   .option("--memory <value:string>", "Memory limit for the sandbox")
   .option("--region <string>", "The region of the sandbox")
-  .option("--root <volumeOrSnapshot:string>", "A volume or snapshot to use as the root filesystem of the sandbox")
+  .option(
+    "--root <volumeOrSnapshot:string>",
+    "A volume or snapshot to use as the root filesystem of the sandbox",
+  )
   .option(
     "--volume <volume:string>",
     "Mount a volume to the sandbox. Needs to be in format <idOrSlug>:<path>",
