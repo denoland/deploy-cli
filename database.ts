@@ -4,7 +4,8 @@ import {
   ensureOrg,
   error,
   renderTemporalTimestamp,
-  tablePrinter, withApp,
+  tablePrinter,
+  withApp,
 } from "./util.ts";
 import type { GlobalOptions } from "./main.ts";
 import { parse as parseConnectionString } from "pg-connection-string";
@@ -55,13 +56,15 @@ export const databasesProvisionCommand = new Command<DatabaseContext>()
       org: org,
       slug: name,
       engine: options.kind,
-      connection_config:options.kind === "denokv" ? {
-        clientId: crypto.randomUUID(),
-        region: undefined,
-      } : {
-        projectId: crypto.randomUUID(),
-        region: options.region,
-      },
+      connection_config: options.kind === "denokv"
+        ? {
+          clientId: crypto.randomUUID(),
+          region: undefined,
+        }
+        : {
+          projectId: crypto.randomUUID(),
+          region: options.region,
+        },
     });
 
     await saveConfig();
@@ -173,7 +176,6 @@ export const databasesAssignCommand = new Command<DatabaseContext>()
       app,
       false,
     );
-
 
     const trpcClient = createTrpcClient(options.debug, options.endpoint);
 

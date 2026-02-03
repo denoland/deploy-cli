@@ -11,14 +11,12 @@ import { expandGlob } from "@std/fs";
 import { join } from "@std/path";
 import { Spinner } from "@std/cli/unstable-spinner";
 
-import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
 import {
   ensureOrg,
   error,
   parseSize,
   renderTemporalTimestamp,
   tablePrinter,
-  withApp,
 } from "../util.ts";
 import { createTrpcClient, getAuth } from "../auth.ts";
 import { createSwitchCommand, type GlobalOptions } from "../main.ts";
