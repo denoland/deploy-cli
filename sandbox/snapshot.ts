@@ -56,7 +56,7 @@ export const snapshotsListCommand = new Command<SandboxContext>()
           formatSize(snapshot.allocatedSize),
           formatSize(snapshot.flattenedSize),
           snapshot.isBootable.toString().toUpperCase(),
-          snapshot.baseSnapshot?.slug ?? "",
+          snapshot.volume.slug,
         ];
       },
     );
