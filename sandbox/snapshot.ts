@@ -39,7 +39,6 @@ export const snapshotsListCommand = new Command<SandboxContext>()
 
     const list = await client.snapshots.list({
       limit: 100,
-      // @ts-ignore typings mismatch. remove comment once new version is released.
       search,
     });
 
