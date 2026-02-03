@@ -13,6 +13,7 @@ import { Spinner } from "@std/cli/unstable-spinner";
 
 import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
 import {
+  ensureOrg,
   error,
   parseSize,
   renderTemporalTimestamp,
@@ -517,33 +518,6 @@ function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
   }
 
   return groups;
-}
-
-export async function ensureOrg(
-  options: SandboxContext,
-  quiet: boolean = true,
-): Promise<{ org: string; saveConfig: () => Promise<void> }> {
-  const config = await readConfig(Deno.cwd(), options.config);
-  const configContent = getAppFromConfig(config);
-
-  const app = await withApp(
-    options.debug,
-    options.endpoint,
-    false,
-    options.org ?? configContent.org,
-    null,
-    quiet,
-  );
-
-  let saveConfig = () => Promise.resolve();
-  if (config && !configContent.org && app.org) {
-    saveConfig = () => writeConfig(config, app.org);
-  }
-
-  return {
-    org: app.org,
-    saveConfig,
-  };
 }
 
 async function connectToSandbox(

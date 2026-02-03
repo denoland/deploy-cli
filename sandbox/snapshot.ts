@@ -1,8 +1,8 @@
 import { Command } from "@cliffy/command";
-import { ensureOrg, type SandboxContext } from "./mod.ts";
+import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
-import { formatSize, tablePrinter } from "../util.ts";
+import { ensureOrg, formatSize, tablePrinter } from "../util.ts";
 
 export const snapshotsCreateCommand = new Command<SandboxContext>()
   .description("Create a snapshot from a volume")
