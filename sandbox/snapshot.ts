@@ -74,7 +74,6 @@ export const snapshotsDeleteCommand = new Command<SandboxContext>()
       org,
     });
 
-    // @ts-ignore typings mismatch. remove comment once new version is released.
     await client.snapshots.delete(idOrSlug);
     await saveConfig();
   });
