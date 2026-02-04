@@ -15,15 +15,14 @@ import {
 import { observable } from "@trpc/server/observable";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
-import token_storage, { tokenIsTemp } from "./token_storage.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
+import type { GlobalContext } from "./main.ts";
 
 export function createTrpcClient(
-  debug: boolean,
-  deployUrl: string,
+  context: GlobalContext,
   quiet: boolean = false,
 ) {
-  let storedAuth = token_storage.get();
+  let storedAuth = tokenStorage.get();
 
   // deno-lint-ignore no-explicit-any
   const errorLink: TRPCLink<any> = () => {
@@ -34,11 +33,11 @@ export function createTrpcClient(
             observer.next(value);
           },
           error(err) {
-            if (debug) {
+            if (context.debug) {
               console.error(err);
             }
             error(
-              debug,
+              context,
               err.message || Deno.inspect(err),
               err.meta?.response as Response | undefined,
             );
@@ -70,7 +69,7 @@ export function createTrpcClient(
       errorLink,
       retryLink({
         retry(opts) {
-          if (debug) {
+          if (context.debug) {
             console.log(opts);
           }
 
@@ -82,21 +81,21 @@ export function createTrpcClient(
 
           if (tokenIsTemp) {
             error(
-              debug,
+              context,
               "The token specified via 'DENO_DEPLOY_TOKEN' or the '--token' flag is invalid.",
             );
           }
 
           if (typeof retryPromise !== "undefined") {
-            token_storage.remove();
+            tokenStorage.remove();
             error(
-              debug,
+              context,
               "Already re-attempted authorization, please re-run this command",
             );
           }
 
-          token_storage.remove();
-          retryPromise = getAuth(debug, deployUrl, quiet).then((auth) => {
+          tokenStorage.remove();
+          retryPromise = getAuth(context, quiet).then((auth) => {
             storedAuth = auth;
           });
           return true;
@@ -106,7 +105,7 @@ export function createTrpcClient(
         // uses the httpSubscriptionLink for subscriptions
         condition: (op) => op.type === "subscription",
         false: httpBatchStreamLink({
-          url: deployUrl + "/api",
+          url: context.endpoint + "/api",
           fetch: async (url, options) => {
             // deno-lint-ignore no-explicit-any
             const response = await fetch(url, options as any);
@@ -144,7 +143,7 @@ export function createTrpcClient(
           transformer,
         }),
         true: httpSubscriptionLink({
-          url: deployUrl + "/api",
+          url: context.endpoint + "/api",
           EventSource: EventSourcePolyfill,
           async eventSourceOptions() {
             if (retryPromise) {
@@ -170,18 +169,17 @@ export function createTrpcClient(
 }
 
 export async function getAuth(
-  debug: boolean,
-  deployUrl: string,
+  context: GlobalContext,
   quiet: boolean = false,
 ): Promise<string> {
-  const storedAuth = token_storage.get();
+  const storedAuth = tokenStorage.get();
   if (storedAuth) {
     return storedAuth;
   }
 
-  const { code, exchangeToken, verifier } = await interactive(debug, deployUrl);
+  const { code, exchangeToken, verifier } = await interactive(context);
 
-  const authUrl = `${deployUrl}/auth?code=${code}`;
+  const authUrl = `${context.endpoint}/auth?code=${code}`;
 
   const spinner = new Spinner({
     message: `Visit ${authUrl} to authorize deploying your project.`,
@@ -192,8 +190,7 @@ export async function getAuth(
   await open(authUrl);
 
   return await tokenExchange(
-    debug,
-    deployUrl,
+    context,
     exchangeToken,
     verifier,
     spinner,
@@ -201,7 +198,7 @@ export async function getAuth(
   );
 }
 
-export async function interactive(debug: boolean, deployUrl: string): Promise<
+export async function interactive(context: GlobalContext): Promise<
   { code: string; exchangeToken: string; verifier: string }
 > {
   const verifier = crypto.randomUUID();
@@ -209,14 +206,14 @@ export async function interactive(debug: boolean, deployUrl: string): Promise<
   const hash = await crypto.subtle.digest("SHA-256", data);
   const challenge = encodeBase64(hash);
 
-  const res = await fetch(`${deployUrl}/auth/interactive`, {
+  const res = await fetch(`${context.endpoint}/auth/interactive`, {
     method: "POST",
     body: JSON.stringify({ challenge }),
   });
 
   if (!res.ok) {
     console.error("An error occurred during authentication, exiting...");
-    if (debug) {
+    if (context.debug) {
       console.log(res);
       console.log(await res.json());
     }
@@ -233,8 +230,7 @@ export async function interactive(debug: boolean, deployUrl: string): Promise<
 }
 
 export function tokenExchange(
-  debug: boolean,
-  deployUrl: string,
+  context: GlobalContext,
   exchangeToken: string,
   verifier: string,
   spinner: Spinner,
@@ -242,7 +238,7 @@ export function tokenExchange(
 ): Promise<string> {
   return new Promise((resolve) => {
     const interval = setInterval(async () => {
-      const res = await fetch(`${deployUrl}/auth/exchange`, {
+      const res = await fetch(`${context.endpoint}/auth/exchange`, {
         method: "POST",
         body: JSON.stringify({
           exchangeToken,
@@ -261,7 +257,7 @@ export function tokenExchange(
           );
         }
         clearInterval(interval);
-        token_storage.set(token);
+        tokenStorage.set(token);
         resolve(token);
       } else {
         const err = await res.json();
@@ -273,7 +269,7 @@ export function tokenExchange(
         ) {
           clearInterval(interval);
           spinner.stop();
-          error(debug, err.message, res);
+          error(context, err.message, res);
         }
       }
     }, 2000);
@@ -281,15 +277,14 @@ export function tokenExchange(
 }
 
 export async function authedFetch(
-  debug: boolean,
-  deployUrl: string,
+  context: GlobalContext,
   endpoint: string,
   init: RequestInit,
 ) {
-  let auth = await token_storage.get();
+  let auth = await tokenStorage.get();
 
   if (!auth) {
-    auth = await getAuth(debug, deployUrl);
+    auth = await getAuth(context);
   }
 
   const headers = new Headers(init.headers);
@@ -298,7 +293,7 @@ export async function authedFetch(
     `token=${auth}; deno_auth_ghid=force`,
   );
 
-  const url = new URL(endpoint, deployUrl);
+  const url = new URL(endpoint, context.endpoint);
 
   let fallbackBody: ReadableStream | undefined;
   if (init.body instanceof ReadableStream) {
@@ -314,8 +309,8 @@ export async function authedFetch(
 
   if (res.status === 401) {
     console.log(await res.text());
-    token_storage.remove();
-    auth = await getAuth(debug, deployUrl);
+    tokenStorage.remove();
+    auth = await getAuth(context);
 
     const headers = new Headers(init.headers);
     headers.set(
@@ -330,7 +325,7 @@ export async function authedFetch(
 
     if (retryRes.status === 401) {
       const err = await retryRes.json();
-      error(debug, `unexpected authentication failure\n${err.message}`);
+      error(context, `unexpected authentication failure\n${err.message}`);
     } else {
       return retryRes;
     }
@@ -338,3 +333,60 @@ export async function authedFetch(
     return res;
   }
 }
+
+let cachedToken: string | null = null;
+export let tokenIsTemp = false;
+let cannotInteractWithKeychain = false;
+
+const KEYCHAIN_WARNING =
+  "Unable to interact with keychain.\nThe authentication will not be stored and will only work on this execution.";
+
+export const tokenStorage = {
+  get(): string | null {
+    if (cachedToken) {
+      return cachedToken;
+    } else {
+      try {
+        // @ts-ignore deno internals
+        return Deno[Deno.internal].core.ops.op_deploy_token_get();
+      } catch {
+        if (!cannotInteractWithKeychain) {
+          cannotInteractWithKeychain = true;
+          console.log(KEYCHAIN_WARNING);
+        }
+        return null;
+      }
+    }
+  },
+  set(token: string, temp: boolean = false) {
+    cachedToken = token;
+    if (!temp) {
+      try {
+        // @ts-ignore deno internals
+        Deno[Deno.internal].core.ops.op_deploy_token_set(token);
+      } catch {
+        if (!cannotInteractWithKeychain) {
+          cannotInteractWithKeychain = true;
+          console.log(KEYCHAIN_WARNING);
+        }
+      }
+    } else {
+      tokenIsTemp = temp;
+    }
+  },
+  remove() {
+    if (tokenIsTemp) {
+      return;
+    }
+    cachedToken = null;
+    try {
+      // @ts-ignore deno internals
+      Deno[Deno.internal].core.ops.op_deploy_token_delete();
+    } catch {
+      if (!cannotInteractWithKeychain) {
+        cannotInteractWithKeychain = true;
+        console.log(KEYCHAIN_WARNING);
+      }
+    }
+  },
+};

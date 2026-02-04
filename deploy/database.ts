@@ -1,21 +1,15 @@
 import { Command, ValidationError } from "@cliffy/command";
-import { createTrpcClient } from "./auth.ts";
-import {
-  ensureOrg,
-  error,
-  renderTemporalTimestamp,
-  tablePrinter,
-  withApp,
-} from "./util.ts";
-import type { GlobalOptions } from "./main.ts";
+import { createTrpcClient } from "../auth.ts";
+import { error, renderTemporalTimestamp, tablePrinter } from "../util.ts";
+import type { GlobalContext } from "../main.ts";
 import { parse as parseConnectionString } from "pg-connection-string";
-import { getAppFromConfig, readConfig } from "./config.ts";
+import { actionHandler, getApp, getOrg } from "../config.ts";
 
-export type DatabaseContext = GlobalOptions & {
+export type DatabaseContext = GlobalContext & {
   org?: string;
 };
 
-export const databasesProvisionCommand = new Command<DatabaseContext>()
+const databasesProvisionCommand = new Command<DatabaseContext>()
   .description("Provision a database")
   .option("--kind <string>", "The kind of database to provision", {
     required: true,
@@ -33,9 +27,9 @@ export const databasesProvisionCommand = new Command<DatabaseContext>()
     "The primary region of the database. required for Prisma",
   )
   .arguments("<name:string>")
-  .action(async (options, name) => {
-    const { org, saveConfig } = await ensureOrg(options, false);
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, name) => {
+    const org = await getOrg(options, config, options.org);
+    const trpcClient = createTrpcClient(options);
 
     if (options.kind === "prisma" && !options.region) {
       // deno-lint-ignore no-explicit-any
@@ -66,11 +60,9 @@ export const databasesProvisionCommand = new Command<DatabaseContext>()
           region: options.region,
         },
     });
+  }));
 
-    await saveConfig();
-  });
-
-export const databasesLinkCommand = new Command<DatabaseContext>()
+const databasesLinkCommand = new Command<DatabaseContext>()
   .description("Link a database")
   .option("--hostname <string>", "The hostname to use for the database", {
     required: true,
@@ -91,9 +83,9 @@ export const databasesLinkCommand = new Command<DatabaseContext>()
     "Don't actually link the database, just attempt to connect",
   )
   .arguments("<name:string> [connectionString:string]")
-  .action(async (options, name, connectionString) => {
-    const { org, saveConfig } = await ensureOrg(options, false);
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, name, connectionString) => {
+    const org = await getOrg(options, config, options.org);
+    const trpcClient = createTrpcClient(options);
 
     const engine = "postgresql";
     let hostname;
@@ -155,96 +147,72 @@ export const databasesLinkCommand = new Command<DatabaseContext>()
         connectionConfig,
       });
     }
+  }));
 
-    await saveConfig();
-  });
-
-export const databasesAssignCommand = new Command<DatabaseContext>()
+const databasesAssignCommand = new Command<DatabaseContext>()
   .description("Assign a database to an app")
   .option("--app <name:string>", "The name of the application")
   .arguments("<name:string>")
-  .action(async (options, name) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org, app } = getAppFromConfig(configContent);
-    org ??= options.org;
-    app ??= options.app;
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint as string,
-      false,
-      org,
-      app,
-      false,
-    );
-
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, name) => {
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
     await (trpcClient.apps as any).assignDatabaseAttachment.mutate({
-      org: orgAndApp.org,
-      app: orgAndApp.app,
+      org,
+      app,
       databaseInstance: name,
     });
-  });
+  }));
 
-export const databasesDetachCommand = new Command<DatabaseContext>()
+const databasesDetachCommand = new Command<DatabaseContext>()
   .description("Detach a database from an app")
   .option("--app <name:string>", "The name of the application")
   .arguments("<name:string>")
-  .action(async (options, name) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org, app } = getAppFromConfig(configContent);
-    org ??= options.org;
-    app ??= options.app;
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint as string,
-      false,
-      org,
-      app,
-      false,
-    );
-
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, name) => {
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
     await (trpcClient.apps as any).removeDatabaseAttachment.mutate({
-      org: orgAndApp.org,
-      app: orgAndApp.app,
+      org,
+      app,
       databaseInstance: name,
     });
-  });
+  }));
 
-export const databasesQueryCommand = new Command<DatabaseContext>()
+const databasesQueryCommand = new Command<DatabaseContext>()
   .description("Query a database")
   .arguments("<name:string> <database:string> [query...]")
-  .action(async function (options, name, database, ...query) {
-    const { org, saveConfig } = await ensureOrg(options, false);
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(
+    actionHandler(async function (config, options, name, database, ...query) {
+      const org = await getOrg(options, config, options.org);
+      const trpcClient = createTrpcClient(options);
 
-    const args = this.getLiteralArgs().length > 0
-      ? this.getLiteralArgs()
-      : query;
+      const args = this.getLiteralArgs().length > 0
+        ? this.getLiteralArgs()
+        : query;
 
-    // deno-lint-ignore no-explicit-any
-    const res = await (trpcClient.databases as any).executeQuery.mutate({
-      org,
-      databaseInstance: name,
-      databaseName: database,
-      query: args.join(" "),
-      array: false,
-    });
+      // deno-lint-ignore no-explicit-any
+      const res = await (trpcClient.databases as any).executeQuery.mutate({
+        org,
+        databaseInstance: name,
+        databaseName: database,
+        query: args.join(" "),
+        array: false,
+      });
 
-    if (res.kind === "ok") {
-      console.log(res.rows);
-    } else if (res.kind === "postgres_error") {
-      error(options.debug, res.error);
-    } else if (res.error) {
-      error(options.debug, res.message);
-    }
-
-    await saveConfig();
-  });
+      if (res.kind === "ok") {
+        console.log(res.rows);
+      } else if (res.kind === "postgres_error") {
+        error(options, res.error);
+      } else if (res.error) {
+        error(options, res.message);
+      }
+    }),
+  );
 
 type PostgresInfo = {
   engine: "postgresql";
@@ -274,12 +242,12 @@ type PrismaInfo = {
 
 type ConnectionInfo = PostgresInfo | DenokvInfo | PrismaInfo;
 
-export const databasesListCommand = new Command<DatabaseContext>()
+const databasesListCommand = new Command<DatabaseContext>()
   .description("list databases")
   .arguments("[search:string]")
-  .action(async (options, search) => {
-    const { org, saveConfig } = await ensureOrg(options, false);
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, search) => {
+    const org = await getOrg(options, config, options.org);
+    const trpcClient = createTrpcClient(options);
 
     const list: Array<
       {
@@ -325,28 +293,25 @@ export const databasesListCommand = new Command<DatabaseContext>()
         };
       },
     );
+  }));
 
-    await saveConfig();
-  });
-
-export const databasesDeleteCommand = new Command<DatabaseContext>()
+const databasesDeleteCommand = new Command<DatabaseContext>()
   .description("Delete a database")
   .arguments("<name:string>")
-  .action(async (options, name) => {
-    const { org, saveConfig } = await ensureOrg(options, false);
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, name) => {
+    const org = await getOrg(options, config, options.org);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
     await (trpcClient.databases as any).delete.mutate({
-      org: org,
+      org,
       databaseInstance: name,
     });
+  }));
 
-    await saveConfig();
-  });
-
-export const databasesCommand = new Command<GlobalOptions>()
+export const databasesCommand = new Command<GlobalContext>()
   .description("Manage databases")
+  .globalOption("--org <name:string>", "The name of the organization")
   .action(() => {
     databasesCommand.showHelp();
   })

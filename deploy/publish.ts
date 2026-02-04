@@ -5,9 +5,9 @@ import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
-import { type Config, writeConfig } from "./config.ts";
-import { authedFetch, createTrpcClient } from "./auth.ts";
-import { error } from "./util.ts";
+import { authedFetch, createTrpcClient } from "../auth.ts";
+import { error } from "../util.ts";
+import type { GlobalContext } from "../main.ts";
 
 const SEPARATOR_PATTERN = Deno.build.os === "windows" ? "\\\\" : "/";
 
@@ -25,10 +25,8 @@ type Chunk =
   });
 
 export async function publish(
-  debug: boolean,
-  deployUrl: string,
+  context: GlobalContext,
   rootPath: string,
-  configContent: Config | null,
   org: string,
   app: string,
   prod: boolean,
@@ -41,13 +39,13 @@ export async function publish(
 
   const gitignorePath = join(rootPath, ".gitignore");
   try {
-    if (debug) {
+    if (context.debug) {
       console.log(`Using .gitignore at '${gitignorePath}'`);
     }
 
     gitignore = gitignoreCompile(Deno.readTextFileSync(gitignorePath));
   } catch (_) {
-    if (debug) {
+    if (context.debug) {
       console.log(`No .gitignore found at '${gitignorePath}'`);
     }
 
@@ -83,7 +81,7 @@ export async function publish(
             path + (chunk.isDirectory ? SEPARATOR : ""),
           );
           if (gitignore.denies(relativePath)) {
-            if (debug) {
+            if (context.debug) {
               console.log(
                 `skipping ${JSON.stringify(relativePath)} (${
                   chunk.isDirectory ? "dir" : "file"
@@ -92,7 +90,7 @@ export async function publish(
             }
             return;
           }
-          if (debug) {
+          if (context.debug) {
             console.log(
               `walking ${JSON.stringify(relativePath)} (${
                 chunk.isDirectory ? "dir" : "file"
@@ -101,7 +99,7 @@ export async function publish(
           }
 
           if (!chunk.isDirectory) {
-            if (debug) {
+            if (context.debug) {
               console.log(`reading ${JSON.stringify(relativePath)}`);
             }
 
@@ -144,11 +142,11 @@ export async function publish(
     }
   }
 
-  if (debug) {
+  if (context.debug) {
     console.log("Manifest", manifest);
   }
 
-  const trpcClient = createTrpcClient(debug, deployUrl);
+  const trpcClient = createTrpcClient(context);
 
   // deno-lint-ignore no-explicit-any
   const revisionId: string = await (trpcClient.apps as any).initiateCliRevision
@@ -164,7 +162,7 @@ export async function publish(
   spinner.stop();
 
   console.log(
-    `You can view the revision here:\n  ${deployUrl}/${org}/${app}/builds/${revisionId}\n`,
+    `You can view the revision here:\n  ${context.endpoint}/${org}/${app}/builds/${revisionId}\n`,
   );
 
   const missingHashesPromise = Promise.withResolvers<string[]>();
@@ -193,7 +191,7 @@ export async function publish(
     },
     onError: (err: unknown) => {
       sub.unsubscribe();
-      error(debug, Deno.inspect(err));
+      error(context, Deno.inspect(err));
     },
     onStopped: () => {
       sub.unsubscribe();
@@ -214,7 +212,7 @@ export async function publish(
       );
     }
 
-    if (debug) {
+    if (context.debug) {
       console.log("Missing hashes", missingHashes);
     }
 
@@ -267,7 +265,7 @@ export async function publish(
               );
             }
 
-            if (debug) {
+            if (context.debug) {
               console.log(
                 `uploading ${JSON.stringify(relativePath)} (${
                   chunk.isDirectory ? "dir" : "file"
@@ -280,7 +278,7 @@ export async function publish(
       .pipeThrough(new TarStream())
       .pipeThrough(new CompressionStream("gzip"));
 
-    if (debug) {
+    if (context.debug) {
       const [tb1, tb2] = tarball.tee();
       tarball = tb1;
       const path = await Deno.makeTempFile({
@@ -291,8 +289,7 @@ export async function publish(
     }
 
     const resp = await authedFetch(
-      debug,
-      deployUrl,
+      context,
       `api/diffsync/${org}/${app}/${revisionId}`,
       {
         method: "POST",
@@ -313,7 +310,7 @@ export async function publish(
 
     if (!resp.ok) {
       const resBody = await resp.json();
-      error(debug, resBody.message, resp);
+      error(context, resBody.message, resp);
     }
 
     console.log("Successfully uploaded your application!");
@@ -353,7 +350,7 @@ export async function publish(
         },
         onError: (err: unknown) => {
           completionSub.unsubscribe();
-          error(debug, Deno.inspect(err));
+          error(context, Deno.inspect(err));
         },
         onComplete: () => {
           completionPromise.resolve();
@@ -402,6 +399,4 @@ export async function publish(
       "To see the deployment, go to the revision page and wait for the build to complete.",
     );
   }
-
-  await writeConfig(configContent, org, app);
 }
