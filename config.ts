@@ -15,7 +15,7 @@ import {
   resolve_config,
   resolve_config_with_deploy_config,
 } from "./lib/rs_lib.js";
-import { Command, ValidationError } from "@cliffy/command";
+import { ValidationError } from "@cliffy/command";
 
 export async function getOrg(
   context: GlobalContext,
