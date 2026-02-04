@@ -44,6 +44,10 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--memory <value:string>", "Memory limit for the sandbox")
   .option("--region <string>", "The region of the sandbox")
   .option(
+    "--root <volumeOrSnapshot:string>",
+    "A volume or snapshot to use as the root filesystem of the sandbox",
+  )
+  .option(
     "--volume <volume:string>",
     "Mount a volume to the sandbox. Needs to be in format <idOrSlug>:<path>",
     {
@@ -94,6 +98,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       memory,
       volumes: options.volume,
       region: options.region as Region,
+      root: options.root,
     });
     if (options.timeout === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
