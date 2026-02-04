@@ -37,7 +37,11 @@ export function createTrpcClient(
             if (debug) {
               console.error(err);
             }
-            error(debug, err.message || Deno.inspect(err));
+            error(
+              debug,
+              err.message || Deno.inspect(err),
+              err.meta?.response as Response | undefined,
+            );
           },
           complete() {
             observer.complete();

@@ -18,6 +18,8 @@ import {
   tokenExchange,
 } from "./auth.ts";
 import token_storage from "./token_storage.ts";
+import { getAppFromConfig, readConfig, writeConfig } from "./config.ts";
+import type { GlobalOptions } from "./main.ts";
 
 export function error(
   debug: boolean,
@@ -158,6 +160,33 @@ export async function withApp(
     org,
     app,
     created,
+  };
+}
+
+export async function ensureOrg(
+  options: GlobalOptions & { org?: string },
+  quiet: boolean = true,
+): Promise<{ org: string; saveConfig: () => Promise<void> }> {
+  const config = await readConfig(Deno.cwd(), options.config);
+  const configContent = getAppFromConfig(config);
+
+  const app = await withApp(
+    options.debug,
+    options.endpoint,
+    false,
+    options.org ?? configContent.org,
+    null,
+    quiet,
+  );
+
+  let saveConfig = () => Promise.resolve();
+  if (config && !configContent.org && app.org) {
+    saveConfig = () => writeConfig(config, app.org);
+  }
+
+  return {
+    org: app.org,
+    saveConfig,
   };
 }
 
@@ -330,10 +359,16 @@ export function parseSize(size: string): number {
   throw new Error("unreachable");
 }
 
+export type SubTable = {
+  headers: string[];
+  rows: string[][];
+};
+
 export function tablePrinter<T>(
   headers: string[],
   values: T[],
   transformer: (value: T) => string[],
+  subtableGenerator?: (value: T) => SubTable | undefined,
 ) {
   const padding = headers.map((header) => header.length);
 
@@ -344,14 +379,60 @@ export function tablePrinter<T>(
       padding[i] = Math.max(padding[i], stripAnsiCode(transformed[i]).length);
     }
 
-    return transformed;
+    const subtable = subtableGenerator?.(value);
+    let processedSubtable: { padding: number[]; rows: string[][] } | undefined;
+
+    if (subtable && subtable.rows.length > 0) {
+      const subPadding = subtable.headers.map((header) => header.length);
+
+      for (const row of subtable.rows) {
+        for (let i = 0; i < row.length; i++) {
+          subPadding[i] = Math.max(
+            subPadding[i],
+            stripAnsiCode(row[i]).length,
+          );
+        }
+      }
+
+      processedSubtable = { padding: subPadding, rows: subtable.rows };
+    }
+
+    return {
+      row: transformed,
+      subtable: subtable?.headers,
+      processedSubtable,
+    };
   });
 
   console.log(
     headers.map((header, i) => header.padEnd(padding[i])).join("   "),
   );
 
-  for (const row of processed) {
+  for (let i = 0; i < processed.length; i++) {
+    const { row, subtable, processedSubtable } = processed[i];
+
     console.log(row.map((field, i) => field.padEnd(padding[i])).join("   "));
+
+    if (subtable && processedSubtable) {
+      console.log(
+        "  " +
+          subtable
+            .map((header, i) => header.padEnd(processedSubtable.padding[i]))
+            .join("   "),
+      );
+
+      for (const subRow of processedSubtable.rows) {
+        console.log(
+          "  " +
+            subRow
+              .map((field, i) => field.padEnd(processedSubtable.padding[i]))
+              .join("   "),
+        );
+      }
+
+      if (i < processed.length - 1) {
+        console.log();
+      }
+    }
   }
 }

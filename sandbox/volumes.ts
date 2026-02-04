@@ -1,8 +1,8 @@
 import { Command } from "@cliffy/command";
-import { ensureOrg, type SandboxContext } from "./mod.ts";
+import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
-import { formatSize, parseSize, tablePrinter } from "../util.ts";
+import { ensureOrg, formatSize, parseSize, tablePrinter } from "../util.ts";
 
 export const volumesCreateCommand = new Command<SandboxContext>()
   .description("Create a volume")
