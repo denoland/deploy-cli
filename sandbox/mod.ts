@@ -81,6 +81,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     "new --memory 2gb",
   )
   .action(actionHandler(async function (config, options, ...command) {
+    config.noCreate();
     const org = await getOrg(options, config, options.org);
 
     const quiet = options.timeout === "session";
@@ -182,6 +183,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 export const sandboxListCommand = new Command<SandboxContext>()
   .description("List all sandboxes in an organization")
   .action(actionHandler(async (config, options) => {
+    config.noCreate();
     const org = await getOrg(options, config, options.org);
     const client = createTrpcClient(options, true);
 
@@ -228,6 +230,7 @@ export const sandboxKillCommand = new Command<SandboxContext>()
   .description("Kill a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(actionHandler(async (config, options, sandboxId) => {
+    config.noCreate();
     const org = await getOrg(options, config, options.org);
     const client = createTrpcClient(options, true);
 
@@ -253,6 +256,7 @@ export const sandboxSshCommand = new Command<SandboxContext>()
   .description("SSH into a running sandbox")
   .arguments("<sandbox-id:string>")
   .action(actionHandler(async (config, options, sandboxId) => {
+    config.noCreate();
     await using sandbox = await connectToSandbox(options, config, sandboxId);
     await config.save();
     await sshIntoSandbox(sandbox);
@@ -290,6 +294,7 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
   )
   .arguments("<paths...:string>")
   .action(actionHandler(async (config, options, ...paths) => {
+    config.noCreate();
     if (paths.length < 2) {
       throw new ValidationError("At least two paths must be specified");
     }
@@ -428,6 +433,8 @@ export const sandboxExecCommand = new Command<SandboxContext>()
   .arguments("<sandbox-id:string> <command...:string>")
   .action(
     actionHandler(async function (config, options, sandboxId, ...command) {
+      config.noCreate();
+
       await using sandbox = await connectToSandbox(options, config, sandboxId);
 
       const args = this.getLiteralArgs().length > 0
@@ -453,6 +460,7 @@ export const sandboxExtendCommand = new Command<SandboxContext>()
   .description("Extend the timeout of a running sandbox")
   .arguments("<sandbox-id:string> <timeout:string>")
   .action(actionHandler(async (config, options, sandboxId, timeout) => {
+    config.noCreate();
     await using sandbox = await connectToSandbox(options, config, sandboxId);
     console.log(
       await sandbox.extendTimeout(timeout as `${number}s` | `${number}m`),
@@ -470,6 +478,7 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
   )
   .arguments("<sandbox-id:string> <app:string>")
   .action(actionHandler(async (config, options, sandboxId, app) => {
+    config.noCreate();
     await using sandbox = await connectToSandbox(options, config, sandboxId);
 
     await sandbox.deno.deploy(app, {

@@ -10,6 +10,7 @@ export const snapshotsCreateCommand = new Command<SandboxContext>()
   .arguments("<volumeIdOrSlug:string> <snapshotSlug:string>")
   .action(
     actionHandler(async (config, options, volumeIdOrSlug, snapshotSlug) => {
+      config.noCreate();
       const org = await getOrg(options, config, options.org);
       const token = await getAuth(options, true);
 
@@ -30,6 +31,7 @@ export const snapshotsListCommand = new Command<SandboxContext>()
   .description("List snapshots")
   .arguments("[search:string]")
   .action(actionHandler(async (config, options, search) => {
+    config.noCreate();
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
 
@@ -65,6 +67,7 @@ export const snapshotsDeleteCommand = new Command<SandboxContext>()
   .description("Remove a snapshot")
   .arguments("<idOrSlug:string>")
   .action(actionHandler(async (config, options, idOrSlug) => {
+    config.noCreate();
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
 

@@ -17,6 +17,8 @@ export const volumesCreateCommand = new Command<SandboxContext>()
   )
   .arguments("<name>")
   .action(actionHandler(async (config, options, name) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
 
@@ -40,6 +42,8 @@ export const volumesListCommand = new Command<SandboxContext>()
   .description("List volumes")
   .arguments("[search:string]")
   .action(actionHandler(async (config, options, search) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
 
@@ -74,6 +78,8 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
   .description("Remove a volume")
   .arguments("<idOrSlug:string>")
   .action(actionHandler(async (config, options, idOrSlug) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
 
@@ -91,6 +97,8 @@ export const volumesSnapshotCommand = new Command<SandboxContext>()
   .arguments("<volumeIdOrSlug:string> <snapshotSlug:string>")
   .action(
     actionHandler(async (config, options, volumeIdOrSlug, snapshotSlug) => {
+      config.noCreate();
+
       const org = await getOrg(options, config, options.org);
       const token = await getAuth(options, true);
 

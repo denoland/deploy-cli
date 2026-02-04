@@ -149,8 +149,10 @@ export interface ConfigContext {
   org: undefined | string;
   app: undefined | string;
   configSaved: boolean;
+  doNotCreate: boolean;
   save(): Promise<void>;
   noSave(): void;
+  noCreate(): void;
 }
 
 export function actionHandler<
@@ -175,11 +177,17 @@ export function actionHandler<
       const configContext: ConfigContext = {
         ...getAppFromConfig(config),
         configSaved: false,
+        doNotCreate: false,
         save() {
-          if (this.configSaved) return Promise.resolve();
+          if (this.configSaved) {
+            return Promise.resolve();
+          }
           this.configSaved = true;
 
-          // TODO: we dont always want to write the config. ie when we write only org but an app exists, or writing org for sandboxes
+          if (this.doNotCreate && !config) {
+            return Promise.resolve();
+          }
+
           return writeConfig(config, {
             org: this.org,
             app: this.app,
@@ -187,6 +195,9 @@ export function actionHandler<
         },
         noSave() {
           this.configSaved = true;
+        },
+        noCreate() {
+          this.doNotCreate = true;
         },
       };
 

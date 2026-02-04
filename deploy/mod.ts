@@ -90,18 +90,17 @@ const setupGCPCommand = new Command<GlobalContext>()
   }));
 
 const tunnelLoginCommand = new Command<GlobalContext>()
-  .arguments("[root-path:string]")
   .option("--really-no-config", "really no config")
   .option("--out <file:string>", "out file")
   .hidden()
-  .action(actionHandler(async (config, options, _rootPath = Deno.cwd()) => {
+  .action(actionHandler(async (config, options) => {
     const org = await getOrg(options, config, undefined);
     const { app } = await getApp(options, config, false, org, undefined);
 
     const token = await getAuth(options);
 
     if (options.reallyNoConfig === true) {
-      config.noSave = true;
+      config.noSave();
     }
 
     if (options.out) {
@@ -110,7 +109,7 @@ const tunnelLoginCommand = new Command<GlobalContext>()
         JSON.stringify({ org, app, token }),
       );
     }
-  }, (rootPath) => rootPath));
+  }));
 
 const logsCommand = new Command<GlobalContext>()
   .description("Stream logs from an application")

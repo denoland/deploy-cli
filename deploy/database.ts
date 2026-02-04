@@ -28,6 +28,8 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
   )
   .arguments("<name:string>")
   .action(actionHandler(async (config, options, name) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const trpcClient = createTrpcClient(options);
 
@@ -84,6 +86,8 @@ const databasesLinkCommand = new Command<DatabaseContext>()
   )
   .arguments("<name:string> [connectionString:string]")
   .action(actionHandler(async (config, options, name, connectionString) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const trpcClient = createTrpcClient(options);
 
@@ -154,6 +158,8 @@ const databasesAssignCommand = new Command<DatabaseContext>()
   .option("--app <name:string>", "The name of the application")
   .arguments("<name:string>")
   .action(actionHandler(async (config, options, name) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const { app } = await getApp(options, config, false, org, options.app);
     const trpcClient = createTrpcClient(options);
@@ -171,6 +177,8 @@ const databasesDetachCommand = new Command<DatabaseContext>()
   .option("--app <name:string>", "The name of the application")
   .arguments("<name:string>")
   .action(actionHandler(async (config, options, name) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const { app } = await getApp(options, config, false, org, options.app);
     const trpcClient = createTrpcClient(options);
@@ -188,6 +196,8 @@ const databasesQueryCommand = new Command<DatabaseContext>()
   .arguments("<name:string> <database:string> [query...]")
   .action(
     actionHandler(async function (config, options, name, database, ...query) {
+      config.noCreate();
+
       const org = await getOrg(options, config, options.org);
       const trpcClient = createTrpcClient(options);
 
@@ -246,6 +256,8 @@ const databasesListCommand = new Command<DatabaseContext>()
   .description("list databases")
   .arguments("[search:string]")
   .action(actionHandler(async (config, options, search) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const trpcClient = createTrpcClient(options);
 
@@ -299,6 +311,8 @@ const databasesDeleteCommand = new Command<DatabaseContext>()
   .description("Delete a database")
   .arguments("<name:string>")
   .action(actionHandler(async (config, options, name) => {
+    config.noCreate();
+
     const org = await getOrg(options, config, options.org);
     const trpcClient = createTrpcClient(options);
 
