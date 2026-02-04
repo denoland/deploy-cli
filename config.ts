@@ -148,8 +148,9 @@ export async function getApp(
 export interface ConfigContext {
   org: undefined | string;
   app: undefined | string;
-  save: () => Promise<void>;
-  set noSave(arg: boolean);
+  configSaved: boolean;
+  save(): Promise<void>;
+  noSave(): void;
 }
 
 export function actionHandler<
@@ -171,31 +172,32 @@ export function actionHandler<
         rootPath?.(...args) ?? Deno.cwd(),
         context.config,
       );
-      const configContext = getAppFromConfig(config);
+      const configContext: ConfigContext = {
+        ...getAppFromConfig(config),
+        configSaved: false,
+        save() {
+          if (this.configSaved) return Promise.resolve();
+          this.configSaved = true;
 
-      let configSaved = false;
-      const saveConfig = () => {
-        if (configSaved) return Promise.resolve();
-        configSaved = true;
-
-        // TODO: we dont always want to write the config. ie when we write only org but an app exists, or writing org for sandboxes
-        return writeConfig(config, configContext);
+          // TODO: we dont always want to write the config. ie when we write only org but an app exists, or writing org for sandboxes
+          return writeConfig(config, {
+            org: this.org,
+            app: this.app,
+          });
+        },
+        noSave() {
+          this.configSaved = true;
+        },
       };
 
       await cb.call(
         this,
-        {
-          ...configContext,
-          save: saveConfig,
-          set noSave(arg: boolean) {
-            configSaved = arg;
-          },
-        } as unknown as ConfigContext,
+        configContext,
         context,
         ...args,
       );
 
-      await saveConfig();
+      await configContext.save();
     } catch (e) {
       if (e instanceof ValidationError) {
         throw e;
