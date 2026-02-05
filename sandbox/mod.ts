@@ -1,4 +1,4 @@
-import { Command } from "@cliffy/command";
+import { Command, ValidationError } from "@cliffy/command";
 import {
   type Region,
   Sandbox,
@@ -11,22 +11,20 @@ import { expandGlob } from "@std/fs";
 import { join } from "@std/path";
 import { Spinner } from "@std/cli/unstable-spinner";
 
-import { getAppFromConfig, readConfig, writeConfig } from "../config.ts";
 import {
-  error,
+  formatDuration,
   parseSize,
   renderTemporalTimestamp,
   tablePrinter,
-  withApp,
 } from "../util.ts";
-import { createTrpcClient, getAuth } from "../auth.ts";
-import { createSwitchCommand, type GlobalOptions } from "../main.ts";
-import token_storage from "../token_storage.ts";
+import { createTrpcClient, getAuth, tokenStorage } from "../auth.ts";
+import { createSwitchCommand, type GlobalContext } from "../main.ts";
 
 import { volumesCommand } from "./volumes.ts";
 import { snapshotsCommand } from "./snapshot.ts";
+import { actionHandler, type ConfigContext, getOrg } from "../config.ts";
 
-export type SandboxContext = GlobalOptions & {
+export type SandboxContext = GlobalContext & {
   org?: string;
 };
 
@@ -45,6 +43,10 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--memory <value:string>", "Memory limit for the sandbox")
   .option("--region <string>", "The region of the sandbox")
   .option(
+    "--root <volumeOrSnapshot:string>",
+    "A volume or snapshot to use as the root filesystem of the sandbox",
+  )
+  .option(
     "--volume <volume:string>",
     "Mount a volume to the sandbox. Needs to be in format <idOrSlug>:<path>",
     {
@@ -52,10 +54,18 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       value: (value, previous = {}): Record<string, VolumeId | VolumeSlug> => {
         const separatorIndex = value.indexOf(":");
         if (separatorIndex === -1) {
-          error(false, "Volume must be specified as <idOrSlug>:<path>");
+          throw new ValidationError(
+            "Volume must be specified as <idOrSlug>:<path>",
+          );
         }
         const name = value.slice(0, separatorIndex);
         const path = value.slice(separatorIndex + 1);
+
+        if (path === "/") {
+          throw new ValidationError(
+            "Volume mount  path cannot be /, use --root instead",
+          );
+        }
 
         previous[path] = name;
 
@@ -76,15 +86,17 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     "Create a sandbox with a custom memory limit",
     "new --memory 2gb",
   )
-  .action(async function (options, ...command) {
+  .action(actionHandler(async function (config, options, ...command) {
+    config.noCreate();
+    const org = await getOrg(options, config, options.org);
+
     const quiet = options.timeout === "session";
-    const { org, saveConfig } = await ensureOrg(options, quiet);
-    const token = await getAuth(options.debug, options.endpoint, quiet);
+    const token = await getAuth(options, quiet);
 
     let memory = undefined;
 
     if (options.memory) {
-      memory = Math.floor(parseSize(options.memory));
+      memory = Math.floor(parseSize(options, options.memory));
     }
 
     const sandbox = await Sandbox.create({
@@ -95,6 +107,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       memory,
       volumes: options.volume,
       region: options.region as Region,
+      root: options.root,
     });
     if (options.timeout === "session" || options.ssh) {
       console.log(`Created sandbox with id '${sandbox.id}'`);
@@ -140,7 +153,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       }
     }
 
-    await saveConfig();
+    await config.save();
 
     const stopMessage = "Stopping the sandbox...";
     if (options.ssh) {
@@ -171,13 +184,14 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 
       Deno.exit();
     }
-  });
+  }));
 
 export const sandboxListCommand = new Command<SandboxContext>()
   .description("List all sandboxes in an organization")
-  .action(async (options) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const client = createTrpcClient(options.debug, options.endpoint, true);
+  .action(actionHandler(async (config, options) => {
+    config.noCreate();
+    const org = await getOrg(options, config, options.org);
+    const client = createTrpcClient(options, true);
 
     const list: Array<{
       id: string;
@@ -187,8 +201,6 @@ export const sandboxListCommand = new Command<SandboxContext>()
       cluster_hostname: string;
       // deno-lint-ignore no-explicit-any
     }> = await (client.sandboxes as any).list.query({ org });
-
-    await saveConfig();
 
     tablePrinter(
       ["ID", "CREATED", "REGION", "STATUS", "UPTIME"],
@@ -218,14 +230,15 @@ export const sandboxListCommand = new Command<SandboxContext>()
         ];
       },
     );
-  });
+  }));
 
 export const sandboxKillCommand = new Command<SandboxContext>()
   .description("Kill a running sandbox")
   .arguments("<sandbox-id:string>")
-  .action(async (options, sandboxId) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const client = createTrpcClient(options.debug, options.endpoint, true);
+  .action(actionHandler(async (config, options, sandboxId) => {
+    config.noCreate();
+    const org = await getOrg(options, config, options.org);
+    const client = createTrpcClient(options, true);
 
     // deno-lint-ignore no-explicit-any
     const cluster = await (client.sandboxes as any).findHostname.query({
@@ -240,25 +253,20 @@ export const sandboxKillCommand = new Command<SandboxContext>()
       clusterHostname: cluster.hostname,
     });
 
-    await saveConfig();
-
     if (res.success) {
       console.log(`Sandbox ${sandboxId} killed successfully`);
     }
-  });
+  }));
 
 export const sandboxSshCommand = new Command<SandboxContext>()
   .description("SSH into a running sandbox")
   .arguments("<sandbox-id:string>")
-  .action(async (options, sandboxId) => {
-    const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
-      options,
-      sandboxId,
-    );
-    await using sandbox = tempSandbox;
-    await saveConfig();
+  .action(actionHandler(async (config, options, sandboxId) => {
+    config.noCreate();
+    await using sandbox = await connectToSandbox(options, config, sandboxId);
+    await config.save();
     await sshIntoSandbox(sandbox);
-  });
+  }));
 
 export const sandboxCopyCommand = new Command<SandboxContext>()
   .description("Copy files from or to a running sandbox")
@@ -291,9 +299,10 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
     "copy someSandboxId:/app/* ./",
   )
   .arguments("<paths...:string>")
-  .action(async (options, ...paths) => {
+  .action(actionHandler(async (config, options, ...paths) => {
+    config.noCreate();
     if (paths.length < 2) {
-      error(options.debug, "Not enough paths were specified");
+      throw new ValidationError("At least two paths must be specified");
     }
 
     const target = paths.pop()!;
@@ -303,12 +312,11 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
       const sandboxId = target.slice(0, separatorIndex);
       const targetSandboxPath = target.slice(separatorIndex + 1);
 
-      const { sandbox, saveConfig } = await connectToSandbox(
+      await using targetSandbox = await connectToSandbox(
         options,
+        config,
         sandboxId,
       );
-
-      await using targetSandbox = sandbox;
 
       const sourceSandboxPaths = [];
       const localPaths = [];
@@ -325,8 +333,11 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
       const sourceSandboxes: Record<string, Sandbox> = {};
 
       for (const sandboxId of Object.keys(sourceSandboxGroups)) {
-        sourceSandboxes[sandboxId] =
-          (await connectToSandbox(options, sandboxId)).sandbox;
+        sourceSandboxes[sandboxId] = await connectToSandbox(
+          options,
+          config,
+          sandboxId,
+        );
       }
 
       await Promise.all([
@@ -375,28 +386,24 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
           },
         ),
       ]);
-      await saveConfig();
     } else {
       for (const path of paths) {
         if (!path.includes(":")) {
-          error(
-            options.debug,
+          throw new ValidationError(
             "Source paths must be in the format <sandbox-id>:<path>",
           );
         }
       }
-      let saveConfig: () => Promise<void>;
 
       const groups = groupPathsBySandbox(paths);
       const sandboxes: Record<string, Sandbox> = {};
 
       for (const sandboxId of Object.keys(groups)) {
-        const { sandbox, saveConfig: tempSaveConfig } = await connectToSandbox(
+        sandboxes[sandboxId] = await connectToSandbox(
           options,
+          config,
           sandboxId,
         );
-        sandboxes[sandboxId] = sandbox;
-        saveConfig = tempSaveConfig;
       }
 
       await Promise.all(
@@ -414,10 +421,8 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
           await sandbox.close();
         }),
       );
-
-      await saveConfig!();
     }
-  });
+  }));
 
 export const sandboxExecCommand = new Command<SandboxContext>()
   .description("Execute a command in a running sandbox")
@@ -432,45 +437,41 @@ export const sandboxExecCommand = new Command<SandboxContext>()
   .option("-q, --quiet", "Don't pipe the command to the console")
   .option("--cwd <path:string>", "Working directory of the command")
   .arguments("<sandbox-id:string> <command...:string>")
-  .action(async function (options, sandboxId, ...command) {
-    const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
-      options,
-      sandboxId,
-    );
-    await using sandbox = tempSandbox;
+  .action(
+    actionHandler(async function (config, options, sandboxId, ...command) {
+      config.noCreate();
 
-    const args = this.getLiteralArgs().length > 0
-      ? this.getLiteralArgs()
-      : command;
-    const child = await sandbox.spawn("bash", {
-      cwd: options.cwd,
-      args: ["-c", args.join(" ")],
-      stdin: "piped",
-      stdout: options.quiet ? "null" : "inherit",
-      stderr: options.quiet ? "null" : "inherit",
-    });
+      await using sandbox = await connectToSandbox(options, config, sandboxId);
 
-    Deno.stdin.readable.pipeTo(child.stdin!);
+      const args = this.getLiteralArgs().length > 0
+        ? this.getLiteralArgs()
+        : command;
+      const child = await sandbox.spawn("bash", {
+        cwd: options.cwd,
+        args: ["-c", args.join(" ")],
+        stdin: "piped",
+        stdout: options.quiet ? "null" : "inherit",
+        stderr: options.quiet ? "null" : "inherit",
+      });
 
-    const status = await child.status;
-    await saveConfig();
-    Deno.exit(status.code);
-  });
+      Deno.stdin.readable.pipeTo(child.stdin!);
+
+      const status = await child.status;
+      await config.save();
+      Deno.exit(status.code);
+    }),
+  );
 
 export const sandboxExtendCommand = new Command<SandboxContext>()
   .description("Extend the timeout of a running sandbox")
   .arguments("<sandbox-id:string> <timeout:string>")
-  .action(async (options, sandboxId, timeout) => {
-    const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
-      options,
-      sandboxId,
-    );
-    await using sandbox = tempSandbox;
+  .action(actionHandler(async (config, options, sandboxId, timeout) => {
+    config.noCreate();
+    await using sandbox = await connectToSandbox(options, config, sandboxId);
     console.log(
       await sandbox.extendTimeout(timeout as `${number}s` | `${number}m`),
     );
-    await saveConfig();
-  });
+  }));
 
 export const sandboxDeployCommand = new Command<SandboxContext>()
   .description("Deploy a running sandbox to the specified app")
@@ -482,12 +483,9 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
     "Arguments to pass to the entrypoint script",
   )
   .arguments("<sandbox-id:string> <app:string>")
-  .action(async (options, sandboxId, app) => {
-    const { sandbox: tempSandbox, saveConfig } = await connectToSandbox(
-      options,
-      sandboxId,
-    );
-    await using sandbox = tempSandbox;
+  .action(actionHandler(async (config, options, sandboxId, app) => {
+    config.noCreate();
+    await using sandbox = await connectToSandbox(options, config, sandboxId);
 
     await sandbox.deno.deploy(app, {
       path: options.cwd,
@@ -497,9 +495,7 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
         args: options.args,
       },
     });
-
-    await saveConfig();
-  });
+  }));
 
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
   const groups: Record<string, string[]> = {};
@@ -519,49 +515,21 @@ function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
   return groups;
 }
 
-export async function ensureOrg(
-  options: SandboxContext,
-  quiet: boolean = true,
-): Promise<{ org: string; saveConfig: () => Promise<void> }> {
-  const config = await readConfig(Deno.cwd(), options.config);
-  const configContent = getAppFromConfig(config);
-
-  const app = await withApp(
-    options.debug,
-    options.endpoint,
-    false,
-    options.org ?? configContent.org,
-    null,
-    quiet,
-  );
-
-  let saveConfig = () => Promise.resolve();
-  if (config && !configContent.org && app.org) {
-    saveConfig = () => writeConfig(config, app.org);
-  }
-
-  return {
-    org: app.org,
-    saveConfig,
-  };
-}
-
 async function connectToSandbox(
   options: SandboxContext,
+  config: ConfigContext,
   sandboxId: string,
-): Promise<{ sandbox: Sandbox; saveConfig: () => Promise<void> }> {
-  const { org, saveConfig } = await ensureOrg(options);
-  const token = await getAuth(options.debug, options.endpoint, true);
+): Promise<Sandbox> {
+  const org = await getOrg(options, config, options.org);
+  const token = await getAuth(options, true);
 
-  const sandbox = await Sandbox.connect({
+  return await Sandbox.connect({
     id: sandboxId,
     apiEndpoint: options.endpoint,
     debug: options.debug,
     token,
     org,
   });
-
-  return { sandbox, saveConfig };
 }
 
 /**
@@ -601,82 +569,7 @@ Example:
   }
 }
 
-/**
- * Format duration in ms to human readable string
- *
- * @example
- *   86400000 => 1d
- *    7200000 => 2h
- *     180000 => 3m
- *       4000 => 4s
- *          5 => 5ms
- *
- * @param ms
- */
-export function formatDuration(ms: number): string {
-  if (ms === 0) return "0s";
-
-  const secondsMs = 1000;
-  const minMs = 1000 * 60;
-  const hoursMs = 1000 * 60 * 60;
-  const daysMs = 1000 * 60 * 60 * 24;
-
-  let str = "";
-  let count = 0;
-
-  const days = Math.floor(ms / daysMs);
-  if (days > 0) {
-    ms = ms - days * daysMs;
-    str += `${days}d`;
-    count++;
-  }
-
-  const hours = Math.floor(ms / hoursMs);
-  if (hours > 0) {
-    ms = ms - hours * hoursMs;
-    if (count > 0) str += " ";
-    str += `${hours}h`;
-    count++;
-  }
-
-  if (count > 1 || (count > 0 && hours === 0)) return str;
-
-  const mins = Math.floor(ms / minMs);
-  if (mins > 0) {
-    ms = ms - mins * minMs;
-    if (count > 0) str += " ";
-    str += `${mins}m`;
-    count++;
-  }
-  if (count > 1 || (count > 0 && mins === 0)) return str;
-
-  const seconds = Math.floor(ms / secondsMs);
-  if (seconds > 0) {
-    const tmp = ms - seconds * secondsMs;
-
-    if (count < 1 && tmp > 0) {
-      const v = Math.round((ms / 1000) * 10) / 10;
-      if (count > 0) str += " ";
-      str += `${v}s`;
-      return str;
-    }
-    if (count > 0) str += " ";
-    str += `${seconds}s`;
-    ms = tmp;
-    count++;
-  }
-  if (count > 1 || (count > 0 && seconds === 0)) return str;
-
-  if (ms > 0) {
-    if (count > 0) str += " ";
-    const v = Math.round(ms * 100) / 100;
-    str += `${v}ms`;
-  }
-
-  return str;
-}
-
-export const sandboxCommand = new Command<GlobalOptions>()
+export const sandboxCommand = new Command<GlobalContext>()
   .name("deno sandbox")
   .description("Interact with sandboxes")
   .globalOption("--endpoint <endpoint:string>", "the endpoint", {
@@ -696,14 +589,13 @@ export const sandboxCommand = new Command<GlobalOptions>()
       options.endpoint = endpoint;
     }
     if (options.endpoint.endsWith("/")) {
-      error(
-        false,
+      throw new ValidationError(
         "The provided DENO_DEPLOY_ENDPOINT is invalid, it cannot end with a slash.",
       );
     }
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
-      token_storage.set(tokenEnv, true);
+      tokenStorage.set(tokenEnv, true);
     }
   })
   .action(() => {

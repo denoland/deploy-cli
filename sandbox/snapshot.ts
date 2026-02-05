@@ -1,35 +1,39 @@
 import { Command } from "@cliffy/command";
-import { ensureOrg, type SandboxContext } from "./mod.ts";
+import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
 import { formatSize, tablePrinter } from "../util.ts";
+import { actionHandler, getOrg } from "../config.ts";
 
 export const snapshotsCreateCommand = new Command<SandboxContext>()
   .description("Create a snapshot from a volume")
   .arguments("<volumeIdOrSlug:string> <snapshotSlug:string>")
-  .action(async (options, volumeIdOrSlug, snapshotSlug) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
+  .action(
+    actionHandler(async (config, options, volumeIdOrSlug, snapshotSlug) => {
+      config.noCreate();
+      const org = await getOrg(options, config, options.org);
+      const token = await getAuth(options, true);
 
-    const client = new Client({
-      apiEndpoint: options.endpoint,
-      token,
-      org,
-    });
+      const client = new Client({
+        apiEndpoint: options.endpoint,
+        token,
+        org,
+      });
 
-    const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
-      slug: snapshotSlug,
-    });
-    console.log(snapshot.id);
-    await saveConfig();
-  });
+      const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
+        slug: snapshotSlug,
+      });
+      console.log(snapshot.id);
+    }),
+  );
 
 export const snapshotsListCommand = new Command<SandboxContext>()
   .description("List snapshots")
   .arguments("[search:string]")
-  .action(async (options, search) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
+  .action(actionHandler(async (config, options, search) => {
+    config.noCreate();
+    const org = await getOrg(options, config, options.org);
+    const token = await getAuth(options, true);
 
     const client = new Client({
       apiEndpoint: options.endpoint,
@@ -39,11 +43,8 @@ export const snapshotsListCommand = new Command<SandboxContext>()
 
     const list = await client.snapshots.list({
       limit: 100,
-      // @ts-ignore typings mismatch. remove comment once new version is released.
       search,
     });
-
-    await saveConfig();
 
     tablePrinter(
       ["ID", "SLUG", "REGION", "ALLOCATED", "FLATTENED", "BOOTABLE", "BASE"],
@@ -56,18 +57,19 @@ export const snapshotsListCommand = new Command<SandboxContext>()
           formatSize(snapshot.allocatedSize),
           formatSize(snapshot.flattenedSize),
           snapshot.isBootable.toString().toUpperCase(),
-          snapshot.baseSnapshot?.slug ?? "",
+          snapshot.volume.slug,
         ];
       },
     );
-  });
+  }));
 
 export const snapshotsDeleteCommand = new Command<SandboxContext>()
   .description("Remove a snapshot")
   .arguments("<idOrSlug:string>")
-  .action(async (options, idOrSlug) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
+  .action(actionHandler(async (config, options, idOrSlug) => {
+    config.noCreate();
+    const org = await getOrg(options, config, options.org);
+    const token = await getAuth(options, true);
 
     const client = new Client({
       apiEndpoint: options.endpoint,
@@ -75,10 +77,8 @@ export const snapshotsDeleteCommand = new Command<SandboxContext>()
       org,
     });
 
-    // @ts-ignore typings mismatch. remove comment once new version is released.
     await client.snapshots.delete(idOrSlug);
-    await saveConfig();
-  });
+  }));
 
 export const snapshotsCommand = new Command<SandboxContext>()
   .description("Manage sandbox snapshots")
