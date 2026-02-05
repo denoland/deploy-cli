@@ -1,6 +1,6 @@
-import { createTrpcClient, type TRPCClient } from "./auth.ts";
+import { createTrpcClient, type TRPCClient } from "../auth.ts";
 import { green } from "@std/fmt/colors";
-import { error } from "./util.ts";
+import { error } from "../util.ts";
 import {
   type PromptEntry,
   promptSelect,
@@ -14,6 +14,7 @@ import {
   type WorkspaceDetectionResult,
   type WorkspaceMember,
 } from "@deno/framework-detect";
+import type { GlobalContext } from "../main.ts";
 
 const AVAILABLE_BUILD_TIMEOUTS = [5, 10, 15, 20, 25, 30];
 const AVAILABLE_BUILD_MEMORY_LIMITS = [1024, 2048, 3072, 4096];
@@ -57,11 +58,10 @@ function logTitle(
 }
 
 export async function createCli(
-  debug: boolean,
-  deployUrl: string,
+  context: GlobalContext,
   rootPath: string,
 ) {
-  const trpcClient = createTrpcClient(debug, deployUrl);
+  const trpcClient = createTrpcClient(context);
 
   let org;
   const orgs: Array<{
@@ -83,7 +83,7 @@ export async function createCli(
       },
     );
     if (!selectedOrg) {
-      error(debug, "No organization was selected.");
+      error(context, "No organization was selected.");
     }
 
     org = selectedOrg.value.slug;
@@ -101,7 +101,7 @@ export async function createCli(
     },
   );
   if (!selectedSource) {
-    error(debug, "No source was selected.");
+    error(context, "No source was selected.");
   }
   logTitle(TITLES.source, selectedSource);
 
@@ -110,7 +110,7 @@ export async function createCli(
   let repo: { owner: string; repo: string } | undefined = undefined;
 
   if (selectedSource === "github") {
-    const githubInfo = await github(trpcClient, debug);
+    const githubInfo = await github(context, trpcClient);
     appDirectories = githubInfo.appDirectories;
     repo = {
       owner: githubInfo.owner,
@@ -132,10 +132,10 @@ export async function createCli(
   appDirectorySelectOptions.push({ label: "custom", value: null });
 
   const selectedAppDirectory = promptSelectWithInput(
+    context,
     "Select an app directory:",
     appDirectorySelectOptions,
     "No github app directory selected.",
-    debug,
   );
   const appDirectoryPath = typeof selectedAppDirectory === "string"
     ? selectedAppDirectory
@@ -169,7 +169,7 @@ export async function createCli(
     clearPreviousLines(renderedBuildConfigLines + 1);
 
     if (!useDetected) {
-      finalBuildConfig = getBuildConfig(buildConfig, debug);
+      finalBuildConfig = getBuildConfig(context, buildConfig);
     } else {
       finalBuildConfig = buildConfig;
       logTitle(TITLES.installCommand, buildConfig.installCommand);
@@ -190,7 +190,7 @@ export async function createCli(
       }
     }
   } else {
-    finalBuildConfig = getBuildConfig(buildConfig, debug);
+    finalBuildConfig = getBuildConfig(context, buildConfig);
   }
 
   // TODO: check pro
@@ -206,7 +206,7 @@ export async function createCli(
     },
   );
   if (!buildTimeout) {
-    error(debug, "No build timeout was selected.");
+    error(context, "No build timeout was selected.");
   }
   logTitle(TITLES.buildTimeout, buildTimeout.label);
 
@@ -223,7 +223,7 @@ export async function createCli(
     },
   );
   if (!buildMemoryLimit) {
-    error(debug, "No build memory limit was selected.");
+    error(context, "No build memory limit was selected.");
   }
   logTitle(TITLES.buildMemoryLimit, buildMemoryLimit.label);
 
@@ -237,7 +237,7 @@ export async function createCli(
     },
   );
   if (!region) {
-    error(debug, "No region was selected.");
+    error(context, "No region was selected.");
   }
   logTitle(TITLES.regions, region);
 
@@ -258,13 +258,15 @@ export async function createCli(
       deviceCreation: undefined,
     });
 
-    console.log(`Created app, view it at ${deployUrl}/${org}/${appName}`);
+    console.log(
+      `Created app, view it at ${context.endpoint}/${org}/${appName}`,
+    );
   }
 }
 
 function getBuildConfig(
+  context: GlobalContext,
   buildConfig: DetectedBuildConfig | null,
-  debug: boolean,
 ): BuildConfig {
   const selectedFrameworkPreset = promptSelect(
     "Select a framework preset:",
@@ -278,7 +280,7 @@ function getBuildConfig(
     },
   );
   if (!selectedFrameworkPreset) {
-    error(debug, "No organization was selected.");
+    error(context, "No organization was selected.");
   }
   const frameworkPreset = selectedFrameworkPreset.value;
 
@@ -310,7 +312,7 @@ function getBuildConfig(
     },
   );
   if (!selectedRuntimeConfiguration) {
-    error(debug, "No runtime configuration was selected.");
+    error(context, "No runtime configuration was selected.");
   }
   logTitle(TITLES.mode, selectedRuntimeConfiguration.value);
 
@@ -454,8 +456,8 @@ function renderBuildConfig(buildConfig: BuildConfig) {
 }
 
 async function github(
+  context: GlobalContext,
   trpcClient: TRPCClient,
-  debug: boolean,
 ) {
   const owners: Array<{
     id: number;
@@ -472,7 +474,7 @@ async function github(
     },
   );
   if (!selectedOwner) {
-    error(debug, "No github owner was selected.");
+    error(context, "No github owner was selected.");
   }
   logTitle(TITLES.githubOwner, selectedOwner.value.login);
 
@@ -493,7 +495,7 @@ async function github(
     },
   );
   if (!selectedRepo) {
-    error(debug, "No github repo was selected.");
+    error(context, "No github repo was selected.");
   }
   logTitle(TITLES.githubRepo, selectedRepo.value.name);
 
@@ -512,10 +514,10 @@ async function github(
 }
 
 function promptSelectWithInput<V extends object>(
+  context: GlobalContext,
   message: string,
   values: PromptEntry<V | null>[],
   missingMessage: string,
-  debug: boolean,
 ): V | string {
   const selected = promptSelect(message, values, {
     clear: true,
@@ -523,7 +525,7 @@ function promptSelectWithInput<V extends object>(
   });
 
   if (!selected) {
-    error(debug, missingMessage);
+    error(context, missingMessage);
   }
 
   if (selected.value === null) {
@@ -536,10 +538,10 @@ function promptSelectWithInput<V extends object>(
     clearPreviousLines(1);
     Deno.removeSignalListener("SIGINT", promptCancelHandler);
     if (cancelled) {
-      return promptSelectWithInput(message, values, missingMessage, debug);
+      return promptSelectWithInput(context, message, values, missingMessage);
     } else {
       if (!custom) {
-        error(debug, missingMessage);
+        error(context, missingMessage);
       }
 
       return custom;
