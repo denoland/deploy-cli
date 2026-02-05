@@ -34,11 +34,10 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
     const trpcClient = createTrpcClient(options);
 
     if (options.kind === "prisma" && !options.region) {
-      // deno-lint-ignore no-explicit-any
-      const regions: Array<{ id: string }> = await (trpcClient.databases as any)
-        .prismaRegions.query({
-          org,
-        });
+      const regions = await trpcClient.query(
+        "databases.prismaRegions",
+        { org },
+      ) as Array<{ id: string }>;
 
       throw new ValidationError(
         `region is required for Prisma databases.\n  Valid values are: ${
@@ -47,8 +46,7 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
       );
     }
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.databases as any).createInstance.mutate({
+    await trpcClient.mutation("databases.createInstance", {
       org: org,
       slug: name,
       engine: options.kind,
@@ -136,15 +134,13 @@ const databasesLinkCommand = new Command<DatabaseContext>()
     };
 
     if (options.dryRun) {
-      // deno-lint-ignore no-explicit-any
-      await (trpcClient.databases as any).testConnection.mutate({
+      await trpcClient.mutation("databases.testConnection", {
         org: org,
         engine,
         connection_config: connectionConfig,
       });
     } else {
-      // deno-lint-ignore no-explicit-any
-      await (trpcClient.databases as any).createInstance.mutate({
+      await trpcClient.mutation("databases.createInstance", {
         org: org,
         slug: name,
         engine,
@@ -164,8 +160,7 @@ const databasesAssignCommand = new Command<DatabaseContext>()
     const { app } = await getApp(options, config, false, org, options.app);
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.apps as any).assignDatabaseAttachment.mutate({
+    await trpcClient.mutation("apps.assignDatabaseAttachment", {
       org,
       app,
       databaseInstance: name,
@@ -183,8 +178,7 @@ const databasesDetachCommand = new Command<DatabaseContext>()
     const { app } = await getApp(options, config, false, org, options.app);
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.apps as any).removeDatabaseAttachment.mutate({
+    await trpcClient.mutation("apps.removeDatabaseAttachment", {
       org,
       app,
       databaseInstance: name,
@@ -206,7 +200,7 @@ const databasesQueryCommand = new Command<DatabaseContext>()
         : query;
 
       // deno-lint-ignore no-explicit-any
-      const res = await (trpcClient.databases as any).executeQuery.mutate({
+      const res: any = await trpcClient.mutation("databases.executeQuery", {
         org,
         databaseInstance: name,
         databaseName: database,
@@ -261,18 +255,17 @@ const databasesListCommand = new Command<DatabaseContext>()
     const org = await getOrg(options, config, options.org);
     const trpcClient = createTrpcClient(options);
 
-    const list: Array<
+    const list = await trpcClient.query("databases.listInstances", {
+      org: org,
+      search,
+    }) as Array<
       {
         slug: string;
         created_at: Date;
         databases: Array<{ name: string; status: string; created_at: Date }>;
         assignments: Array<{ app_slug: string }>;
       } & ConnectionInfo
-    > // deno-lint-ignore no-explicit-any
-     = await (trpcClient.databases as any).listInstances.query({
-      org: org,
-      search,
-    });
+    >;
 
     tablePrinter(
       ["NAME", "ENGINE", "ASSIGNMENTS", "CONNECTION DETAILS"],
@@ -316,8 +309,7 @@ const databasesDeleteCommand = new Command<DatabaseContext>()
     const org = await getOrg(options, config, options.org);
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.databases as any).delete.mutate({
+    await trpcClient.mutation("databases.delete", {
       org,
       databaseInstance: name,
     });
