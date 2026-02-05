@@ -16,6 +16,7 @@ import {
 import { createTrpcClient, getAuth } from "./auth.ts";
 import token_storage from "./token_storage.ts";
 import { sandboxCommand } from "./sandbox/mod.ts";
+import { cacheCommand } from "./cache.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -366,6 +367,7 @@ deploy your local directory to the specified application.`)
     )
     .command("create", createCommand)
     .command("env", envCommand)
+    .command("cache", cacheCommand)
     .command("sandbox", sandboxCommand)
     .command("logs", logsCommand)
     .command("setup-aws", setupAWSCommand)
