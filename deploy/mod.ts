@@ -260,7 +260,7 @@ deploy your local directory to the specified application.`)
           rootPath,
           org,
           app,
-          created,
+          options.prod ?? created,
           options.allowNodeModules ?? false,
           options.wait ?? true,
         );
