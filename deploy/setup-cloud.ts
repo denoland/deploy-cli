@@ -2,7 +2,8 @@
 import prompt from "prompts";
 
 import { gray, green, yellow } from "@std/fmt/colors";
-import { createTrpcClient } from "./auth.ts";
+import { createTrpcClient } from "../auth.ts";
+import type { GlobalContext } from "../main.ts";
 
 const AWS_OIDC_AUDIENCE = "sts.amazonaws.com";
 
@@ -106,8 +107,7 @@ function log(string: string) {
 }
 
 export async function setupAws(
-  debug: boolean,
-  deployUrl: string,
+  context: GlobalContext,
   org: string,
   app: string,
   contexts: string[],
@@ -124,7 +124,7 @@ export async function setupAws(
   );
   console.log();
 
-  const trpcClient = createTrpcClient(debug, deployUrl);
+  const trpcClient = createTrpcClient(context);
   // deno-lint-ignore no-explicit-any
   const { oidcHostname } = await (trpcClient.cloudConnections as any).config
     .query({
@@ -414,8 +414,7 @@ export async function setupAws(
 }
 
 export async function setupGcp(
-  debug: boolean,
-  deployUrl: string,
+  context: GlobalContext,
   org: string,
   app: string,
   contexts: string[],
@@ -432,7 +431,7 @@ export async function setupGcp(
   );
   console.log();
 
-  const trpcClient = createTrpcClient(debug, deployUrl);
+  const trpcClient = createTrpcClient(context);
   // deno-lint-ignore no-explicit-any
   const { oidcHostname } = await (trpcClient.cloudConnections as any).config
     .query({

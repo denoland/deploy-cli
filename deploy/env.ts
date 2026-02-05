@@ -1,9 +1,9 @@
 import { Command } from "@cliffy/command";
 import { parse as dotEnvParse } from "@std/dotenv";
-import { getAppFromConfig, readConfig } from "./config.ts";
-import { error, tablePrinter, withApp } from "./util.ts";
-import { createTrpcClient } from "./auth.ts";
-import type { GlobalOptions } from "./main.ts";
+import { error, tablePrinter } from "../util.ts";
+import { createTrpcClient } from "../auth.ts";
+import type { GlobalContext } from "../main.ts";
+import { actionHandler, getApp, getOrg } from "../config.ts";
 
 interface EnvVar {
   id: string;
@@ -18,34 +18,22 @@ interface Context {
   name: string;
 }
 
-type EnvCommandContext = GlobalOptions & {
+type EnvCommandContext = GlobalContext & {
   org?: string;
   app?: string;
 };
 
-export const envListCommand = new Command<EnvCommandContext>()
+const envListCommand = new Command<EnvCommandContext>()
   .description("List all environmental variables in an application")
-  .action(async (options) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org, app } = getAppFromConfig(configContent);
-    org ??= options.org;
-    app ??= options.app;
+  .action(actionHandler(async (config, options) => {
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
 
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      app,
-    );
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
     const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
-      .query({
-        org: orgAndApp.org,
-        app: orgAndApp.app,
-      });
+      .query({ org, app });
 
     if (envVars.length === 0) {
       console.log(
@@ -56,10 +44,7 @@ export const envListCommand = new Command<EnvCommandContext>()
 
     // deno-lint-ignore no-explicit-any
     const contexts: Context[] = await (trpcClient.envVarsContexts as any)
-      .listContexts
-      .query({
-        org: orgAndApp.org,
-      });
+      .listContexts.query({ org });
 
     const contextTitle = `CONTEXTS (${
       contexts.map((context) => context.name).join(", ")
@@ -88,36 +73,27 @@ export const envListCommand = new Command<EnvCommandContext>()
         ];
       },
     );
-  });
+  }));
 
-export const envAddCommand = new Command<EnvCommandContext>()
+const envAddCommand = new Command<EnvCommandContext>()
   .description("Add an environmental variable to the application")
   .option("--secret", "If the value should be secret", { default: false })
   .arguments("<variable:string> <value:string>")
-  .action(async (options, variable, value) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org, app } = getAppFromConfig(configContent);
-    org ??= options.org;
-    app ??= options.app;
+  .action(actionHandler(async (config, options, variable, value) => {
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
 
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      app,
-    );
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
     const fullApp = await (trpcClient.apps as any).get.query({
-      org: orgAndApp.org,
-      app: orgAndApp.app,
+      org,
+      app,
     });
 
     // deno-lint-ignore no-explicit-any
     await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
-      org: orgAndApp.org,
+      org,
       add: [
         {
           app_id: fullApp.id,
@@ -134,44 +110,32 @@ export const envAddCommand = new Command<EnvCommandContext>()
     console.log(
       `Environmental variable '${variable}' has been successfully set.`,
     );
-  });
+  }));
 
-export const envUpdateValueCommand = new Command<EnvCommandContext>()
+const envUpdateValueCommand = new Command<EnvCommandContext>()
   .description(
     "Update the value of an environmental variable in the application",
   )
   .arguments("<variable:string> <value:string>")
-  .action(async (options, variable, value) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org, app } = getAppFromConfig(configContent);
-    org ??= options.org;
-    app ??= options.app;
+  .action(actionHandler(async (config, options, variable, value) => {
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
 
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      app,
-    );
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
     const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
-      .query({
-        org: orgAndApp.org,
-        app: orgAndApp.app,
-      });
+      .query({ org, app });
 
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      error(options.debug, `Environment variable '${variable}' not found`);
+      error(options, `Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
     await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
-      org: orgAndApp.org,
+      org,
       add: [],
       update: [{
         id: envVar.id,
@@ -183,55 +147,39 @@ export const envUpdateValueCommand = new Command<EnvCommandContext>()
     console.log(
       `The value of the environmental variable '${variable}' has been successfully updated.`,
     );
-  });
+  }));
 
-export const envUpdateContextsCommand = new Command<EnvCommandContext>()
+const envUpdateContextsCommand = new Command<EnvCommandContext>()
   .description(
     `Update the contexts of an environmental variable in the application
 You can define no contexts, which is the equivalent to "All"`,
   )
   .arguments("<variable:string> [new-contexts...:string]")
-  .action(async (options, variable, ...newContexts) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org, app } = getAppFromConfig(configContent);
-    org ??= options.org;
-    app ??= options.app;
-
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      app,
-    );
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, variable, ...newContexts) => {
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
     const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
-      .query({
-        org: orgAndApp.org,
-        app: orgAndApp.app,
-      });
+      .query({ org, app });
 
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      error(options.debug, `Environment variable '${variable}' not found`);
+      error(options, `Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
     const contexts: Context[] = await (trpcClient.envVarsContexts as any)
-      .listContexts
-      .query({
-        org: orgAndApp.org,
-      });
+      .listContexts.query({ org });
 
     const contextIds = [];
 
     for (const newContext of newContexts) {
       const context = contexts.find((context) => context.name === newContext);
       if (!context) {
-        error(options.debug, `Context "${newContext}" not found`);
+        error(options, `Context "${newContext}" not found`);
       }
 
       contextIds.push(context.id);
@@ -239,7 +187,7 @@ You can define no contexts, which is the equivalent to "All"`,
 
     // deno-lint-ignore no-explicit-any
     await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
-      org: orgAndApp.org,
+      org,
       add: [],
       update: [{
         id: envVar.id,
@@ -251,42 +199,29 @@ You can define no contexts, which is the equivalent to "All"`,
     console.log(
       `The contexts of the environmental variable '${variable}' have been successfully updated`,
     );
-  });
+  }));
 
-export const envDeleteCommand = new Command<EnvCommandContext>()
+const envDeleteCommand = new Command<EnvCommandContext>()
   .description("Delete an environmental variable in the application")
   .arguments("variable:string")
-  .action(async (options, variable) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org, app } = getAppFromConfig(configContent);
-    org ??= options.org;
-    app ??= options.app;
-
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      app,
-    );
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, variable) => {
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
     const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
-      .query({
-        org: orgAndApp.org,
-        app: orgAndApp.app,
-      });
+      .query({ org, app });
 
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      error(options.debug, `Environment variable '${variable}' not found`);
+      error(options, `Environment variable '${variable}' not found`);
     }
 
     // deno-lint-ignore no-explicit-any
     await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
-      org: orgAndApp.org,
+      org,
       add: [],
       update: [],
       remove: [envVar.id],
@@ -295,7 +230,7 @@ export const envDeleteCommand = new Command<EnvCommandContext>()
     console.log(
       `Environmental variable '${variable}' has been successfully deleted`,
     );
-  });
+  }));
 
 const PUBLIC_REGEX = /^PUBLIC_|^NEXT_PUBLIC_/;
 
@@ -306,7 +241,7 @@ function isSecretKey(key: string): boolean {
   return COMMON_SECRET_PATTERN.test(key);
 }
 
-export const envLoadCommand = new Command<EnvCommandContext>()
+const envLoadCommand = new Command<EnvCommandContext>()
   .description(
     "Load environmental variables from a .env file into the application",
   )
@@ -315,36 +250,19 @@ export const envLoadCommand = new Command<EnvCommandContext>()
     "Which keys in the .env file to treat as non-secrets",
   )
   .arguments("<file:string>")
-  .action(async (options, file) => {
-    const configContent = await readConfig(Deno.cwd(), options.config);
-    let { org, app } = getAppFromConfig(configContent);
-    org ??= options.org;
-    app ??= options.app;
-
-    const orgAndApp = await withApp(
-      options.debug,
-      options.endpoint,
-      false,
-      org,
-      app,
-    );
-    const trpcClient = createTrpcClient(options.debug, options.endpoint);
+  .action(actionHandler(async (config, options, file) => {
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
+    const trpcClient = createTrpcClient(options);
 
     // deno-lint-ignore no-explicit-any
-    const fullApp = await (trpcClient.apps as any).get.query({
-      org: orgAndApp.org,
-      app: orgAndApp.app,
-    });
+    const fullApp = await (trpcClient.apps as any).get.query({ org, app });
 
     const variables = dotEnvParse(await Deno.readTextFile(file));
 
     // deno-lint-ignore no-explicit-any
     const existingEnvVars: EnvVar[] = await (trpcClient.envVarsContexts as any)
-      .list
-      .query({
-        org: orgAndApp.org,
-        app: orgAndApp.app,
-      });
+      .list.query({ org, app });
 
     const addEnvVars = [];
     let updateEnvVars = [];
@@ -404,7 +322,7 @@ export const envLoadCommand = new Command<EnvCommandContext>()
 
             // deno-lint-ignore no-fallthrough
             case "n": {
-              error(options.debug, "Env vars are already defined, exiting");
+              error(options, "Env vars are already defined, exiting");
             }
             case "s": {
               updateEnvVars = [];
@@ -418,11 +336,25 @@ export const envLoadCommand = new Command<EnvCommandContext>()
 
     // deno-lint-ignore no-explicit-any
     await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
-      org: orgAndApp.org,
+      org,
       add: addEnvVars,
       update: updateEnvVars,
       remove: [],
     });
 
     console.log(`.env file '${file}' has been successfully loaded.`);
-  });
+  }));
+
+export const envCommand = new Command<GlobalContext>()
+  .description("Modify environmental variables")
+  .globalOption("--org <name:string>", "The name of the organization")
+  .globalOption("--app <name:string>", "The name of the application")
+  .action(() => {
+    envCommand.showHelp();
+  })
+  .command("list", envListCommand)
+  .command("add", envAddCommand)
+  .command("update-value", envUpdateValueCommand)
+  .command("update-contexts", envUpdateContextsCommand)
+  .command("delete", envDeleteCommand)
+  .command("load", envLoadCommand);

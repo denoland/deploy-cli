@@ -2,7 +2,8 @@ import { Command } from "@cliffy/command";
 import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
-import { ensureOrg, formatSize, parseSize, tablePrinter } from "../util.ts";
+import { formatSize, parseSize, tablePrinter } from "../util.ts";
+import { actionHandler, getOrg } from "../config.ts";
 
 export const volumesCreateCommand = new Command<SandboxContext>()
   .description("Create a volume")
@@ -15,9 +16,11 @@ export const volumesCreateCommand = new Command<SandboxContext>()
     'A base snapshot or image to create the volume from.\nThis can either be a snapshot, or the special string "builtin:debian-13".',
   )
   .arguments("<name>")
-  .action(async (options, name) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
+  .action(actionHandler(async (config, options, name) => {
+    config.noCreate();
+
+    const org = await getOrg(options, config, options.org);
+    const token = await getAuth(options, true);
 
     const client = new Client({
       apiEndpoint: options.endpoint,
@@ -27,22 +30,22 @@ export const volumesCreateCommand = new Command<SandboxContext>()
 
     const volume = await client.volumes.create({
       slug: name,
-      capacity: Math.floor(parseSize(options.capacity)),
+      capacity: Math.floor(parseSize(options, options.capacity)),
       region: options.region,
       from: options.from,
     });
 
-    await saveConfig();
-
     console.log(volume.id);
-  });
+  }));
 
 export const volumesListCommand = new Command<SandboxContext>()
   .description("List volumes")
   .arguments("[search:string]")
-  .action(async (options, search) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
+  .action(actionHandler(async (config, options, search) => {
+    config.noCreate();
+
+    const org = await getOrg(options, config, options.org);
+    const token = await getAuth(options, true);
 
     const client = new Client({
       apiEndpoint: options.endpoint,
@@ -54,8 +57,6 @@ export const volumesListCommand = new Command<SandboxContext>()
       limit: 100,
       search,
     });
-
-    await saveConfig();
 
     tablePrinter(
       ["ID", "SLUG", "REGION", "USED", "TOTAL", "BASE"],
@@ -71,14 +72,16 @@ export const volumesListCommand = new Command<SandboxContext>()
         ];
       },
     );
-  });
+  }));
 
 export const volumesDeleteCommand = new Command<SandboxContext>()
   .description("Remove a volume")
   .arguments("<idOrSlug:string>")
-  .action(async (options, idOrSlug) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
+  .action(actionHandler(async (config, options, idOrSlug) => {
+    config.noCreate();
+
+    const org = await getOrg(options, config, options.org);
+    const token = await getAuth(options, true);
 
     const client = new Client({
       apiEndpoint: options.endpoint,
@@ -87,28 +90,30 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
     });
 
     await client.volumes.delete(idOrSlug);
-    await saveConfig();
-  });
+  }));
 
 export const volumesSnapshotCommand = new Command<SandboxContext>()
   .description("Snapshot a volume")
   .arguments("<volumeIdOrSlug:string> <snapshotSlug:string>")
-  .action(async (options, volumeIdOrSlug, snapshotSlug) => {
-    const { org, saveConfig } = await ensureOrg(options);
-    const token = await getAuth(options.debug, options.endpoint, true);
+  .action(
+    actionHandler(async (config, options, volumeIdOrSlug, snapshotSlug) => {
+      config.noCreate();
 
-    const client = new Client({
-      apiEndpoint: options.endpoint,
-      token,
-      org,
-    });
+      const org = await getOrg(options, config, options.org);
+      const token = await getAuth(options, true);
 
-    const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
-      slug: snapshotSlug,
-    });
-    console.log(snapshot.id);
-    await saveConfig();
-  });
+      const client = new Client({
+        apiEndpoint: options.endpoint,
+        token,
+        org,
+      });
+
+      const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
+        slug: snapshotSlug,
+      });
+      console.log(snapshot.id);
+    }),
+  );
 
 export const volumesCommand = new Command<SandboxContext>()
   .description("Manage sandbox volumes")
