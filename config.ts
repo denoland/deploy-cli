@@ -1,6 +1,6 @@
 import { createTrpcClient, getAuth } from "./auth.ts";
 import type { GlobalContext } from "./main.ts";
-import { create, error } from "./util.ts";
+import { error } from "./util.ts";
 import {
   type PromptEntry,
   promptSelect,
@@ -128,7 +128,7 @@ export async function getApp(
     }
 
     if (selectedApp.value === null) {
-      const createdOrgAndApp = await create(context, rootPath!, org);
+      // TODO: const createdOrgAndApp = await create(context, rootPath!, org);
       app = createdOrgAndApp.app;
       created = true;
     } else {

@@ -1,6 +1,6 @@
-import { createTrpcClient, type TRPCClient } from "../auth.ts";
+import { createTrpcClient, type TRPCClient } from "../../auth.ts";
 import { green } from "@std/fmt/colors";
-import { error } from "../util.ts";
+import { error } from "../../util.ts";
 import {
   type PromptEntry,
   promptSelect,
@@ -14,11 +14,12 @@ import {
   type WorkspaceDetectionResult,
   type WorkspaceMember,
 } from "@deno/framework-detect";
-import type { GlobalContext } from "../main.ts";
+import type { GlobalContext } from "../../main.ts";
+import type { CreateApp, Repo } from "./mod.ts";
 
-const AVAILABLE_BUILD_TIMEOUTS = [5, 10, 15, 20, 25, 30];
-const AVAILABLE_BUILD_MEMORY_LIMITS = [1024, 2048, 3072, 4096];
-const REGIONS = ["us", "eu", "global"];
+export const AVAILABLE_BUILD_TIMEOUTS = [5, 10, 15, 20, 25, 30];
+export const AVAILABLE_BUILD_MEMORY_LIMITS = [1024, 2048, 3072, 4096];
+export const REGIONS = ["us", "eu", "global"];
 
 const NA = "(n/a)";
 const TITLES = {
@@ -57,10 +58,10 @@ function logTitle(
   );
 }
 
-export async function createCli(
+export async function createFlow(
   context: GlobalContext,
   rootPath: string,
-) {
+): Promise<CreateApp> {
   const trpcClient = createTrpcClient(context);
 
   let org;
@@ -106,8 +107,7 @@ export async function createCli(
   logTitle(TITLES.source, selectedSource);
 
   let appDirectories;
-  // let deviceCreation;
-  let repo: { owner: string; repo: string } | undefined = undefined;
+  let repo: Repo = undefined;
 
   if (selectedSource === "github") {
     const githubInfo = await github(context, trpcClient);
@@ -242,25 +242,18 @@ export async function createCli(
   logTitle(TITLES.regions, region);
 
   if (confirm("Create app?")) {
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.apps as any).create.mutate({
+    return {
       org,
-      slug: appName,
+      app: appName,
       repo,
-      buildConfig: {
-        ...finalBuildConfig,
-        buildDirectory: appDirectoryPath,
-        buildTimeout: buildTimeout.value,
-        buildMemoryLimit: buildMemoryLimit.value,
-      },
-      envVars: [],
-      target: region,
-      deviceCreation: undefined,
-    });
-
-    console.log(
-      `Created app, view it at ${context.endpoint}/${org}/${appName}`,
-    );
+      buildDirectory: appDirectoryPath,
+      buildConfig: finalBuildConfig,
+      buildTimeout: buildTimeout.value,
+      buildMemoryLimit: buildMemoryLimit.value,
+      region,
+    };
+  } else {
+    Deno.exit(0);
   }
 }
 
@@ -300,9 +293,12 @@ function getBuildConfig(
     false,
   );
 
-  const selectedRuntimeConfiguration = promptSelect(
-    "Select runtime configuration:",
-    [{ label: "dynamic app", value: "dynamic" }, {
+  const selectedRuntimeMode = promptSelect(
+    "Select runtime mode:",
+    [{
+      label: "dynamic app",
+      value: "dynamic",
+    }, {
       label: "static site",
       value: "static",
     }],
@@ -311,18 +307,16 @@ function getBuildConfig(
       fitToRemainingHeight: true,
     },
   );
-  if (!selectedRuntimeConfiguration) {
-    error(context, "No runtime configuration was selected.");
+  if (!selectedRuntimeMode) {
+    error(context, "No runtime mode was selected.");
   }
-  logTitle(TITLES.mode, selectedRuntimeConfiguration.value);
+  logTitle(TITLES.mode, selectedRuntimeMode.value);
 
   let finalRuntimeConfiguration: RuntimeConfiguration;
-  switch (selectedRuntimeConfiguration.value) {
+  switch (selectedRuntimeMode.value) {
     case "dynamic": {
       const runtimeConfiguration =
-        selectedRuntimeConfiguration.value === buildConfig?.mode
-          ? buildConfig
-          : null;
+        selectedRuntimeMode.value === buildConfig?.mode ? buildConfig : null;
 
       const entrypoint = promptWithPrint(
         TITLES.entrypoint,
@@ -350,9 +344,7 @@ function getBuildConfig(
     }
     case "static": {
       const runtimeConfiguration =
-        selectedRuntimeConfiguration.value === buildConfig?.mode
-          ? buildConfig
-          : null;
+        selectedRuntimeMode.value === buildConfig?.mode ? buildConfig : null;
 
       const staticDir = promptWithPrint(
         TITLES.staticDir,
@@ -379,7 +371,7 @@ function getBuildConfig(
   };
 }
 
-function renderBuildConfig(buildConfig: BuildConfig) {
+export function renderBuildConfig(buildConfig: BuildConfig) {
   const frameworkPreset = buildConfig.frameworkPreset || "no preset";
   const installCommand = buildConfig.installCommand;
   const buildCommand = buildConfig.buildCommand;
@@ -585,7 +577,7 @@ function promptWithPrint(
 function confirmWithPrint(title: Title) {
   const res = confirm(`${title}:`);
   clearPreviousLines(1);
-  logTitle(TITLES.spa, res ? "yes" : "no");
+  logTitle(title, res ? "yes" : "no");
   return res;
 }
 
