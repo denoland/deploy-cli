@@ -234,8 +234,8 @@ export const createCommand = new Command<GlobalContext>()
           );
         }
       } else {
-        buildConfig = {
-          frameworkPreset: options.frameworkPreset ?? "",
+        const base = {
+          frameworkPreset: options.frameworkPreset ?? "" as FrameworkPreset,
           installCommand: requireUnless(
             options.installCommand,
             options.frameworkPreset,
@@ -258,18 +258,29 @@ export const createCommand = new Command<GlobalContext>()
           options.frameworkPreset,
           "runtime-mode",
         );
-        buildConfig.mode = runtimeMode;
 
         switch (runtimeMode) {
           case "dynamic": {
-            buildConfig.entrypoint = require(options.entrypoint, "entrypoint");
-            buildConfig.args = options.arguments;
-            buildConfig.cwd = options.workingDirectory;
+            buildConfig = {
+              ...base,
+              mode: "dynamic" as const,
+              entrypoint: require(options.entrypoint, "entrypoint"),
+              args: options.arguments,
+              cwd: options.workingDirectory,
+            };
             break;
           }
           case "static": {
-            buildConfig.staticDir = require(options.staticDir, "static-dir");
-            buildConfig.spa = options.singlePageApp ?? false;
+            buildConfig = {
+              ...base,
+              mode: "static" as const,
+              staticDir: require(options.staticDir, "static-dir"),
+              singlePageApp: options.singlePageApp ?? false,
+            };
+            break;
+          }
+          default: {
+            buildConfig = base;
             break;
           }
         }
