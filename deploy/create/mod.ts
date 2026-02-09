@@ -19,6 +19,7 @@ import {
 } from "@deno/framework-detect";
 
 import { publish } from "../publish.ts";
+import { resolve } from "@std/path";
 
 export const createCommand = new Command<GlobalContext>()
   .description(
@@ -217,19 +218,30 @@ export const createCommand = new Command<GlobalContext>()
         );
       }
 
-      const member = appDirectories.members.find((member) =>
-        member.path === options.appDirectory
-      );
+      const member = appDirectories.members.find((member) => {
+        if (source === "local") {
+          return resolve(rootPath, member.path) ===
+            resolve(rootPath, options.appDirectory || "");
+        } else {
+          return member.path === options.appDirectory || "";
+        }
+      });
 
-      const buildDirectory = member?.path ??
-        require(options.appDirectory, "app-directory");
+      let buildDirectory;
+
+      if (source === "github") {
+        buildDirectory = member?.path ??
+          require(options.appDirectory, "app-directory");
+      } else {
+        buildDirectory = undefined;
+      }
 
       let buildConfig;
       if (options.useDetectedBuildConfig) {
         if (member?.buildConfig) {
           buildConfig = member?.buildConfig;
         } else {
-          throw new ValidationError(
+          throw new TypeError(
             `No build configuration was detected in '${buildDirectory}'.`,
           );
         }
