@@ -55,6 +55,7 @@ export const createCommand = new Command<GlobalContext>()
     "--app-directory <path:string>",
     "The path to the application directory",
   )
+  .option("--use-detected-build-config", "Use detected build configuration")
   .option("--framework-preset <preset:string>", "The framework preset to use", {
     value(value: string) {
       if (SUPPORTED_FRAMEWORK_PRESETS.has(value as FrameworkPreset)) {
@@ -222,45 +223,57 @@ export const createCommand = new Command<GlobalContext>()
 
       const buildDirectory = member?.path ??
         require(options.appDirectory, "app-directory");
-      const detected = member?.buildConfig;
 
-      const buildConfig = {
-        frameworkPreset: options.frameworkPreset ?? "",
-        installCommand: requireUnless(
-          options.installCommand ?? detected?.installCommand,
-          options.frameworkPreset,
-          "install-command",
-        ),
-        buildCommand: requireUnless(
-          options.buildCommand ?? detected?.buildCommand,
-          options.frameworkPreset,
-          "build-command",
-        ),
-        preDeployCommand: requireUnless(
-          options.preDeployCommand ?? detected?.preDeployCommand,
-          options.frameworkPreset,
-          "pre-deploy-command",
-        ),
-      };
-
-      const runtimeMode = requireUnless(
-        options.runtimeMode,
-        options.frameworkPreset,
-        "runtime-mode",
-      );
-
-      switch (runtimeMode) {
-        case "dynamic": {
-
-          break;
+      let buildConfig;
+      if (options.useDetectedBuildConfig) {
+        if (member?.buildConfig) {
+          buildConfig = member?.buildConfig;
+        } else {
+          throw new ValidationError(
+            `No build configuration was detected in '${buildDirectory}'.`,
+          );
         }
-        case "static": {
+      } else {
+        buildConfig = {
+          frameworkPreset: options.frameworkPreset ?? "",
+          installCommand: requireUnless(
+            options.installCommand,
+            options.frameworkPreset,
+            "install-command",
+          ),
+          buildCommand: requireUnless(
+            options.buildCommand,
+            options.frameworkPreset,
+            "build-command",
+          ),
+          preDeployCommand: requireUnless(
+            options.preDeployCommand,
+            options.frameworkPreset,
+            "pre-deploy-command",
+          ),
+        };
 
-          break;
+        const runtimeMode = requireUnless(
+          options.runtimeMode,
+          options.frameworkPreset,
+          "runtime-mode",
+        );
+        buildConfig.mode = runtimeMode;
+
+        switch (runtimeMode) {
+          case "dynamic": {
+            buildConfig.entrypoint = require(options.entrypoint, "entrypoint");
+            buildConfig.args = options.arguments;
+            buildConfig.cwd = options.workingDirectory;
+            break;
+          }
+          case "static": {
+            buildConfig.staticDir = require(options.staticDir, "static-dir");
+            buildConfig.spa = options.singlePageApp ?? false;
+            break;
+          }
         }
       }
-
-
 
       const buildTimeout = require(options.buildTimeout, "build-timeout");
       const buildMemoryLimit = require(
