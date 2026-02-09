@@ -109,6 +109,7 @@ export async function create(
   ]);
 
   spinner.stop();
+  // clear the previous line, which contains the URL
   Deno.stdout.writeSync(new TextEncoder().encode("\x1b[1A\x1b[2K"));
 
   console.log(
