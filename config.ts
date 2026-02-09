@@ -16,6 +16,8 @@ import {
   resolve_config_with_deploy_config,
 } from "./lib/rs_lib.js";
 import { ValidationError } from "@cliffy/command";
+import { createFlow } from "./deploy/create/flow.ts";
+import { createApp } from "./deploy/create/mod.ts";
 
 export async function getOrg(
   context: GlobalContext,
@@ -128,8 +130,17 @@ export async function getApp(
     }
 
     if (selectedApp.value === null) {
-      // TODO: const createdOrgAndApp = await create(context, rootPath!, org);
-      app = createdOrgAndApp.app;
+      const data = await createFlow(context, rootPath!);
+      await createApp(
+        context,
+        data,
+        rootPath!,
+        false,
+        true,
+      );
+      config.org = data.org;
+      config.app = data.app;
+      app = data.app;
       created = true;
     } else {
       app = selectedApp.value.slug;

@@ -298,7 +298,7 @@ export const createCommand = new Command<GlobalContext>()
     } else {
       data = await createFlow(options, rootPath);
     }
-    if (options.dryRun) {
+    if (!options.dryRun) {
       await createApp(
         options,
         data,
@@ -344,7 +344,7 @@ export interface CreateApp {
   region: string;
 }
 
-async function createApp(
+export async function createApp(
   context: GlobalContext,
   data: CreateApp,
   rootPath: string,
