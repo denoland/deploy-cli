@@ -11,8 +11,8 @@
     "jsr:@david/path@0.2": "0.2.0",
     "jsr:@david/which@~0.4.1": "0.4.1",
     "jsr:@deno/framework-detect@0": "0.3.0",
-    "jsr:@deno/sandbox@0.10": "0.10.0",
-    "jsr:@std/assert@^1.0.16": "1.0.17",
+    "jsr:@deno/sandbox@0.11": "0.11.0",
+    "jsr:@std/assert@^1.0.16": "1.0.18",
     "jsr:@std/async@^1.1.0": "1.1.0",
     "jsr:@std/bytes@^1.0.5": "1.0.6",
     "jsr:@std/cli@1.0.27": "1.0.27",
@@ -50,7 +50,7 @@
     "npm:superjson@^2.2.2": "2.2.6",
     "npm:temporal-polyfill@0.3": "0.3.0",
     "npm:ws@^8.18.3": "8.19.0",
-    "npm:zod@^4.1.5": "4.3.5"
+    "npm:zod@^4.1.5": "4.3.6"
   },
   "jsr": {
     "@cfa/gitignore-parser@0.1.4": {
@@ -113,8 +113,8 @@
         "jsr:@std/path@^1.1.2"
       ]
     },
-    "@deno/sandbox@0.10.0": {
-      "integrity": "4157bd2ff55b2fe47dcfb4fd180a47f47cf7d5c93fe6724e1eee41a170b51865",
+    "@deno/sandbox@0.11.0": {
+      "integrity": "598b902db1eaf747cf16dce5b752154db567bc563b555c3ce32d02b27f650432",
       "dependencies": [
         "jsr:@std/fs@^1.0.19",
         "jsr:@std/path@^1.1.2",
@@ -123,8 +123,8 @@
         "npm:zod"
       ]
     },
-    "@std/assert@1.0.17": {
-      "integrity": "df5ebfffe77c03b3fa1401e11c762cc8f603d51021c56c4d15a8c7ab45e90dbe",
+    "@std/assert@1.0.18": {
+      "integrity": "270245e9c2c13b446286de475131dc688ca9abcd94fc5db41d43a219b34d1c78",
       "dependencies": [
         "jsr:@std/internal"
       ]
@@ -2562,8 +2562,8 @@
     "zod@3.25.76": {
       "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="
     },
-    "zod@4.3.5": {
-      "integrity": "sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g=="
+    "zod@4.3.6": {
+      "integrity": "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="
     },
     "zwitch@2.0.4": {
       "integrity": "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="
@@ -2575,7 +2575,7 @@
       "jsr:@cliffy/command@^1.0.0-rc.8",
       "jsr:@david/dax@~0.44.2",
       "jsr:@deno/framework-detect@0",
-      "jsr:@deno/sandbox@0.10",
+      "jsr:@deno/sandbox@0.11",
       "jsr:@std/assert@^1.0.16",
       "jsr:@std/async@^1.1.0",
       "jsr:@std/cli@1.0.27",

@@ -276,6 +276,8 @@ async function buildSnapshot(
   spinner.stop();
   console.log(`${green("✔")} Volume created`);
 
+  let snapshotCreated = false;
+
   try {
     // Step 2: Boot a sandbox using this volume as its root filesystem.
     // The sandbox is short-lived (10m timeout) — just long enough to install.
@@ -357,46 +359,111 @@ async function buildSnapshot(
         }
       }
     } finally {
-      // Always close the sandbox before snapshotting — snapshots can't
-      // be created while a volume is attached to a running sandbox.
-      await sandbox.close();
+      // We must kill() the sandbox, not just close().
+      // close() only disconnects the WebSocket — the sandbox keeps
+      // running on the server with the volume still mounted.
+      // kill() sends a DELETE to the server which actually terminates
+      // the sandbox and releases the volume.
+      spinner.message = "Stopping sandbox and detaching volume...";
+      spinner.start();
+      try {
+        await sandbox.kill();
+      } catch {
+        // kill() may time out (10s limit), but the server is still
+        // processing the termination. Wait for the WebSocket to
+        // confirm the sandbox is gone.
+        try {
+          await Promise.race([
+            sandbox.closed,
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("timed out")), 30_000)
+            ),
+          ]);
+        } catch {
+          // Sandbox may have already timed out and stopped on its own
+        }
+      }
+      // Brief pause to let the volume fully detach after sandbox termination
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+      spinner.stop();
+      console.log(`${green("✔")} Sandbox stopped`);
     }
 
-    // Step 6: Snapshot the volume to create a reusable image
-    spinner.message = "Creating snapshot...";
-    spinner.start();
-    await client.volumes.snapshot(volume.id, {
-      slug: options.snapshotSlug,
-    });
-    spinner.stop();
-    console.log(`${green("✔")} Snapshot created`);
+    // Step 6: Snapshot the volume to create a reusable image.
+    // The volume may not be fully detached from the sandbox yet,
+    // so we retry a few times with increasing delays.
+    const maxAttempts = 3;
+    const retryDelays = [10_000, 15_000, 15_000];
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      spinner.message = attempt === 1
+        ? "Creating snapshot..."
+        : `Creating snapshot (attempt ${attempt}/${maxAttempts})...`;
+      spinner.start();
+      try {
+        await client.volumes.snapshot(volume.id, {
+          slug: options.snapshotSlug,
+        });
+        spinner.stop();
+        console.log(`${green("✔")} Snapshot created`);
+        snapshotCreated = true;
+        break;
+      } catch (e) {
+        spinner.stop();
+        if (attempt < maxAttempts) {
+          const delaySec = retryDelays[attempt - 1] / 1000;
+          console.log(
+            `${yellow("⚠")} Snapshot attempt ${attempt} failed, retrying in ${delaySec}s...`,
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, retryDelays[attempt - 1])
+          );
+        } else {
+          console.log(`${yellow("⚠")} Snapshot creation failed: ${e}`);
+          console.log(
+            "  You can try creating it manually once the volume is ready:",
+          );
+          console.log(
+            `  deno sandbox volumes snapshot ${volumeSlug} ${options.snapshotSlug}`,
+          );
+        }
+      }
+    }
   } finally {
-    // Step 7: Delete the temporary volume — the snapshot is independent now.
-    // If this fails, warn the user so they can clean it up manually.
-    spinner.message = "Cleaning up temporary volume...";
-    spinner.start();
-    try {
-      await client.volumes.delete(volume.id);
-      spinner.stop();
-      console.log(`${green("✔")} Cleanup complete`);
-    } catch {
-      spinner.stop();
-      console.log(
-        `${yellow("⚠")} Could not delete temporary volume '${volumeSlug}'.`,
-      );
-      console.log("  Please delete it manually to avoid charges:");
-      console.log(`  deno sandbox volumes delete ${volumeSlug}`);
+    // Only delete the temporary volume if the snapshot was created.
+    // If it wasn't, keep the volume so the user can snapshot it manually.
+    if (snapshotCreated) {
+      spinner.message = "Cleaning up temporary volume...";
+      spinner.start();
+      try {
+        await Promise.race([
+          client.volumes.delete(volume.id),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("timed out")), 30_000)
+          ),
+        ]);
+        spinner.stop();
+        console.log(`${green("✔")} Cleanup complete`);
+      } catch {
+        spinner.stop();
+        console.log(
+          `${yellow("⚠")} Could not delete temporary volume '${volumeSlug}'.`,
+        );
+        console.log("  Please delete it manually to avoid charges:");
+        console.log(`  deno sandbox volumes delete ${volumeSlug}`);
+      }
     }
   }
 
-  // Done! Show the user how to use their new snapshot.
-  console.log();
-  console.log(
-    `${green("✔")} Snapshot '${options.snapshotSlug}' is ready to use.`,
-  );
-  console.log();
-  console.log("To create a sandbox with this snapshot:");
-  console.log(`  deno sandbox create --root ${options.snapshotSlug}`);
+  if (snapshotCreated) {
+    console.log();
+    console.log(
+      `${green("✔")} Snapshot '${options.snapshotSlug}' is ready to use.`,
+    );
+    console.log();
+    console.log("To create a sandbox with this snapshot:");
+    console.log(`  deno sandbox create --root ${options.snapshotSlug}`);
+  }
 }
 
 // --- The Command ---
