@@ -335,7 +335,7 @@ function requireUnless<T>(
   unless: unknown | undefined,
   option: string,
 ): T | undefined {
-  if (unless) {
+  if (!unless && value === undefined) {
     throw new ValidationError(`Missing required option "--${option}".`);
   } else {
     return value;
