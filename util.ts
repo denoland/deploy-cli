@@ -63,8 +63,9 @@ export async function create(
     exchangeToken = res.exchangeToken;
   }
 
+  console.log(`Visit ${url.href} to create a new application.`);
   const spinner = new Spinner({
-    message: `Visit ${url.href} to create a new application.`,
+    message: "",
     color: "yellow",
   });
   spinner.start();
@@ -108,6 +109,8 @@ export async function create(
   ]);
 
   spinner.stop();
+  Deno.stdout.writeSync(new TextEncoder().encode("\x1b[1A\x1b[2K"));
+
   console.log(
     `${green("✔")} App '${app}' created in the '${org}' organization.\n`,
   );
