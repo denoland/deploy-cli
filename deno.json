@@ -43,8 +43,5 @@
   },
   "exclude": [
     "astro-demo"
-  ],
-  "links": [
-    "../std/cli"
   ]
 }
