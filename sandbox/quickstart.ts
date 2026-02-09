@@ -47,7 +47,7 @@ const PRESETS: Preset[] = [
     description: "Python with NumPy, Pandas, Matplotlib, SciPy",
     packages: ["python3", "python3-pip", "python3-venv"],
     setupCommands: [
-      "pip3 install --break-system-packages numpy pandas matplotlib scipy",
+      "sudo pip3 install --break-system-packages numpy pandas matplotlib scipy",
     ],
   },
   {
@@ -102,22 +102,22 @@ const CUSTOM_CATEGORIES: Category[] = [
       {
         label: "NumPy",
         packages: ["python3", "python3-pip"],
-        setupCommands: ["pip3 install --break-system-packages numpy"],
+        setupCommands: ["sudo pip3 install --break-system-packages numpy"],
       },
       {
         label: "Pandas",
         packages: ["python3", "python3-pip"],
-        setupCommands: ["pip3 install --break-system-packages pandas"],
+        setupCommands: ["sudo pip3 install --break-system-packages pandas"],
       },
       {
         label: "Matplotlib",
         packages: ["python3", "python3-pip"],
-        setupCommands: ["pip3 install --break-system-packages matplotlib"],
+        setupCommands: ["sudo pip3 install --break-system-packages matplotlib"],
       },
       {
         label: "SciPy",
         packages: ["python3", "python3-pip"],
-        setupCommands: ["pip3 install --break-system-packages scipy"],
+        setupCommands: ["sudo pip3 install --break-system-packages scipy"],
       },
     ],
   },
@@ -245,12 +245,24 @@ async function buildSnapshot(
     capacity: number;
     token: string;
     org: string;
+    verbose: boolean;
   },
 ): Promise<void> {
   // A unique name for the temporary volume so it doesn't clash with anything
   const volumeSlug = `qs-temp-${Date.now()}`;
 
+  // In verbose mode, command output goes straight to the terminal.
+  // In normal mode, output is hidden and we show friendly progress instead.
+  const out = options.verbose ? "inherit" : "null" as const;
+
   const spinner = new Spinner({ color: "yellow" });
+
+  const totalSteps = 2 + options.packages.length + options.setupCommands.length;
+  let currentStep = 0;
+  const step = (label: string) => {
+    currentStep++;
+    return `[${currentStep}/${totalSteps}]  ${label}`;
+  };
 
   // Step 1: Create a temporary volume based on Debian 13
   spinner.message = "Creating temporary volume...";
@@ -279,14 +291,23 @@ async function buildSnapshot(
     spinner.stop();
     console.log(`${green("✔")} Sandbox booted`);
 
+    console.log();
+    console.log(
+      `Installing ${options.packages.length} package${options.packages.length === 1 ? "" : "s"}` +
+        (options.setupCommands.length > 0
+          ? ` + ${options.setupCommands.length} setup command${options.setupCommands.length === 1 ? "" : "s"}`
+          : ""),
+    );
+    console.log();
+
     try {
       // Step 3: Update the package list so apt knows what's available
-      spinner.message = "Updating package lists...";
+      spinner.message = step("Updating package lists...");
       spinner.start();
       const updateChild = await sandbox.spawn("bash", {
-        args: ["-c", "apt-get update"],
-        stdout: "null",
-        stderr: "null",
+        args: ["-c", "sudo apt update"],
+        stdout: out,
+        stderr: out,
       });
       const updateStatus = await updateChild.status;
       spinner.stop();
@@ -295,37 +316,37 @@ async function buildSnapshot(
       }
       console.log(`${green("✔")} Package lists updated`);
 
-      // Step 4: Install the apt packages.
-      // DEBIAN_FRONTEND=noninteractive prevents apt from asking questions.
-      if (options.packages.length > 0) {
-        const packageList = options.packages.join(", ");
-        spinner.message = `Installing packages: ${packageList}`;
+      // Step 4: Install each apt package individually so we can show
+      // per-package progress. DEBIAN_FRONTEND=noninteractive prevents
+      // apt from asking questions.
+      for (let i = 0; i < options.packages.length; i++) {
+        const pkg = options.packages[i];
+        spinner.message = step(`Installing ${pkg}...`);
         spinner.start();
-        const installCmd = `DEBIAN_FRONTEND=noninteractive apt-get install -y ${
-          options.packages.join(" ")
-        }`;
+        const installCmd =
+          `sudo DEBIAN_FRONTEND=noninteractive apt install -y ${pkg}`;
         const installChild = await sandbox.spawn("bash", {
           args: ["-c", installCmd],
-          stdout: "null",
-          stderr: "null",
+          stdout: out,
+          stderr: out,
         });
         const installStatus = await installChild.status;
         spinner.stop();
         if (!installStatus.success) {
-          error(context, "Package installation failed");
+          error(context, `Failed to install ${pkg}`);
         }
-        console.log(`${green("✔")} Packages installed`);
+        console.log(`${green("✔")} Installed ${pkg}`);
       }
 
       // Step 5: Run any extra setup commands (like pip installs).
       // These are optional — if one fails we warn but keep going.
       for (const cmd of options.setupCommands) {
-        spinner.message = `Running: ${cmd}`;
+        spinner.message = step(`Running: ${cmd}`);
         spinner.start();
         const setupChild = await sandbox.spawn("bash", {
           args: ["-c", cmd],
-          stdout: "null",
-          stderr: "null",
+          stdout: out,
+          stderr: out,
         });
         const setupStatus = await setupChild.status;
         spinner.stop();
@@ -398,6 +419,7 @@ export const quickstartCommand = new Command<SandboxContext>()
   .option("--name <slug:string>", "Name for the snapshot")
   .option("--region <region:string>", "Region (ord or ams)")
   .option("--capacity <size:string>", "Volume capacity", { default: "10GB" })
+  .option("--verbose", "Show full command output")
   .example(
     "Interactive mode",
     "quickstart",
@@ -484,5 +506,6 @@ export const quickstartCommand = new Command<SandboxContext>()
       capacity: Math.floor(parseSize(options, options.capacity)),
       token,
       org,
+      verbose: options.verbose ?? false,
     });
   }));
