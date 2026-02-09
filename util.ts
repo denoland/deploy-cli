@@ -1,13 +1,6 @@
-import { green, red, stripAnsiCode } from "@std/fmt/colors";
+import { red, stripAnsiCode } from "@std/fmt/colors";
 import { Temporal } from "temporal-polyfill";
-import {
-  detectBuildConfig,
-  FrameworkFileSystemReader,
-} from "@deno/framework-detect";
-import open from "open";
-import { Spinner } from "@std/cli/unstable-spinner";
 
-import { getAuth, interactive, tokenExchange } from "./auth.ts";
 import type { GlobalContext } from "./main.ts";
 
 export function error(

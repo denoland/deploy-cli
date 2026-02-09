@@ -19,6 +19,7 @@ import { error } from "./util.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 import type { GlobalContext } from "./main.ts";
 
+// deno-lint-ignore no-explicit-any
 export type TRPCClient = OriginalTRPCClient<any>;
 
 export function createTrpcClient(
