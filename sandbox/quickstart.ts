@@ -430,29 +430,8 @@ async function buildSnapshot(
       }
     }
   } finally {
-    // Only delete the temporary volume if the snapshot was created.
-    // If it wasn't, keep the volume so the user can snapshot it manually.
-    if (snapshotCreated) {
-      spinner.message = "Cleaning up temporary volume...";
-      spinner.start();
-      try {
-        await Promise.race([
-          client.volumes.delete(volume.id),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("timed out")), 30_000)
-          ),
-        ]);
-        spinner.stop();
-        console.log(`${green("✔")} Cleanup complete`);
-      } catch {
-        spinner.stop();
-        console.log(
-          `${yellow("⚠")} Could not delete temporary volume '${volumeSlug}'.`,
-        );
-        console.log("  Please delete it manually to avoid charges:");
-        console.log(`  deno sandbox volumes delete ${volumeSlug}`);
-      }
-    }
+    // The volume is kept because the snapshot depends on it.
+    // It cannot be deleted while the snapshot exists.
   }
 
   if (snapshotCreated) {
