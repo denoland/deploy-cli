@@ -442,6 +442,9 @@ async function buildSnapshot(
     console.log();
     console.log("To create a sandbox with this snapshot:");
     console.log(`  deno sandbox create --root ${options.snapshotSlug}`);
+    console.log();
+    console.log("To create a sandbox and SSH into it:");
+    console.log(`  deno sandbox create --root ${options.snapshotSlug} --ssh`);
   }
 }
 
