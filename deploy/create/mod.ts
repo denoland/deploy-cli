@@ -234,7 +234,7 @@ export const createCommand = new Command<GlobalContext>()
         buildDirectory = member?.path ??
           require(options.appDirectory, "app-directory");
       } else {
-        buildDirectory = undefined;
+        buildDirectory = options.appDirectory || "";
       }
 
       let buildConfig;
