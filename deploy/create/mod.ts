@@ -241,7 +241,15 @@ export const createCommand = new Command<GlobalContext>()
       }
 
       let buildConfig;
-      if (options.doNotUseDetectedBuildConfig) {
+      if (!options.doNotUseDetectedBuildConfig) {
+        if (member?.buildConfig) {
+          buildConfig = member?.buildConfig;
+        } else {
+          console.warn(`No build configuration was detected in '${buildDirectory}'.`);
+        }
+      }
+
+      if (!buildConfig) {
         const base = {
           frameworkPreset: options.frameworkPreset ?? "" as FrameworkPreset,
           installCommand: requireUnless(
@@ -291,14 +299,6 @@ export const createCommand = new Command<GlobalContext>()
             buildConfig = base;
             break;
           }
-        }
-      } else {
-        if (member?.buildConfig) {
-          buildConfig = member?.buildConfig;
-        } else {
-          throw new TypeError(
-            `No build configuration was detected in '${buildDirectory}'.`,
-          );
         }
       }
 
