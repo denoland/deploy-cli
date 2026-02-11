@@ -193,14 +193,13 @@ export const sandboxListCommand = new Command<SandboxContext>()
     const org = await getOrg(options, config, options.org);
     const client = createTrpcClient(options, true);
 
-    const list: Array<{
+    const list = await client.query("sandboxes.list", { org }) as Array<{
       id: string;
       status: "running" | "stopped";
       created_at: Date;
       stopped_at: Date | null;
       cluster_hostname: string;
-      // deno-lint-ignore no-explicit-any
-    }> = await (client.sandboxes as any).list.query({ org });
+    }>;
 
     tablePrinter(
       ["ID", "CREATED", "REGION", "STATUS", "UPTIME"],
@@ -240,18 +239,16 @@ export const sandboxKillCommand = new Command<SandboxContext>()
     const org = await getOrg(options, config, options.org);
     const client = createTrpcClient(options, true);
 
-    // deno-lint-ignore no-explicit-any
-    const cluster = await (client.sandboxes as any).findHostname.query({
+    const cluster = await client.query("sandboxes.findHostname", {
       org,
       sandboxId,
-    });
+    }) as { hostname: string };
 
-    // deno-lint-ignore no-explicit-any
-    const res = await (client.sandboxes as any).kill.mutate({
+    const res = await client.mutation("sandboxes.kill", {
       org,
       sandboxId,
       clusterHostname: cluster.hostname,
-    });
+    }) as { success: boolean };
 
     if (res.success) {
       console.log(`Sandbox ${sandboxId} killed successfully`);

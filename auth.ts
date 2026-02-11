@@ -4,7 +4,7 @@ import open from "open";
 import { encodeBase64 } from "@std/encoding";
 import { green } from "@std/fmt/colors";
 import {
-  createTRPCClient,
+  createTRPCUntypedClient,
   httpBatchStreamLink,
   httpSubscriptionLink,
   retryLink,
@@ -63,8 +63,7 @@ export function createTrpcClient(
 
   let retryPromise: Promise<void> | undefined = undefined;
 
-  // deno-lint-ignore no-explicit-any
-  return createTRPCClient<any>({
+  return createTRPCUntypedClient({
     links: [
       errorLink,
       retryLink({
@@ -281,7 +280,7 @@ export async function authedFetch(
   endpoint: string,
   init: RequestInit,
 ) {
-  let auth = await tokenStorage.get();
+  let auth = tokenStorage.get();
 
   if (!auth) {
     auth = await getAuth(context);
