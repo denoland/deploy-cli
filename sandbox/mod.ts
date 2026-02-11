@@ -61,6 +61,12 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
         const name = value.slice(0, separatorIndex);
         const path = value.slice(separatorIndex + 1);
 
+        if (path === "/") {
+          throw new ValidationError(
+            "Volume mount  path cannot be /, use --root instead",
+          );
+        }
+
         previous[path] = name;
 
         return previous;

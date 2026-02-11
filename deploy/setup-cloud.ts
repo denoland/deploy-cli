@@ -1,5 +1,4 @@
-// @ts-types="@types/prompts"
-import prompt from "prompts";
+import { promptMultipleSelect } from "@std/cli/unstable-prompt-multiple-select";
 
 import { gray, green, yellow } from "@std/fmt/colors";
 import { createTrpcClient } from "../auth.ts";
@@ -181,34 +180,30 @@ export async function setupAws(
   log("\r");
 
   const choices = allPolicies.Policies.map((policy) => ({
-    title: policy.PolicyName,
+    label: policy.PolicyName,
     value: policy.Arn,
   }));
 
   let policies;
   while (true) {
-    const result = await prompt({
-      type: "autocompleteMultiselect",
-      name: "policies",
-      message: "Select permission policies you want to attach to the new role",
+    const result = promptMultipleSelect(
+      "Select permission policies you want to attach to the new role",
       choices,
-      hint: "- Space to select a policy, Enter to confirm your selections",
-      instructions: false,
-    });
+      {
+        clear: true,
+        fitToRemainingHeight: true,
+      },
+    );
 
-    if (result.policies === undefined) {
+    if (result === null) {
       console.log("%c   Exiting setup.", "color: yellow;");
       Deno.exit(1);
     }
 
-    if (result.policies.length === 0) {
-      const { confirmNoPolicies } = await prompt({
-        type: "confirm",
-        name: "confirmNoPolicies",
-        message:
-          "Are you sure you don't want to associate any policies? Remember to use Space to select a policy, and Enter to confirm your selections.",
-        initial: false,
-      });
+    if (result.length === 0) {
+      const confirmNoPolicies = confirm(
+        "Are you sure you don't want to associate any policies? Remember to use Space to select a policy, and Enter to confirm your selections.",
+      );
       if (!confirmNoPolicies) {
         continue;
       }
@@ -218,7 +213,7 @@ export async function setupAws(
       );
     }
 
-    policies = result.policies;
+    policies = result;
     break;
   }
 
@@ -290,13 +285,7 @@ export async function setupAws(
 
   console.log("");
 
-  const { confirm } = await prompt({
-    type: "confirm",
-    name: "confirm",
-    message: "Do you want to apply these changes?",
-    initial: true,
-  });
-  if (!confirm) {
+  if (!confirm("Do you want to apply these changes?")) {
     console.log("%c  Exiting setup.", "color: yellow;");
     Deno.exit(1);
   }
@@ -390,7 +379,7 @@ export async function setupAws(
       "--role-name",
       roleName,
       "--policy-arn",
-      policy,
+      policy.value,
     ]);
   }
   console.log(
@@ -510,12 +499,7 @@ export async function setupGcp(
     }
     console.log("");
 
-    const { enableApis } = await prompt({
-      type: "confirm",
-      name: "enableApis",
-      message: "Do you want to enable these APIs now?",
-      initial: true,
-    });
+    const enableApis = confirm("Do you want to enable these APIs now?");
 
     if (!enableApis) {
       console.log(
@@ -592,34 +576,30 @@ export async function setupGcp(
   log("\r");
 
   const roleChoices = roles.map((role) => ({
-    title: `${role.title} (${role.name.split("/").pop()})`,
+    label: `${role.title} (${role.name.split("/").pop()})`,
     value: role.name,
   }));
 
   let selectedRoles;
   while (true) {
-    const result = await prompt({
-      type: "autocompleteMultiselect",
-      name: "selectedRoles",
-      message: "Select IAM roles you want to grant to the service account",
-      choices: roleChoices,
-      hint: "- Space to select a role, Enter to confirm your selections",
-      instructions: false,
-    });
+    const result = promptMultipleSelect(
+      "Select IAM roles you want to grant to the service account",
+      roleChoices,
+      {
+        clear: true,
+        fitToRemainingHeight: true,
+      },
+    );
 
-    if (result.selectedRoles === undefined) {
+    if (result === null) {
       console.log("%c   Exiting setup.", "color: yellow;");
       Deno.exit(1);
     }
 
-    if (result.selectedRoles.length === 0) {
-      const { confirmNoRoles } = await prompt({
-        type: "confirm",
-        name: "confirmNoRoles",
-        message:
-          "Are you sure you don't want to associate any roles? Remember to use Space to select a role, and Enter to confirm your selections.",
-        initial: false,
-      });
+    if (result.length === 0) {
+      const confirmNoRoles = confirm(
+        "Are you sure you don't want to associate any roles? Remember to use Space to select a role, and Enter to confirm your selections.",
+      );
       if (!confirmNoRoles) {
         continue;
       }
@@ -629,7 +609,7 @@ export async function setupGcp(
       );
     }
 
-    selectedRoles = result.selectedRoles;
+    selectedRoles = result;
     break;
   }
 
@@ -704,7 +684,7 @@ export async function setupGcp(
   );
 
   for (const role of selectedRoles) {
-    const roleName = role.split("/").pop();
+    const roleName = role.value.split("/").pop();
     console.log(
       `   %c+ grant%c role %c${roleName}%c to the service account`,
       "color: green;",
@@ -716,14 +696,7 @@ export async function setupGcp(
 
   console.log("");
 
-  const { confirm } = await prompt({
-    type: "confirm",
-    name: "confirm",
-    message: "Do you want to apply these changes?",
-    initial: true,
-  });
-
-  if (!confirm) {
+  if (!confirm("Do you want to apply these changes?")) {
     console.log("%c  Exiting setup.", "color: yellow;");
     Deno.exit(1);
   }

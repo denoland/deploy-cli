@@ -16,7 +16,7 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
     value: (value: string): "denokv" | "prisma" => {
       if (value !== "denokv" && value !== "prisma") {
         throw new ValidationError(
-          `kind must be either "kv" or "prisma", but got "${value}".`,
+          `kind must be either "denokv" or "prisma", but got "${value}".`,
         );
       }
       return value;
