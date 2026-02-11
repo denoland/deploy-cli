@@ -57,7 +57,10 @@ export const createCommand = new Command<GlobalContext>()
     "--app-directory <path:string>",
     "The path to the application directory",
   )
-  .option("--use-detected-build-config", "Use detected build configuration")
+  .option(
+    "--do-not-use-detected-build-config",
+    "Do not use the detected build configuration",
+  )
   .option("--framework-preset <preset:string>", "The framework preset to use", {
     value(value: string) {
       if (SUPPORTED_FRAMEWORK_PRESETS.has(value as FrameworkPreset)) {
@@ -238,15 +241,7 @@ export const createCommand = new Command<GlobalContext>()
       }
 
       let buildConfig;
-      if (options.useDetectedBuildConfig) {
-        if (member?.buildConfig) {
-          buildConfig = member?.buildConfig;
-        } else {
-          throw new TypeError(
-            `No build configuration was detected in '${buildDirectory}'.`,
-          );
-        }
-      } else {
+      if (options.doNotUseDetectedBuildConfig) {
         const base = {
           frameworkPreset: options.frameworkPreset ?? "" as FrameworkPreset,
           installCommand: requireUnless(
@@ -296,6 +291,14 @@ export const createCommand = new Command<GlobalContext>()
             buildConfig = base;
             break;
           }
+        }
+      } else {
+        if (member?.buildConfig) {
+          buildConfig = member?.buildConfig;
+        } else {
+          throw new TypeError(
+            `No build configuration was detected in '${buildDirectory}'.`,
+          );
         }
       }
 
