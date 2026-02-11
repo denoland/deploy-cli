@@ -18,7 +18,7 @@ import {
   type WorkspaceDetectionResult,
 } from "@deno/framework-detect";
 
-import { publish } from "../publish.ts";
+import { publish, waitForRevision } from "../publish.ts";
 import { resolve } from "@std/path";
 import { error } from "../../util.ts";
 
@@ -410,6 +410,10 @@ export async function createApp(
     deviceCreation,
   });
 
+  console.log(
+    `Created app, view it at ${context.endpoint}/${data.org}/${data.app}`,
+  );
+
   if (data.repo === undefined) {
     await publish(
       context,
@@ -418,19 +422,27 @@ export async function createApp(
       data.app,
       true,
       allowNodeModules ?? false,
-      wait ?? true,
+      wait ?? false,
     );
   } else {
     // deno-lint-ignore no-explicit-any
-    const revisionId = await (trpcClient.apps as any).triggerGitHubBuild.mutate({
-      org: data.org,
-      slug: data.app,
-      branch: null,
-    });
-    console.log(`${context.endpoint}/${data.org}/${data.app}/builds/${revisionId}`);
-  }
+    const revisionId = await (trpcClient.apps as any).triggerGitHubBuild.mutate(
+      {
+        org: data.org,
+        app: data.app,
+        branch: null,
+      },
+    );
+    console.log(
+      `You can view the revision here:\n  ${context.endpoint}/${data.org}/${data.app}/builds/${revisionId}\n`,
+    );
 
-  console.log(
-    `Created app, view it at ${context.endpoint}/${data.org}/${data.app}`,
-  );
+    if (wait) {
+      await waitForRevision(context, data.org, data.app, revisionId);
+    } else {
+      console.log(
+        "To see the deployment, go to the revision page and wait for the build to complete.",
+      );
+    }
+  }
 }
