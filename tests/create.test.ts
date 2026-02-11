@@ -368,6 +368,5 @@ Deno.test("create fails when github source missing --repo", async () => {
     "--owner",
     "denoland",
   );
-  // --repo depends on --owner, and cliffy enforces --owner depends on --repo
   assertStringIncludes(output, '"--repo"');
 });

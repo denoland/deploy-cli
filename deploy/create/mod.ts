@@ -20,6 +20,7 @@ import {
 
 import { publish } from "../publish.ts";
 import { resolve } from "@std/path";
+import { error } from "../../util.ts";
 
 export const createCommand = new Command<GlobalContext>()
   .description(
@@ -32,7 +33,7 @@ export const createCommand = new Command<GlobalContext>()
   .option("--no-wait", "Skip waiting for the build to complete")
   .option(
     "--dry-run",
-    "Validate and process the flags or execute the flow without creation the app",
+    "Validate and process the flags or execute the flow without creating the app",
   )
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
@@ -43,7 +44,7 @@ export const createCommand = new Command<GlobalContext>()
         return value;
       }
       throw new ValidationError(
-        `Invalid source: ${value}. alid values are "github" and "local".`,
+        `Invalid source: ${value}. Valid values are "github" and "local".`,
       );
     },
   })
@@ -81,7 +82,7 @@ export const createCommand = new Command<GlobalContext>()
   )
   .option(
     "--runtime-mode <config:string>",
-    "The pre-deploy command to use",
+    "The runtime mode to use",
     {
       value(value: string) {
         if (value === "dynamic" || value === "static") {
@@ -100,7 +101,7 @@ export const createCommand = new Command<GlobalContext>()
   )
   .option(
     "--arguments <arguments:string>",
-    "The arguments to use for dynamic configuration. Can be specified multiple times.",
+    "The arguments to use for dynamic configuration. Can be specified multiple times",
     {
       collect: true,
     },
@@ -110,7 +111,7 @@ export const createCommand = new Command<GlobalContext>()
     "The working directory to use for dynamic configuration",
   )
   .option(
-    "--static-dir <cwd:string>",
+    "--static-dir <dir:string>",
     "The directory your static site should be served from to use for static configuration",
   )
   .option(
@@ -120,7 +121,7 @@ export const createCommand = new Command<GlobalContext>()
       "For static configuration",
   )
   .option(
-    "--build-timeout <seconds:number>",
+    "--build-timeout <minutes:number>",
     `The build timeout in minutes. One of ${
       AVAILABLE_BUILD_TIMEOUTS.join(", ")
     }`,
@@ -223,7 +224,7 @@ export const createCommand = new Command<GlobalContext>()
           return resolve(rootPath, member.path) ===
             resolve(rootPath, options.appDirectory || "");
         } else {
-          return member.path === options.appDirectory || "";
+          return member.path === (options.appDirectory || "");
         }
       });
 
@@ -390,6 +391,10 @@ export async function createApp(
         buildConfig,
       }),
     });
+    if (!deviceCreate.ok) {
+      // deno-lint-ignore no-explicit-any
+      error(context, (await deviceCreate.json() as any).message);
+    }
     const { id } = await deviceCreate.json();
     deviceCreation = id;
   }
@@ -415,6 +420,14 @@ export async function createApp(
       allowNodeModules ?? false,
       wait ?? true,
     );
+  } else {
+    // deno-lint-ignore no-explicit-any
+    const revisionId = await (trpcClient.apps as any).triggerGitHubBuild.mutate({
+      org: data.org,
+      slug: data.app,
+      branch: null,
+    });
+    console.log(`${context.endpoint}/${data.org}/${data.app}/builds/${revisionId}`);
   }
 
   console.log(

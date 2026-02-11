@@ -273,7 +273,7 @@ function getBuildConfig(
     },
   );
   if (!selectedFrameworkPreset) {
-    error(context, "No organization was selected.");
+    error(context, "No framework preset was selected.");
   }
   const frameworkPreset = selectedFrameworkPreset.value;
 
@@ -458,7 +458,7 @@ async function github(
   }> = await (trpcClient.github as any).listOrgsForUser.query();
 
   const selectedOwner = promptSelect(
-    "Select an github owner:",
+    "Select a github owner:",
     owners.map((owner) => ({ label: owner.login, value: owner })),
     {
       clear: true,
@@ -479,7 +479,7 @@ async function github(
   });
 
   const selectedRepo = promptSelect(
-    "Select an github repo:",
+    "Select a github repo:",
     repos.map((repo) => ({ label: repo.name, value: repo })),
     {
       clear: true,
