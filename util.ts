@@ -1,13 +1,6 @@
-import { green, red, stripAnsiCode } from "@std/fmt/colors";
+import { red, stripAnsiCode } from "@std/fmt/colors";
 import { Temporal } from "temporal-polyfill";
-import {
-  detectBuildConfig,
-  FrameworkFileSystemReader,
-} from "@deno/framework-detect";
-import open from "open";
-import { Spinner } from "@std/cli/unstable-spinner";
 
-import { getAuth, interactive, tokenExchange } from "./auth.ts";
 import type { GlobalContext } from "./main.ts";
 
 export function error(
@@ -26,100 +19,6 @@ export function error(
     console.error(`  trace id: ${trace}`);
   }
   Deno.exit(1);
-}
-
-export async function create(
-  context: GlobalContext,
-  rootPath: string,
-  initOrg?: string,
-): Promise<{ org: string; app: string }> {
-  let verifier;
-  let exchangeToken;
-
-  const buildConfig = await detectBuildConfig(
-    new FrameworkFileSystemReader(rootPath),
-  );
-
-  const deviceCreate = await fetch(`${context.endpoint}/api/device_create`, {
-    method: "POST",
-    body: JSON.stringify({
-      buildConfig,
-    }),
-  });
-  const { id: deviceCreateId } = await deviceCreate.json();
-
-  const url = new URL(`${context.endpoint}/device-create/${deviceCreateId}`);
-
-  if (initOrg) {
-    url.searchParams.set("org", initOrg);
-  }
-
-  const storedAuth = await getAuth(context, false);
-
-  if (!storedAuth) {
-    const res = await interactive(context);
-    url.searchParams.set("code", res.code);
-    verifier = res.verifier;
-    exchangeToken = res.exchangeToken;
-  }
-
-  console.log(`Visit ${url.href} to create a new application.`);
-  const spinner = new Spinner({
-    message: "",
-    color: "yellow",
-  });
-  spinner.start();
-
-  await open(url.href);
-
-  const appCreationPromise = new Promise<{ org: string; app: string }>(
-    (resolve, reject) => {
-      const interval = setInterval(async () => {
-        const res = await fetch(
-          `${context.endpoint}/api/device_create/${deviceCreateId}`,
-          {
-            method: "GET",
-          },
-        );
-
-        if (res.ok) {
-          const appCreation = await res.json();
-          clearInterval(interval);
-          resolve(appCreation);
-        } else {
-          const err = await res.json();
-          if (err.code !== "APP_CREATION_REQUEST_PENDING") {
-            clearInterval(interval);
-            reject(new Error(err.message));
-          }
-        }
-      }, 2000);
-    },
-  );
-
-  const [{ org, app }] = await Promise.all([
-    appCreationPromise,
-    storedAuth ? undefined : tokenExchange(
-      context,
-      exchangeToken!,
-      verifier!,
-      spinner,
-      false,
-    ),
-  ]);
-
-  spinner.stop();
-  // clear the previous line, which contains the URL
-  Deno.stdout.writeSync(new TextEncoder().encode("\x1b[1A\x1b[2K"));
-
-  console.log(
-    `${green("✔")} App '${app}' created in the '${org}' organization.\n`,
-  );
-
-  return {
-    org,
-    app,
-  };
 }
 
 export function renderTemporalTimestamp(timestamp: string, hideDate = false) {

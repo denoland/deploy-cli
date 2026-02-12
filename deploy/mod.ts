@@ -1,6 +1,6 @@
 import { Command, ValidationError } from "@cliffy/command";
 import { red, yellow } from "@std/fmt/colors";
-import { create, error, renderTemporalTimestamp } from "../util.ts";
+import { error, renderTemporalTimestamp } from "../util.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
 import { actionHandler, getApp, getOrg } from "../config.ts";
 import { publish } from "./publish.ts";
@@ -8,42 +8,7 @@ import { setupAws, setupGcp } from "./setup-cloud.ts";
 import { createTrpcClient, getAuth, tokenStorage } from "../auth.ts";
 import { databasesCommand } from "./database.ts";
 import { envCommand } from "./env.ts";
-
-const createCommand = new Command<GlobalContext>()
-  .description("Create a new application")
-  .option(
-    "--allow-node-modules",
-    "Allow node_modules directory to be included when uploading",
-  )
-  .option(
-    "--org <name:string>",
-    "The name of the organization to create the application for",
-  )
-  .option("--no-wait", "Skip waiting for the build to complete")
-  .arguments("[root-path:string]")
-  .action(actionHandler(async (config, options, rootPath = Deno.cwd()) => {
-    const org = await getOrg(options, config, options.org);
-
-    if (config.app) {
-      error(options, "An application already exists in this directory.");
-    }
-
-    const newOrgAndApp = await create(
-      options,
-      rootPath,
-      org,
-    );
-
-    await publish(
-      options,
-      rootPath,
-      newOrgAndApp.org,
-      newOrgAndApp.app,
-      true,
-      options.allowNodeModules ?? false,
-      options.wait ?? true,
-    );
-  }, (rootPath) => rootPath));
+import { createCommand } from "./create/mod.ts";
 
 const setupAWSCommand = new Command<GlobalContext>()
   .description("Setup cloud connections for AWS")
