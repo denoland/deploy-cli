@@ -148,14 +148,15 @@ export async function publish(
 
   const trpcClient = createTrpcClient(context);
 
-  // deno-lint-ignore no-explicit-any
-  const revisionId: string = await (trpcClient.apps as any).initiateCliRevision
-    .mutate({
+  const revisionId = await trpcClient.mutation(
+    "apps.initiateCliRevision",
+    {
       org,
       app,
       production: prod,
       manifest,
-    });
+    },
+  ) as string;
 
   // doing this after we initiate the cli revision in case it fails (ie app not existing).
   spinner.message = `${green("✔")} Generated hashes`;
@@ -174,29 +175,33 @@ export async function publish(
   existingFilesSpinner.start();
 
   let revision: Revision | undefined = undefined;
-  // deno-lint-ignore no-explicit-any
-  const sub = await (trpcClient.revisions as any).watchUntilReady.subscribe({
-    org,
-    app,
-    revision: revisionId,
-  }, {
-    onData: (data: Revision) => {
-      revision = data;
-      if ("deno.diffsync.missing_hashes" in data.labels) {
-        missingHashesPromise.resolve(
-          JSON.parse(data.labels["deno.diffsync.missing_hashes"]),
-        );
+  const sub = await trpcClient.subscription(
+    "revisions.watchUntilReady",
+    {
+      org,
+      app,
+      revision: revisionId,
+    },
+    {
+      onData: (data: unknown) => {
+        const typedData = data as Revision;
+        revision = typedData;
+        if ("deno.diffsync.missing_hashes" in typedData.labels) {
+          missingHashesPromise.resolve(
+            JSON.parse(typedData.labels["deno.diffsync.missing_hashes"]),
+          );
+          sub.unsubscribe();
+        }
+      },
+      onError: (err: unknown) => {
         sub.unsubscribe();
-      }
+        error(context, Deno.inspect(err));
+      },
+      onStopped: () => {
+        sub.unsubscribe();
+      },
     },
-    onError: (err: unknown) => {
-      sub.unsubscribe();
-      error(context, Deno.inspect(err));
-    },
-    onStopped: () => {
-      sub.unsubscribe();
-    },
-  });
+  );
 
   const missingHashes = await missingHashesPromise.promise;
 
@@ -351,13 +356,15 @@ export async function waitForRevision(
   const completionPromise = Promise.withResolvers<void>();
 
   // deno-lint-ignore no-explicit-any
-  const completionSub = await (trpcClient.revisions as any).watchUntilReady
-    .subscribe({
+  const completionSub = await trpcClient.subscription(
+    "revisions.watchUntilReady",
+    {
       org,
       app,
       revision: revisionId,
     }, {
-      onData: (newRevision: Revision) => {
+      onData: (data: unknown) => {
+        const newRevision = data as Revision;
         revision = newRevision;
         const lastStep = newRevision.steps.at(-1);
 
@@ -392,15 +399,11 @@ export async function waitForRevision(
 
   console.log(`\n${green("✔")} Successfully deployed your application!`);
 
-  const timelines: Array<
-    { partition_config_name: string; domains: string[] }
-  > =
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.revisions as any).listTimelines.query({
-      org,
-      app,
-      revision: revisionId,
-    });
+  const timelines = await trpcClient.query("revisions.listTimelines", {
+    org,
+    app,
+    revision: revisionId,
+  }) as Array<{ partition_config_name: string; domains: string[] }>;
 
   for (const timeline of timelines) {
     console.log(
