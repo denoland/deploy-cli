@@ -140,6 +140,7 @@ export const createCommand = new Command<GlobalContext>()
           );
         }
       },
+      default: AVAILABLE_BUILD_TIMEOUTS[0],
     },
   )
   .option(
@@ -159,6 +160,7 @@ export const createCommand = new Command<GlobalContext>()
           );
         }
       },
+      default: AVAILABLE_BUILD_MEMORY_LIMITS[0],
     },
   )
   .option(
@@ -305,11 +307,6 @@ export const createCommand = new Command<GlobalContext>()
         }
       }
 
-      const buildTimeout = required(options.buildTimeout, "build-timeout");
-      const buildMemoryLimit = required(
-        options.buildMemoryLimit,
-        "build-memory-limit",
-      );
       const region = required(options.region, "region");
 
       console.log("Using the following build configuration:");
@@ -321,8 +318,8 @@ export const createCommand = new Command<GlobalContext>()
         repo,
         buildDirectory,
         buildConfig: buildConfig satisfies BuildConfig,
-        buildTimeout,
-        buildMemoryLimit,
+        buildTimeout: options.buildTimeout,
+        buildMemoryLimit: options.buildMemoryLimit,
         region,
       };
     } else {
