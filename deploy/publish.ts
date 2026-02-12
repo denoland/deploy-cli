@@ -175,7 +175,7 @@ export async function publish(
   existingFilesSpinner.start();
 
   let revision: Revision | undefined = undefined;
-  const sub = await trpcClient.subscription(
+  const sub = trpcClient.subscription(
     "revisions.watchUntilReady",
     {
       org,
@@ -355,14 +355,14 @@ export async function waitForRevision(
 
   const completionPromise = Promise.withResolvers<void>();
 
-  // deno-lint-ignore no-explicit-any
-  const completionSub = await trpcClient.subscription(
+  const completionSub = trpcClient.subscription(
     "revisions.watchUntilReady",
     {
       org,
       app,
       revision: revisionId,
-    }, {
+    },
+    {
       onData: (data: unknown) => {
         const newRevision = data as Revision;
         revision = newRevision;
@@ -383,7 +383,8 @@ export async function waitForRevision(
       onStopped: () => {
         completionSub.unsubscribe();
       },
-    });
+    },
+  );
 
   await completionPromise.promise;
 

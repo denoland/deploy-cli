@@ -65,12 +65,11 @@ export async function createFlow(
   const trpcClient = createTrpcClient(context);
 
   let org;
-  const orgs: Array<{
+  const orgs = await trpcClient.query("orgs.list") as Array<{
     name: string;
     slug: string;
     id: string;
-    // deno-lint-ignore no-explicit-any
-  }> = await (trpcClient.orgs as any).list.query();
+  }>;
 
   if (orgs.length === 1) {
     org = orgs[0].slug;
@@ -451,11 +450,10 @@ async function github(
   context: GlobalContext,
   trpcClient: TRPCClient,
 ) {
-  const owners: Array<{
+  const owners = await trpcClient.query("github.listOrgsForUser") as Array<{
     id: number;
     login: string;
-    // deno-lint-ignore no-explicit-any
-  }> = await (trpcClient.github as any).listOrgsForUser.query();
+  }>;
 
   const selectedOwner = promptSelect(
     "Select a github owner:",
@@ -470,13 +468,15 @@ async function github(
   }
   logTitle(TITLES.githubOwner, selectedOwner.value.login);
 
-  const repos: Array<{
+  const repos = await trpcClient.query(
+    "github.listReposInInstallationForUser",
+    {
+      installation_id: selectedOwner.value.id,
+    },
+  ) as Array<{
     id: number;
     name: string;
-    // deno-lint-ignore no-explicit-any
-  }> = await (trpcClient.github as any).listReposInInstallationForUser.query({
-    installation_id: selectedOwner.value.id,
-  });
+  }>;
 
   const selectedRepo = promptSelect(
     "Select a github repo:",
@@ -491,12 +491,13 @@ async function github(
   }
   logTitle(TITLES.githubRepo, selectedRepo.value.name);
 
-  const appDirectories: WorkspaceDetectionResult =
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.github as any).detectWorkspaceForRepo.query({
+  const appDirectories = await trpcClient.query(
+    "github.detectWorkspaceForRepo",
+    {
       owner: selectedOwner.value.login,
       repo: selectedRepo.value.name,
-    });
+    },
+  ) as WorkspaceDetectionResult;
 
   return {
     appDirectories,

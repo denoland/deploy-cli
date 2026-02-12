@@ -213,9 +213,10 @@ export const createCommand = new Command<GlobalContext>()
         };
 
         const trpcClient = createTrpcClient(options);
-        // deno-lint-ignore no-explicit-any
-        appDirectories = await (trpcClient.github as any).detectWorkspaceForRepo
-          .query(repo);
+        appDirectories = await trpcClient.query(
+          "github.detectWorkspaceForRepo",
+          repo,
+        ) as WorkspaceDetectionResult;
       } else {
         appDirectories = await detectWorkspace(
           new FrameworkFileSystemReader(rootPath),
@@ -245,7 +246,9 @@ export const createCommand = new Command<GlobalContext>()
         if (member?.buildConfig) {
           buildConfig = member?.buildConfig;
         } else {
-          console.warn(`No build configuration was detected in '${buildDirectory}'.`);
+          console.warn(
+            `No build configuration was detected in '${buildDirectory}'.`,
+          );
         }
       }
 
@@ -402,8 +405,7 @@ export async function createApp(
     deviceCreation = id;
   }
 
-  // deno-lint-ignore no-explicit-any
-  await (trpcClient.apps as any).create.mutate({
+  await trpcClient.mutation("apps.create", {
     org: data.org,
     slug: data.app,
     repo: data.repo,
@@ -428,14 +430,12 @@ export async function createApp(
       wait ?? false,
     );
   } else {
-    // deno-lint-ignore no-explicit-any
-    const revisionId = await (trpcClient.apps as any).triggerGitHubBuild.mutate(
-      {
-        org: data.org,
-        app: data.app,
-        branch: null,
-      },
-    );
+    const revisionId = await trpcClient.mutation("apps.triggerGitHubBuild", {
+      org: data.org,
+      app: data.app,
+      branch: null,
+    }) as string;
+
     console.log(
       `You can view the revision here:\n  ${context.endpoint}/${data.org}/${data.app}/builds/${revisionId}\n`,
     );

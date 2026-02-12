@@ -9,9 +9,9 @@ import {
   httpSubscriptionLink,
   retryLink,
   splitLink,
-  type TRPCClient as OriginalTRPCClient,
   TRPCClientError,
   type TRPCLink,
+  type TRPCUntypedClient,
 } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import { Spinner } from "@std/cli/unstable-spinner";
@@ -20,7 +20,7 @@ import { EventSourcePolyfill } from "event-source-polyfill";
 import type { GlobalContext } from "./main.ts";
 
 // deno-lint-ignore no-explicit-any
-export type TRPCClient = OriginalTRPCClient<any>;
+export type TRPCClient = TRPCUntypedClient<any>;
 
 export function createTrpcClient(
   context: GlobalContext,
