@@ -201,15 +201,15 @@ export const createCommand = new Command<GlobalContext>()
       options.buildMemoryLimit ||
       options.region
     ) {
-      const org = require(options.org, "org");
-      const app = require(options.app, "app");
-      const source = require(options.source, "source");
+      const org = required(options.org, "org");
+      const app = required(options.app, "app");
+      const source = required(options.source, "source");
       let repo: Repo = undefined;
       let appDirectories: WorkspaceDetectionResult;
       if (source === "github") {
         repo = {
-          owner: require(options.owner, "owner"),
-          repo: require(options.repo, "repo"),
+          owner: required(options.owner, "owner"),
+          repo: required(options.repo, "repo"),
         };
 
         const trpcClient = createTrpcClient(options);
@@ -236,7 +236,7 @@ export const createCommand = new Command<GlobalContext>()
 
       if (source === "github") {
         buildDirectory = member?.path ??
-          require(options.appDirectory, "app-directory");
+          required(options.appDirectory, "app-directory");
       } else {
         buildDirectory = options.appDirectory || "";
       }
@@ -255,24 +255,24 @@ export const createCommand = new Command<GlobalContext>()
       if (!buildConfig) {
         const base = {
           frameworkPreset: options.frameworkPreset ?? "" as FrameworkPreset,
-          installCommand: requireUnless(
+          installCommand: requiredUnless(
             options.installCommand,
             options.frameworkPreset,
             "install-command",
           ),
-          buildCommand: requireUnless(
+          buildCommand: requiredUnless(
             options.buildCommand,
             options.frameworkPreset,
             "build-command",
           ),
-          preDeployCommand: requireUnless(
+          preDeployCommand: requiredUnless(
             options.preDeployCommand,
             options.frameworkPreset,
             "pre-deploy-command",
           ),
         };
 
-        const runtimeMode = requireUnless(
+        const runtimeMode = requiredUnless(
           options.runtimeMode,
           options.frameworkPreset,
           "runtime-mode",
@@ -283,7 +283,7 @@ export const createCommand = new Command<GlobalContext>()
             buildConfig = {
               ...base,
               mode: "dynamic" as const,
-              entrypoint: require(options.entrypoint, "entrypoint"),
+              entrypoint: required(options.entrypoint, "entrypoint"),
               args: options.arguments,
               cwd: options.workingDirectory,
             };
@@ -293,7 +293,7 @@ export const createCommand = new Command<GlobalContext>()
             buildConfig = {
               ...base,
               mode: "static" as const,
-              staticDir: require(options.staticDir, "static-dir"),
+              staticDir: required(options.staticDir, "static-dir"),
               singlePageApp: options.singlePageApp ?? false,
             };
             break;
@@ -305,12 +305,12 @@ export const createCommand = new Command<GlobalContext>()
         }
       }
 
-      const buildTimeout = require(options.buildTimeout, "build-timeout");
-      const buildMemoryLimit = require(
+      const buildTimeout = required(options.buildTimeout, "build-timeout");
+      const buildMemoryLimit = required(
         options.buildMemoryLimit,
         "build-memory-limit",
       );
-      const region = require(options.region, "region");
+      const region = required(options.region, "region");
 
       console.log("Using the following build configuration:");
       console.log(renderBuildConfig(buildConfig satisfies BuildConfig));
@@ -341,7 +341,7 @@ export const createCommand = new Command<GlobalContext>()
     }
   }, (rootPath) => rootPath));
 
-function require<T>(value: T | undefined, option: string): T {
+function required<T>(value: T | undefined, option: string): T {
   if (value === undefined) {
     throw new ValidationError(`Missing required option "--${option}".`);
   } else {
@@ -349,7 +349,7 @@ function require<T>(value: T | undefined, option: string): T {
   }
 }
 
-function requireUnless<T>(
+function requiredUnless<T>(
   value: T | undefined,
   unless: unknown | undefined,
   option: string,
