@@ -233,7 +233,9 @@ export const sandboxListCommand = new Command<SandboxContext>()
 
 export const sandboxKillCommand = new Command<SandboxContext>()
   .description("Kill a running sandbox")
-  .arguments("<sandbox-id:string>")
+  .argument("<sandbox-id:string>", "The id of the sandbox", {
+    default: Deno.env.get("SANDBOX_ID"),
+  })
   .action(actionHandler(async (config, options, sandboxId) => {
     config.noCreate();
     const org = await getOrg(options, config, options.org);
@@ -257,7 +259,9 @@ export const sandboxKillCommand = new Command<SandboxContext>()
 
 export const sandboxSshCommand = new Command<SandboxContext>()
   .description("SSH into a running sandbox")
-  .arguments("<sandbox-id:string>")
+  .argument("<sandbox-id:string>", "The id of the sandbox", {
+    default: Deno.env.get("SANDBOX_ID"),
+  })
   .action(actionHandler(async (config, options, sandboxId) => {
     config.noCreate();
     await using sandbox = await connectToSandbox(options, config, sandboxId);
@@ -433,7 +437,10 @@ export const sandboxExecCommand = new Command<SandboxContext>()
   )
   .option("-q, --quiet", "Don't pipe the command to the console")
   .option("--cwd <path:string>", "Working directory of the command")
-  .arguments("<sandbox-id:string> <command...:string>")
+  .argument("<sandbox-id:string>", "The id of the sandbox", {
+    default: Deno.env.get("SANDBOX_ID"),
+  })
+  .arguments("<command...:string>")
   .action(
     actionHandler(async function (config, options, sandboxId, ...command) {
       config.noCreate();
@@ -461,7 +468,10 @@ export const sandboxExecCommand = new Command<SandboxContext>()
 
 export const sandboxExtendCommand = new Command<SandboxContext>()
   .description("Extend the timeout of a running sandbox")
-  .arguments("<sandbox-id:string> <timeout:string>")
+  .argument("<sandbox-id:string>", "The id of the sandbox", {
+    default: Deno.env.get("SANDBOX_ID"),
+  })
+  .argument("<timeout:string>", "The amount to extend the timeout by")
   .action(actionHandler(async (config, options, sandboxId, timeout) => {
     config.noCreate();
     await using sandbox = await connectToSandbox(options, config, sandboxId);
@@ -479,7 +489,10 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
     "--args <args...:string>",
     "Arguments to pass to the entrypoint script",
   )
-  .arguments("<sandbox-id:string> <app:string>")
+  .argument("<sandbox-id:string>", "The id of the sandbox", {
+    default: Deno.env.get("SANDBOX_ID"),
+  })
+  .argument("<app:string>", "The app to deploy to")
   .action(actionHandler(async (config, options, sandboxId, app) => {
     config.noCreate();
     await using sandbox = await connectToSandbox(options, config, sandboxId);
