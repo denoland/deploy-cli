@@ -199,8 +199,6 @@ export const createCommand = new Command<GlobalContext>()
       options.workingDirectory ||
       options.staticDir ||
       options.singlePageApp ||
-      options.buildTimeout ||
-      options.buildMemoryLimit ||
       options.region
     ) {
       const org = required(options.org, "org");
