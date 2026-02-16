@@ -106,7 +106,7 @@ const logsCommand = new Command<GlobalContext>()
     const seenIds = new Set();
     let onceConnected = false;
 
-    const sub = await trpcClient.subscription(
+    const sub = trpcClient.subscription(
       "apps.logs",
       {
         org,
@@ -219,9 +219,10 @@ deploy your local directory to the specified application.`)
         const { app, created } = await getApp(
           options,
           config,
-          false,
+          true,
           org,
           options.app,
+          rootPath,
         );
 
         await publish(

@@ -48,14 +48,14 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   )
   .option(
     "--volume <volume:string>",
-    "Mount a volume to the sandbox. Needs to be in format <idOrSlug>:<path>",
+    "Mount a volume to the sandbox. Needs to be in format <id-or-slug>:<path>",
     {
       collect: true,
       value: (value, previous = {}): Record<string, VolumeId | VolumeSlug> => {
         const separatorIndex = value.indexOf(":");
         if (separatorIndex === -1) {
           throw new ValidationError(
-            "Volume must be specified as <idOrSlug>:<path>",
+            "Volume must be specified as <id-or-slug>:<path>",
           );
         }
         const name = value.slice(0, separatorIndex);
