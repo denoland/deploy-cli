@@ -30,19 +30,9 @@ export async function publish(
   org: string,
   app: string,
   prod: boolean,
-  allowNodeModules: boolean,
+  _allowNodeModules: boolean,
   wait: boolean,
 ) {
-  console.log(configContext.files);
-
-  const excludes = [];
-
-  if (!allowNodeModules) {
-    excludes.push(
-      new RegExp(`${SEPARATOR_PATTERN}node_modules(:?${SEPARATOR_PATTERN}|$)`),
-    );
-  }
-
   const spinner = new Spinner({
     message: `Publishing '${resolve(rootPath)}'`,
     color: "yellow",
@@ -80,12 +70,10 @@ export async function publish(
   const [counter, body] = stream.tee();
 
   const manifest: Record<string, string> = {};
-  let total = 0;
 
   spinner.message = "Generating hashes...";
 
   for await (const { hash, relativePath } of counter) {
-    total++;
     const parts = relativePath.split("/");
     parts.shift();
     manifest[parts.join("/")] = hash!;
@@ -158,7 +146,7 @@ export async function publish(
   console.log(`${green("✔")} Loaded previously uploaded files`);
 
   if (missingHashes.length > 0) {
-    const skippedFilesCount = total - missingHashes.length;
+    const skippedFilesCount = configContext.files.length - missingHashes.length;
 
     if (skippedFilesCount > 0) {
       console.log(
