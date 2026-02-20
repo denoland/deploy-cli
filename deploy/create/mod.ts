@@ -1,6 +1,6 @@
 import { Command, ValidationError } from "@cliffy/command";
 import type { GlobalContext } from "../../main.ts";
-import { actionHandler, ConfigContext } from "../../config.ts";
+import { actionHandler, type ConfigContext } from "../../config.ts";
 import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
@@ -329,7 +329,6 @@ export const createCommand = new Command<GlobalContext>()
         config,
         data,
         rootPath,
-        options.allowNodeModules,
         options.wait,
       );
       config.org = data.org;
@@ -375,7 +374,6 @@ export async function createApp(
   configContext: ConfigContext,
   data: CreateApp,
   rootPath: string,
-  allowNodeModules: boolean | undefined,
   wait: boolean | undefined,
 ) {
   const trpcClient = createTrpcClient(context);
@@ -424,7 +422,6 @@ export async function createApp(
       data.org,
       data.app,
       true,
-      allowNodeModules ?? false,
       wait ?? false,
     );
   } else {

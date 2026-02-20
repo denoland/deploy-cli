@@ -235,7 +235,6 @@ deploy your local directory to the specified application.`)
           org,
           app,
           options.prod ?? created,
-          options.allowNodeModules ?? false,
           options.wait ?? true,
         );
       },

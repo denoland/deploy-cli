@@ -1,4 +1,4 @@
-import { TarStream, type TarStreamDir, type TarStreamFile } from "@std/tar";
+import { TarStream, type TarStreamFile } from "@std/tar";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
@@ -7,8 +7,6 @@ import { authedFetch, createTrpcClient } from "../auth.ts";
 import { error } from "../util.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
-
-const SEPARATOR_PATTERN = Deno.build.os === "windows" ? "\\\\" : "/";
 
 interface Revision {
   labels: Record<string, string>;
@@ -30,7 +28,6 @@ export async function publish(
   org: string,
   app: string,
   prod: boolean,
-  _allowNodeModules: boolean,
   wait: boolean,
 ) {
   const spinner = new Spinner({
@@ -44,15 +41,18 @@ export async function publish(
       new TransformStream({
         async transform(path, controller) {
           const relativePath = relative(rootPath, path);
-          const internalPath = join("source", relativePath).replaceAll(SEPARATOR, "/");
+          const internalPath = join("source", relativePath).replaceAll(
+            SEPARATOR,
+            "/",
+          );
 
           if (context.debug) {
             console.log(`reading ${JSON.stringify(relativePath)}`);
           }
 
-          const data = await Deno.readFile(relativePath);
+          const data = await Deno.readFile(path);
 
-          const hashBuffer = await crypto.subtle.digest("SHA-256", data!);
+          const hashBuffer = await crypto.subtle.digest("SHA-256", data);
           const hashArray = Array.from(new Uint8Array(hashBuffer));
           const hash = hashArray.map((b) => b.toString(16).padStart(2, "0"))
             .join("");
@@ -74,9 +74,7 @@ export async function publish(
   spinner.message = "Generating hashes...";
 
   for await (const { hash, relativePath } of counter) {
-    const parts = relativePath.split("/");
-    parts.shift();
-    manifest[parts.join("/")] = hash!;
+    manifest[relativePath.replaceAll(SEPARATOR, "/")] = hash;
   }
 
   if (context.debug) {
@@ -184,34 +182,23 @@ export async function publish(
     let tarball = body
       .pipeThrough(
         new TransformStream({
-          async transform({ relativePath, data, hash }, controller) {
-            if (chunk.isDirectory) {
-              controller.enqueue(
-                {
-                  type: "directory",
-                  path: relativePath,
-                } satisfies TarStreamDir,
-              );
-            } else if (missingHashes.includes(hash!)) {
-              const stat = await Deno.stat(chunk.path);
-
+          transform({ internalPath, data, hash }, controller) {
+            if (missingHashes.includes(hash)) {
               progress.value += 1;
 
               controller.enqueue(
                 {
                   type: "file",
-                  path: relativePath,
-                  size: stat.size,
-                  readable: ReadableStream.from([data!]),
+                  path: internalPath,
+                  size: data.byteLength,
+                  readable: ReadableStream.from([data]),
                 } satisfies TarStreamFile,
               );
             }
 
             if (context.debug) {
               console.log(
-                `uploading ${JSON.stringify(relativePath)} (${
-                  chunk.isDirectory ? "dir" : "file"
-                })`,
+                `uploading ${JSON.stringify(internalPath)}`,
               );
             }
           },
