@@ -187,6 +187,9 @@ deploy your local directory to the specified application.`)
   })
   .globalOption("--token <token:string>", "Auth token to use")
   .globalOption("--config <config:string>", "Path for the config file")
+  .globalOption("--ignore <path:string>", "Ignore particular source files", {
+    collect: true,
+  })
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
   .option("--prod", "Deploy directly to production")
@@ -227,6 +230,7 @@ deploy your local directory to the specified application.`)
 
         await publish(
           options,
+          config,
           rootPath,
           org,
           app,

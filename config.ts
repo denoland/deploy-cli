@@ -130,9 +130,10 @@ export async function getApp(
     }
 
     if (selectedApp.value === null) {
-      const data = await createFlow(context, rootPath!);
+      const data = await createFlow(context, rootPath!, org);
       await createApp(
         context,
+        config,
         data,
         rootPath!,
         false,
@@ -159,6 +160,7 @@ export async function getApp(
 export interface ConfigContext {
   org: undefined | string;
   app: undefined | string;
+  files: string[];
   configSaved: boolean;
   doNotCreate: boolean;
   save(): Promise<void>;
@@ -184,6 +186,7 @@ export function actionHandler<
       const config = await readConfig(
         rootPath?.(...args) ?? Deno.cwd(),
         context.config,
+        context.ignore ?? [],
       );
       const configContext: ConfigContext = {
         ...getAppFromConfig(config),
@@ -232,36 +235,34 @@ export function actionHandler<
 interface Config {
   path: string;
   content: string;
+  files: string[];
 }
 
 async function readConfig(
   rootPath: string,
   maybeConfigPath: string | undefined,
+  ignorePaths: string[],
 ): Promise<Config | null> {
-  rootPath = resolve(rootPath);
-  if (maybeConfigPath) {
-    const content = await Deno.readTextFile(maybeConfigPath);
-    return { path: maybeConfigPath, content };
-  }
+  const discoveryPath = resolve(maybeConfigPath || rootPath);
 
   // we prefer the configs with the deploy key. then we fallback to a general
   // config, so when we set the values, it uses existing config files instead
   // of trying to create a new one (which will still happen if no config file is found)
 
-  const configUrl = resolve_config_with_deploy_config(rootPath);
+  const config = resolve_config_with_deploy_config(discoveryPath, ignorePaths);
 
-  if (configUrl) {
-    const path = fromFileUrl(configUrl);
+  if (config) {
+    const path = fromFileUrl(config.config);
     const content = await Deno.readTextFile(path);
-    return { path, content };
+    return { path, content, files: config.files };
   }
 
-  const configUrlWithoutDeployConfig = resolve_config(rootPath);
+  const configWithoutDeployConfig = resolve_config(discoveryPath, ignorePaths);
 
-  if (configUrlWithoutDeployConfig) {
-    const path = fromFileUrl(configUrlWithoutDeployConfig);
+  if (configWithoutDeployConfig) {
+    const path = fromFileUrl(configWithoutDeployConfig.config);
     const content = await Deno.readTextFile(path);
-    return { path, content };
+    return { path, content, files: configWithoutDeployConfig.files };
   }
 
   return null;
@@ -269,7 +270,7 @@ async function readConfig(
 
 function getAppFromConfig(
   configContent: Config | null,
-): { org: undefined | string; app: undefined | string } {
+): { org: undefined | string; app: undefined | string; files: string[] } {
   if (configContent) {
     const config = parseJSONC(configContent.content);
     if (
@@ -280,6 +281,7 @@ function getAppFromConfig(
       return {
         org: config.deploy.org,
         app: config.deploy.app,
+        files: configContent.files,
       };
     }
   }
@@ -287,6 +289,7 @@ function getAppFromConfig(
   return {
     org: undefined,
     app: undefined,
+    files: configContent?.files ?? [],
   };
 }
 

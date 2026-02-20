@@ -1,6 +1,4 @@
 import { TarStream, type TarStreamDir, type TarStreamFile } from "@std/tar";
-import { compile as gitignoreCompile } from "@cfa/gitignore-parser";
-import { walk, type WalkEntry } from "@std/fs";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
@@ -8,6 +6,7 @@ import { green, red, yellow } from "@std/fmt/colors";
 import { authedFetch, createTrpcClient } from "../auth.ts";
 import { error } from "../util.ts";
 import type { GlobalContext } from "../main.ts";
+import type { ConfigContext } from "../config.ts";
 
 const SEPARATOR_PATTERN = Deno.build.os === "windows" ? "\\\\" : "/";
 
@@ -17,15 +16,16 @@ interface Revision {
   status: "cancelled" | "failed";
 }
 
-type Chunk =
-  & { chunk: WalkEntry; relativePath: string }
-  & ({ hash?: undefined; data?: undefined } | {
-    hash: string;
-    data: Uint8Array;
-  });
+type Chunk = {
+  relativePath: string;
+  internalPath: string;
+  hash: string;
+  data: Uint8Array;
+};
 
 export async function publish(
   context: GlobalContext,
+  configContext: ConfigContext,
   rootPath: string,
   org: string,
   app: string,
@@ -33,29 +33,9 @@ export async function publish(
   allowNodeModules: boolean,
   wait: boolean,
 ) {
-  let gitignore: { denies(input: string): boolean } = {
-    denies: () => false,
-  };
+  console.log(configContext.files);
 
-  const gitignorePath = join(rootPath, ".gitignore");
-  try {
-    if (context.debug) {
-      console.log(`Using .gitignore at '${gitignorePath}'`);
-    }
-
-    gitignore = gitignoreCompile(Deno.readTextFileSync(gitignorePath));
-  } catch (_) {
-    if (context.debug) {
-      console.log(`No .gitignore found at '${gitignorePath}'`);
-    }
-
-    //
-  }
-
-  const excludes = [
-    new RegExp(`${SEPARATOR_PATTERN}\.git(:?${SEPARATOR_PATTERN}|$)`),
-    new RegExp(`${SEPARATOR_PATTERN}\.DS_Store`),
-  ];
+  const excludes = [];
 
   if (!allowNodeModules) {
     excludes.push(
@@ -69,59 +49,30 @@ export async function publish(
   });
   spinner.start();
 
-  const stream: ReadableStream<Chunk> = ReadableStream.from(
-    walk(rootPath, { skip: excludes }),
-  )
+  const stream: ReadableStream<Chunk> = ReadableStream.from(configContext.files)
     .pipeThrough(
       new TransformStream({
-        async transform(chunk, controller) {
-          const path = relative(rootPath, chunk.path);
-          const relativePath = join(
-            "source",
-            path + (chunk.isDirectory ? SEPARATOR : ""),
-          );
-          if (gitignore.denies(relativePath)) {
-            if (context.debug) {
-              console.log(
-                `skipping ${JSON.stringify(relativePath)} (${
-                  chunk.isDirectory ? "dir" : "file"
-                })`,
-              );
-            }
-            return;
-          }
+        async transform(path, controller) {
+          const relativePath = relative(rootPath, path);
+          const internalPath = join("source", relativePath).replaceAll(SEPARATOR, "/");
+
           if (context.debug) {
-            console.log(
-              `walking ${JSON.stringify(relativePath)} (${
-                chunk.isDirectory ? "dir" : "file"
-              })`,
-            );
+            console.log(`reading ${JSON.stringify(relativePath)}`);
           }
 
-          if (!chunk.isDirectory) {
-            if (context.debug) {
-              console.log(`reading ${JSON.stringify(relativePath)}`);
-            }
+          const data = await Deno.readFile(relativePath);
 
-            const data = await Deno.readFile(chunk.path);
+          const hashBuffer = await crypto.subtle.digest("SHA-256", data!);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const hash = hashArray.map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
 
-            const hashBuffer = await crypto.subtle.digest("SHA-256", data!);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hash = hashArray.map((b) => b.toString(16).padStart(2, "0"))
-              .join("");
-
-            controller.enqueue({
-              chunk,
-              relativePath: relativePath.replaceAll(SEPARATOR, "/"),
-              data,
-              hash,
-            });
-          } else {
-            controller.enqueue({
-              chunk,
-              relativePath: relativePath.replaceAll(SEPARATOR, "/"),
-            });
-          }
+          controller.enqueue({
+            relativePath,
+            internalPath,
+            data,
+            hash,
+          });
         },
       }),
     );
@@ -133,13 +84,11 @@ export async function publish(
 
   spinner.message = "Generating hashes...";
 
-  for await (const { chunk, hash, relativePath } of counter) {
-    if (!chunk.isDirectory) {
-      total++;
-      const parts = relativePath.split("/");
-      parts.shift();
-      manifest[parts.join("/")] = hash!;
-    }
+  for await (const { hash, relativePath } of counter) {
+    total++;
+    const parts = relativePath.split("/");
+    parts.shift();
+    manifest[parts.join("/")] = hash!;
   }
 
   if (context.debug) {
@@ -247,7 +196,7 @@ export async function publish(
     let tarball = body
       .pipeThrough(
         new TransformStream({
-          async transform({ chunk, relativePath, data, hash }, controller) {
+          async transform({ relativePath, data, hash }, controller) {
             if (chunk.isDirectory) {
               controller.enqueue(
                 {
