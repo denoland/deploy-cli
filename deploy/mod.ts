@@ -228,15 +228,17 @@ deploy your local directory to the specified application.`)
           rootPath,
         );
 
-        await publish(
-          options,
-          config,
-          rootPath,
-          org,
-          app,
-          options.prod ?? created,
-          options.wait ?? true,
-        );
+        if (!created) {
+          await publish(
+            options,
+            config,
+            rootPath,
+            org,
+            app,
+            options.prod ?? false,
+            options.wait ?? true,
+          );
+        }
       },
       (rootPath) => rootPath,
     ),

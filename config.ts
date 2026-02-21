@@ -6,11 +6,7 @@ import {
   promptSelect,
 } from "@std/cli/unstable-prompt-select";
 import { fromFileUrl, join, resolve } from "@std/path";
-import {
-  applyEdits as applyJSONCEdits,
-  modify as modifyJSONC,
-  parse as parseJSONC,
-} from "jsonc-parser";
+import { parse as parseJSONC } from "@david/jsonc-morph";
 import { resolve_config } from "./lib/rs_lib.js";
 import { ValidationError } from "@cliffy/command";
 import { createFlow } from "./deploy/create/flow.ts";
@@ -250,7 +246,7 @@ async function readConfig(
   );
 
   if (config.path) {
-    const path = fromFileUrl(config.config);
+    const path = fromFileUrl(config.path);
     const content = await Deno.readTextFile(path);
     return { config: { path, content }, files: config.files };
   }
@@ -263,14 +259,12 @@ function getAppFromConfig(
 ): { org: undefined | string; app: undefined | string; files: string[] } {
   if (configContent.config) {
     const config = parseJSONC(configContent.config.content);
-    if (
-      typeof config === "object" && config !== null && "deploy" in config &&
-      typeof config.deploy === "object" && config.deploy !== null &&
-      !Array.isArray(config.deploy)
-    ) {
+    const deployObj = config.asObject()?.getIfObject("deploy");
+
+    if (deployObj) {
       return {
-        org: config.deploy.org,
-        app: config.deploy.app,
+        org: deployObj.get("org")?.value()?.asString(),
+        app: deployObj.get("app")?.value()?.asString(),
         files: configContent.files,
       };
     }
@@ -299,19 +293,17 @@ async function writeConfig(
     newConfig.app = app;
   }
 
-  const edits = modifyJSONC(content, ["deploy"], newConfig, {
-    formattingOptions: {
-      insertSpaces: true,
-      tabSize: 2,
-    },
-  });
-  const out = applyJSONCEdits(content, edits);
+  const config = parseJSONC(content);
+  const deployObj = config.asObjectOrForce().getIfObjectOrForce("deploy");
+  deployObj.replaceWith(newConfig);
+  deployObj.ensureMultiline();
+
   await Deno.writeTextFile(
     configContent.config?.path ?? join(Deno.cwd(), "deno.jsonc"),
-    out,
+    config.toString() + "\n",
   );
 
-  if (!configContent) {
+  if (!configContent.config) {
     console.log(
       `Created configuration file at '${join(Deno.cwd(), "deno.jsonc")}'`,
     );

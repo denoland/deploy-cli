@@ -59,7 +59,7 @@ fn inner_resolve_config(
           .append(exclude.into_path_or_patterns().into_iter());
       }
 
-      let files = collect_files(&real_sys, config.files, allow_node_modules);
+      let files = collect_files(&real_sys, root_path, config.files, allow_node_modules);
 
       return Ok(ConfigLookup {
         path: Some(deno_json.specifier.to_string()),
@@ -77,7 +77,7 @@ fn inner_resolve_config(
           .append(exclude.into_path_or_patterns().into_iter());
       }
 
-      let files = collect_files(&real_sys, files_config, allow_node_modules);
+      let files = collect_files(&real_sys, root_path, files_config, allow_node_modules);
       return Ok(ConfigLookup {
         path: Some(deno_json.specifier.to_string()),
         files,
@@ -87,16 +87,19 @@ fn inner_resolve_config(
 
   Ok(ConfigLookup {
     path: None,
-    files: collect_files(&real_sys, FilePatterns::new_with_base(root_path), allow_node_modules),
+    files: collect_files(&real_sys, root_path.clone(), FilePatterns::new_with_base(root_path), allow_node_modules),
   })
 }
 
 fn collect_files(
   real_sys: &sys_traits::impls::RealSys,
+  root_path: PathBuf,
   files: FilePatterns,
   allow_node_modules: bool,
 ) -> Vec<String> {
-  let mut collector = FileCollector::new(|_| true)
+  let mut collector = FileCollector::new(|entry| {
+    entry.path.starts_with(&root_path)
+  })
     .ignore_git_folder()
     .use_gitignore();
 
