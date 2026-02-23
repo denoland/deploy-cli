@@ -318,7 +318,7 @@ async function buildSnapshot(
       const updateStatus = await updateChild.status;
       spinner.stop();
       if (!updateStatus.success) {
-        error(context, "Failed to update package lists");
+        throw new Error("Failed to update package lists");
       }
       console.log(`${green("✔")} Package lists updated`);
 
@@ -339,7 +339,7 @@ async function buildSnapshot(
         const installStatus = await installChild.status;
         spinner.stop();
         if (!installStatus.success) {
-          error(context, `Failed to install ${pkg}`);
+          throw new Error(`Failed to install ${pkg}`);
         }
         console.log(`${green("✔")} Installed ${pkg}`);
       }
@@ -372,10 +372,13 @@ async function buildSnapshot(
       spinner.start();
       try {
         await sandbox.kill();
-      } catch {
+      } catch (killError) {
         // kill() may time out (10s limit), but the server is still
         // processing the termination. Wait for the WebSocket to
         // confirm the sandbox is gone.
+        if (options.verbose) {
+          console.log(`${yellow("⚠")} sandbox.kill() failed: ${killError}`);
+        }
         try {
           await Promise.race([
             sandbox.closed,
@@ -383,8 +386,13 @@ async function buildSnapshot(
               setTimeout(() => reject(new Error("timed out")), 30_000)
             ),
           ]);
-        } catch {
-          // Sandbox may have already timed out and stopped on its own
+        } catch (closedError) {
+          console.log(
+            `${yellow("⚠")} Could not confirm sandbox termination: ${closedError}`,
+          );
+          console.log(
+            "  The sandbox may still be running. Check your dashboard.",
+          );
         }
       }
       // Brief pause to let the volume fully detach after sandbox termination
@@ -425,11 +433,9 @@ async function buildSnapshot(
             setTimeout(resolve, retryDelays[attempt - 1])
           );
         } else {
-          console.log(`${yellow("⚠")} Snapshot creation failed: ${e}`);
-          console.log(
-            "  You can try creating it manually once the volume is ready:",
-          );
-          console.log(
+          throw new Error(
+            `Snapshot creation failed after ${maxAttempts} attempts: ${e}\n` +
+            `  The volume '${volumeSlug}' still exists. You can try manually:\n` +
             `  deno sandbox volumes snapshot ${volumeSlug} ${options.snapshotSlug}`,
           );
         }
