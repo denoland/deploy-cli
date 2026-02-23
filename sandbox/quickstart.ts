@@ -252,7 +252,10 @@ async function buildSnapshot(
   const spinner = new Spinner({ color: "yellow" });
 
   // Runs a shell command inside the sandbox and returns whether it succeeded
-  async function runInSandbox(sandbox: Sandbox, command: string): Promise<boolean> {
+  async function runInSandbox(
+    sandbox: Sandbox,
+    command: string,
+  ): Promise<boolean> {
     const child = await sandbox.spawn("bash", {
       args: ["-c", command],
       stdout: out,
@@ -303,8 +306,8 @@ async function buildSnapshot(
     spinner.stop();
     throw new Error(
       `Failed to boot sandbox: ${e}\n` +
-      `  Volume '${volumeSlug}' was created but is now unused.\n` +
-      `  You can delete it with: deno sandbox volumes delete ${volumeSlug}`,
+        `  Volume '${volumeSlug}' was created but is now unused.\n` +
+        `  You can delete it with: deno sandbox volumes delete ${volumeSlug}`,
     );
   }
   spinner.stop();
@@ -363,7 +366,7 @@ async function buildSnapshot(
       console.log();
       console.log(
         `${yellow("⚠")} ${failedCommands.length} setup command(s) failed. ` +
-        "The snapshot will be incomplete.",
+          "The snapshot will be incomplete.",
       );
     }
   } finally {
@@ -388,7 +391,9 @@ async function buildSnapshot(
         ]);
       } catch (closedError) {
         console.log(
-          `${yellow("⚠")} Could not confirm sandbox termination: ${closedError}`,
+          `${
+            yellow("⚠")
+          } Could not confirm sandbox termination: ${closedError}`,
         );
         console.log(
           "  The sandbox may still be running. Check your dashboard.",
@@ -433,8 +438,8 @@ async function buildSnapshot(
       } else {
         throw new Error(
           `Snapshot creation failed after ${maxAttempts} attempts: ${e}\n` +
-          `  The volume '${volumeSlug}' still exists. You can try manually:\n` +
-          `  deno sandbox volumes snapshot ${volumeSlug} ${options.snapshotSlug}`,
+            `  The volume '${volumeSlug}' still exists. You can try manually:\n` +
+            `  deno sandbox volumes snapshot ${volumeSlug} ${options.snapshotSlug}`,
         );
       }
     }
