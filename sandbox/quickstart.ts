@@ -225,8 +225,9 @@ function promptSnapshotName(): string | null {
 }
 
 // --- Build Logic ---
-// This is the core of the feature. It creates a temporary volume,
-// boots a sandbox, installs everything, then snapshots the result.
+// This is the core of the feature. It creates a volume, boots a
+// sandbox, installs everything, then snapshots the result.
+// The volume is kept because the snapshot depends on it.
 
 async function buildSnapshot(
   client: Client,
@@ -241,7 +242,7 @@ async function buildSnapshot(
     verbose: boolean;
   },
 ): Promise<void> {
-  // A unique name for the temporary volume so it doesn't clash with anything
+  // A unique name for the build volume so it doesn't clash with anything
   const volumeSlug = `qs-temp-${Date.now()}`;
 
   // In verbose mode, command output goes straight to the terminal.
@@ -268,15 +269,20 @@ async function buildSnapshot(
     return `[${currentStep}/${totalSteps}]  ${label}`;
   };
 
-  // Step 1: Create a temporary volume based on Debian 13
-  spinner.message = "Creating temporary volume...";
+  spinner.message = "Creating volume...";
   spinner.start();
-  const volume = await client.volumes.create({
-    slug: volumeSlug,
-    capacity: options.capacity,
-    region: options.region,
-    from: "builtin:debian-13",
-  });
+  let volume;
+  try {
+    volume = await client.volumes.create({
+      slug: volumeSlug,
+      capacity: options.capacity,
+      region: options.region,
+      from: "builtin:debian-13",
+    });
+  } catch (e) {
+    spinner.stop();
+    throw new Error(`Failed to create volume: ${e}`);
+  }
   spinner.stop();
   console.log(`${green("✔")} Volume created`);
 
@@ -284,13 +290,23 @@ async function buildSnapshot(
   // The sandbox is short-lived (10m timeout) — just long enough to install.
   spinner.message = "Booting sandbox...";
   spinner.start();
-  const sandbox = await Sandbox.create({
-    token: options.token,
-    org: options.org,
-    timeout: "10m",
-    region: options.region,
-    root: volume.id,
-  });
+  let sandbox;
+  try {
+    sandbox = await Sandbox.create({
+      token: options.token,
+      org: options.org,
+      timeout: "10m",
+      region: options.region,
+      root: volume.id,
+    });
+  } catch (e) {
+    spinner.stop();
+    throw new Error(
+      `Failed to boot sandbox: ${e}\n` +
+      `  Volume '${volumeSlug}' was created but is now unused.\n` +
+      `  You can delete it with: deno sandbox volumes delete ${volumeSlug}`,
+    );
+  }
   spinner.stop();
   console.log(`${green("✔")} Sandbox booted`);
 
@@ -330,6 +346,7 @@ async function buildSnapshot(
     }
 
     // Setup commands are optional — if one fails we warn but keep going
+    const failedCommands: string[] = [];
     for (const cmd of options.setupCommands) {
       spinner.message = step(`Running: ${cmd}`);
       spinner.start();
@@ -337,9 +354,17 @@ async function buildSnapshot(
       spinner.stop();
       if (!setupOk) {
         console.log(`${yellow("⚠")} Setup command failed: ${cmd}`);
+        failedCommands.push(cmd);
       } else {
         console.log(`${green("✔")} ${cmd}`);
       }
+    }
+    if (failedCommands.length > 0) {
+      console.log();
+      console.log(
+        `${yellow("⚠")} ${failedCommands.length} setup command(s) failed. ` +
+        "The snapshot will be incomplete.",
+      );
     }
   } finally {
     // We use kill() instead of close() because close() only disconnects
