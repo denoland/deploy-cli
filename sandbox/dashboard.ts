@@ -1,5 +1,13 @@
 import { Command } from "@cliffy/command";
-import { bold, dim, green, red, stripAnsiCode } from "@std/fmt/colors";
+import {
+  bold,
+  cyan,
+  dim,
+  green,
+  red,
+  stripAnsiCode,
+  yellow,
+} from "@std/fmt/colors";
 import { Sandbox } from "@deno/sandbox";
 
 import { formatDuration, renderTemporalTimestamp } from "../util.ts";
@@ -108,8 +116,8 @@ function renderScreen(state: DashboardState): string {
   const displayList = sortSandboxes(filtered, state.sortBy, state.sortAsc);
 
   // Header
-  const title = bold(" Sandbox Dashboard");
-  const orgLabel = dim(`Org: ${state.org}`);
+  const title = bold(cyan(" Sandbox Dashboard"));
+  const orgLabel = yellow(`Org: ${state.org}`);
   const headerPadding = columns - stripAnsiCode(title).length -
     stripAnsiCode(orgLabel).length;
   lines.push(title + " ".repeat(Math.max(1, headerPadding)) + orgLabel);
@@ -138,7 +146,7 @@ function renderScreen(state: DashboardState): string {
     stripAnsiCode(timeStr).length;
   lines.push(summary + " ".repeat(Math.max(1, summaryPadding)) + timeStr);
 
-  lines.push("");
+  lines.push(dim("─".repeat(columns)));
 
   // How many rows are available for list items (sandboxes or orgs)?
   // We subtract: header (3 lines above), table/org header (1 line), footer (2 lines).
@@ -147,12 +155,13 @@ function renderScreen(state: DashboardState): string {
 
   if (state.mode === "org") {
     // Org picker — replaces the sandbox table when choosing an org
+    lines.push(bold(cyan(" Select Organization")));
     lines.push(dim("  " + "NAME".padEnd(30) + "  " + "SLUG"));
 
     const { start, end } = getVisibleRange(
       state.orgs.length,
       state.orgSelectedIndex,
-      maxVisibleRows,
+      maxVisibleRows - 1,
     );
 
     for (let i = start; i < end; i++) {
@@ -160,7 +169,7 @@ function renderScreen(state: DashboardState): string {
       const isHighlighted = i === state.orgSelectedIndex;
       const isActive = org.slug === state.org;
       const marker = isHighlighted ? ">" : " ";
-      const activeMarker = isActive ? " *" : "";
+      const activeMarker = isActive ? " " + green("●") : "";
 
       const row = ` ${marker} ${org.name.padEnd(30)}  ${
         dim(org.slug)
@@ -174,9 +183,11 @@ function renderScreen(state: DashboardState): string {
     }
 
     if (state.orgs.length > maxVisibleRows) {
-      lines.push(
-        dim(`  [${start + 1}–${end} of ${state.orgs.length}]`),
-      );
+      const parts: string[] = [];
+      if (start > 0) parts.push(dim("▲ more above"));
+      parts.push(yellow(`[${start + 1}–${end} of ${state.orgs.length}]`));
+      if (end < state.orgs.length) parts.push(dim("▼ more below"));
+      lines.push("  " + parts.join("  "));
     }
   } else {
     // Normal sandbox table
@@ -233,8 +244,8 @@ function renderScreen(state: DashboardState): string {
         const marker = isSelected ? ">" : " ";
         const region = sandbox.cluster_hostname.split(".")[0];
         const statusText = sandbox.status === "running"
-          ? green(sandbox.status)
-          : red(sandbox.status);
+          ? green("● running")
+          : red("○ stopped");
         const uptime = formatDuration(duration);
         const created = renderTemporalTimestamp(
           new Date(sandbox.created_at).toISOString(),
@@ -260,11 +271,14 @@ function renderScreen(state: DashboardState): string {
         }
       }
 
-      // Show a scroll indicator when the list doesn't fit on one screen
+      // Show scroll indicators when the list doesn't fit on one screen.
+      // ▲/▼ arrows only appear when there's content in that direction.
       if (displayList.length > maxVisibleRows) {
-        lines.push(
-          dim(`  [${start + 1}–${end} of ${displayList.length}]`),
-        );
+        const parts: string[] = [];
+        if (start > 0) parts.push(dim("▲ more above"));
+        parts.push(yellow(`[${start + 1}–${end} of ${displayList.length}]`));
+        if (end < displayList.length) parts.push(dim("▼ more below"));
+        lines.push("  " + parts.join("  "));
       }
     }
   }
@@ -288,9 +302,9 @@ function renderScreen(state: DashboardState): string {
       bold(" Select org: ") + dim("↑/↓ Navigate  Enter Select  Esc Cancel"),
     );
   } else if (state.error) {
-    lines.push(red(` Error: ${state.error}`));
+    lines.push(red(` ✗ Error: ${state.error}`));
   } else if (state.statusMessage) {
-    lines.push(green(` ${state.statusMessage}`));
+    lines.push(green(` ✓ ${state.statusMessage}`));
   } else if (state.loading) {
     lines.push(dim(" Refreshing..."));
   } else {
@@ -298,10 +312,19 @@ function renderScreen(state: DashboardState): string {
   }
 
   const shortcuts = state.mode === "org"
-    ? dim(" * = active org")
-    : dim(
-      " ↑/↓ Navigate  s SSH  k Kill  e Extend  c Copy ID  f Filter  o/O Sort  t Org  r Refresh  q Quit",
-    );
+    ? " " + green("●") + dim(" = active org")
+    : " " + [
+      bold("↑/↓") + dim(" Navigate"),
+      bold("s") + dim(" SSH"),
+      bold("k") + dim(" Kill"),
+      bold("e") + dim(" Extend"),
+      bold("c") + dim(" Copy ID"),
+      bold("f") + dim(" Filter"),
+      bold("o/O") + dim(" Sort"),
+      bold("t") + dim(" Org"),
+      bold("r") + dim(" Refresh"),
+      bold("q") + dim(" Quit"),
+    ].join("  ");
   lines.push(shortcuts);
 
   return CLEAR_SCREEN + CURSOR_HOME + lines.join("\n");
