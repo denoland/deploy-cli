@@ -1,6 +1,6 @@
 import { Command, ValidationError } from "@cliffy/command";
 import { red, yellow } from "@std/fmt/colors";
-import { create, error, renderTemporalTimestamp } from "../util.ts";
+import { error, renderTemporalTimestamp } from "../util.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
 import { actionHandler, getApp, getOrg } from "../config.ts";
 import { publish } from "./publish.ts";
@@ -8,42 +8,7 @@ import { setupAws, setupGcp } from "./setup-cloud.ts";
 import { createTrpcClient, getAuth, tokenStorage } from "../auth.ts";
 import { databasesCommand } from "./database.ts";
 import { envCommand } from "./env.ts";
-
-const createCommand = new Command<GlobalContext>()
-  .description("Create a new application")
-  .option(
-    "--allow-node-modules",
-    "Allow node_modules directory to be included when uploading",
-  )
-  .option(
-    "--org <name:string>",
-    "The name of the organization to create the application for",
-  )
-  .option("--no-wait", "Skip waiting for the build to complete")
-  .arguments("[root-path:string]")
-  .action(actionHandler(async (config, options, rootPath = Deno.cwd()) => {
-    const org = await getOrg(options, config, options.org);
-
-    if (config.app) {
-      error(options, "An application already exists in this directory.");
-    }
-
-    const newOrgAndApp = await create(
-      options,
-      rootPath,
-      org,
-    );
-
-    await publish(
-      options,
-      rootPath,
-      newOrgAndApp.org,
-      newOrgAndApp.app,
-      true,
-      options.allowNodeModules ?? false,
-      options.wait ?? true,
-    );
-  }, (rootPath) => rootPath));
+import { createCommand } from "./create/mod.ts";
 
 const setupAWSCommand = new Command<GlobalContext>()
   .description("Setup cloud connections for AWS")
@@ -141,58 +106,62 @@ const logsCommand = new Command<GlobalContext>()
     const seenIds = new Set();
     let onceConnected = false;
 
-    // deno-lint-ignore no-explicit-any
-    const sub = await (trpcClient.apps as any).logs.subscribe({
-      org,
-      app,
-      start: (options.start ? new Date(options.start) : new Date())
-        .toISOString(),
-      end: options.end ? new Date(options.end).toISOString() : undefined,
-      filter: {},
-    }, {
-      onData: (data: "streaming" | null | LogEntry[]) => {
-        if (data === "streaming") {
-          if (!onceConnected) {
-            console.log("connected, streaming logs...");
+    const sub = trpcClient.subscription(
+      "apps.logs",
+      {
+        org,
+        app,
+        start: (options.start ? new Date(options.start) : new Date())
+          .toISOString(),
+        end: options.end ? new Date(options.end).toISOString() : undefined,
+        filter: {},
+      },
+      {
+        onData: (data: unknown) => {
+          const typedData = data as "streaming" | null | LogEntry[];
+          if (typedData === "streaming") {
+            if (!onceConnected) {
+              console.log("connected, streaming logs...");
+            }
+            onceConnected = true;
+          } else if (Array.isArray(typedData)) {
+            for (const log of typedData) {
+              const id = log.LogAttributes["log.record.uid"];
+
+              if (seenIds.has(id)) {
+                continue;
+              } else {
+                seenIds.add(id);
+              }
+
+              const prefix = `[${renderTemporalTimestamp(log.Timestamp)}${
+                log.TraceId ? ` (${log.TraceId})` : ""
+              }]`;
+              let text = `${prefix} ${log.Body}`;
+              if (text.endsWith("\n")) {
+                text = text.slice(0, -1);
+              }
+              text = text.replaceAll("\n", "\n".padEnd(prefix.length + 1));
+
+              if (log.SeverityNumber >= 17) {
+                console.log(red(text));
+              } else if (log.SeverityNumber >= 13) {
+                console.log(yellow(text));
+              } else {
+                console.log(text);
+              }
+            }
           }
-          onceConnected = true;
-        } else if (Array.isArray(data)) {
-          for (const log of data) {
-            const id = log.LogAttributes["log.record.uid"];
-
-            if (seenIds.has(id)) {
-              continue;
-            } else {
-              seenIds.add(id);
-            }
-
-            const prefix = `[${renderTemporalTimestamp(log.Timestamp)}${
-              log.TraceId ? ` (${log.TraceId})` : ""
-            }]`;
-            let text = `${prefix} ${log.Body}`;
-            if (text.endsWith("\n")) {
-              text = text.slice(0, -1);
-            }
-            text = text.replaceAll("\n", "\n".padEnd(prefix.length + 1));
-
-            if (log.SeverityNumber >= 17) {
-              console.log(red(text));
-            } else if (log.SeverityNumber >= 13) {
-              console.log(yellow(text));
-            } else {
-              console.log(text);
-            }
-          }
-        }
+        },
+        onError: (err: unknown) => {
+          sub.unsubscribe();
+          error(options, Deno.inspect(err));
+        },
+        onStopped: () => {
+          sub.unsubscribe();
+        },
       },
-      onError: (err: unknown) => {
-        sub.unsubscribe();
-        error(options, Deno.inspect(err));
-      },
-      onStopped: () => {
-        sub.unsubscribe();
-      },
-    });
+    );
   }));
 
 const logoutCommand = new Command()
@@ -250,9 +219,10 @@ deploy your local directory to the specified application.`)
         const { app, created } = await getApp(
           options,
           config,
-          false,
+          true,
           org,
           options.app,
+          rootPath,
         );
 
         await publish(

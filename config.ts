@@ -1,6 +1,6 @@
 import { createTrpcClient, getAuth } from "./auth.ts";
 import type { GlobalContext } from "./main.ts";
-import { create, error } from "./util.ts";
+import { error } from "./util.ts";
 import {
   type PromptEntry,
   promptSelect,
@@ -16,6 +16,8 @@ import {
   resolve_config_with_deploy_config,
 } from "./lib/rs_lib.js";
 import { ValidationError } from "@cliffy/command";
+import { createFlow } from "./deploy/create/flow.ts";
+import { createApp } from "./deploy/create/mod.ts";
 
 export async function getOrg(
   context: GlobalContext,
@@ -33,12 +35,11 @@ export async function getOrg(
   if (!org) {
     const trpcClient = createTrpcClient(context);
 
-    const orgs: Array<{
+    const orgs = await trpcClient.query("orgs.list") as Array<{
       name: string;
       slug: string;
       id: string;
-      // deno-lint-ignore no-explicit-any
-    }> = await (trpcClient.orgs as any).list.query();
+    }>;
 
     if (org !== undefined) {
       const fullOrg = orgs.find((fullOrg) => fullOrg.slug === org);
@@ -111,9 +112,10 @@ export async function getApp(
   if (app === undefined) {
     const trpcClient = createTrpcClient(context);
 
-    const apps: Array<{ name: string; slug: string }> =
-      // deno-lint-ignore no-explicit-any
-      await (trpcClient.apps as any).list.query({ org });
+    const apps = await trpcClient.query("apps.list", { org }) as Array<{
+      name: string;
+      slug: string;
+    }>;
     const appStrings: PromptEntry<{ name: string; slug: string } | null>[] =
       apps.map((app) => ({ label: app.slug, value: app }));
     if (canCreate) {
@@ -128,8 +130,17 @@ export async function getApp(
     }
 
     if (selectedApp.value === null) {
-      const createdOrgAndApp = await create(context, rootPath!, org);
-      app = createdOrgAndApp.app;
+      const data = await createFlow(context, rootPath!);
+      await createApp(
+        context,
+        data,
+        rootPath!,
+        false,
+        true,
+      );
+      config.org = data.org;
+      config.app = data.app;
+      app = data.app;
       created = true;
     } else {
       app = selectedApp.value.slug;

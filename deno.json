@@ -1,19 +1,23 @@
 {
   "nodeModulesDir": "auto",
-  "workspace": ["astro-demo"],
+  "workspace": [
+    "astro-demo"
+  ],
   "name": "@deno/deploy",
   "license": "MIT",
   "tasks": {
     "build": "deno run -A jsr:@deno/wasmbuild@0.19.2"
   },
   "publish": {
-    "exclude": ["!./lib"]
+    "exclude": [
+      "!./lib"
+    ]
   },
   "exports": "./main.ts",
   "imports": {
     "@cfa/gitignore-parser": "jsr:@cfa/gitignore-parser@^0.1.4",
-    "@cliffy/command": "jsr:@cliffy/command@^1.0.0-rc.8",
-    "@deno/sandbox": "jsr:@deno/sandbox@^0.11.0",
+    "@cliffy/command": "jsr:@cliffy/command@^1.0.0",
+    "@deno/sandbox": "jsr:@deno/sandbox@^0.10.0",
     "@std/assert": "jsr:@std/assert@^1.0.16",
     "@std/async": "jsr:@std/async@^1.1.0",
     "@std/cli": "jsr:@std/cli@1.0.27",
@@ -32,13 +36,12 @@
     "jsonc-parser": "npm:jsonc-parser@^3.3.1",
     "open": "npm:open@^10.1.0",
     "superjson": "npm:superjson@^2.2.2",
-    "@deno/framework-detect": "jsr:@deno/framework-detect@^0",
+    "@deno/framework-detect": "jsr:@deno/framework-detect@^0.3",
     "temporal-polyfill": "npm:temporal-polyfill@^0.3.0",
     "pg-connection-string": "npm:pg-connection-string@^2.9.1",
     "dax": "jsr:@david/dax@^0.44.2"
   },
-  "exclude": ["astro-demo"],
-  "deploy": {
-    "org": "donjo"
-  }
+  "exclude": [
+    "astro-demo"
+  ]
 }

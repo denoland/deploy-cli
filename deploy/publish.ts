@@ -148,14 +148,15 @@ export async function publish(
 
   const trpcClient = createTrpcClient(context);
 
-  // deno-lint-ignore no-explicit-any
-  const revisionId: string = await (trpcClient.apps as any).initiateCliRevision
-    .mutate({
+  const revisionId = await trpcClient.mutation(
+    "apps.initiateCliRevision",
+    {
       org,
       app,
       production: prod,
       manifest,
-    });
+    },
+  ) as string;
 
   // doing this after we initiate the cli revision in case it fails (ie app not existing).
   spinner.message = `${green("✔")} Generated hashes`;
@@ -174,29 +175,33 @@ export async function publish(
   existingFilesSpinner.start();
 
   let revision: Revision | undefined = undefined;
-  // deno-lint-ignore no-explicit-any
-  const sub = await (trpcClient.revisions as any).watchUntilReady.subscribe({
-    org,
-    app,
-    revision: revisionId,
-  }, {
-    onData: (data: Revision) => {
-      revision = data;
-      if ("deno.diffsync.missing_hashes" in data.labels) {
-        missingHashesPromise.resolve(
-          JSON.parse(data.labels["deno.diffsync.missing_hashes"]),
-        );
+  const sub = trpcClient.subscription(
+    "revisions.watchUntilReady",
+    {
+      org,
+      app,
+      revision: revisionId,
+    },
+    {
+      onData: (data: unknown) => {
+        const typedData = data as Revision;
+        revision = typedData;
+        if ("deno.diffsync.missing_hashes" in typedData.labels) {
+          missingHashesPromise.resolve(
+            JSON.parse(typedData.labels["deno.diffsync.missing_hashes"]),
+          );
+          sub.unsubscribe();
+        }
+      },
+      onError: (err: unknown) => {
         sub.unsubscribe();
-      }
+        error(context, Deno.inspect(err));
+      },
+      onStopped: () => {
+        sub.unsubscribe();
+      },
     },
-    onError: (err: unknown) => {
-      sub.unsubscribe();
-      error(context, Deno.inspect(err));
-    },
-    onStopped: () => {
-      sub.unsubscribe();
-    },
-  });
+  );
 
   const missingHashes = await missingHashesPromise.promise;
 
@@ -321,82 +326,91 @@ export async function publish(
   console.log();
 
   if (wait) {
-    console.log(
-      "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
-    );
-
-    const completionSpinner = new Spinner({
-      message: "Awaiting revision to complete...",
-      color: "yellow",
-    });
-    completionSpinner.start();
-
-    const completionPromise = Promise.withResolvers<void>();
-
-    // deno-lint-ignore no-explicit-any
-    const completionSub = await (trpcClient.revisions as any).watchUntilReady
-      .subscribe({
-        org,
-        app,
-        revision: revisionId,
-      }, {
-        onData: (newRevision: Revision) => {
-          revision = newRevision;
-          const lastStep = newRevision.steps.at(-1);
-
-          if (lastStep) {
-            completionSpinner.message = lastStep.step;
-          }
-        },
-        onError: (err: unknown) => {
-          completionSub.unsubscribe();
-          error(context, Deno.inspect(err));
-        },
-        onComplete: () => {
-          completionPromise.resolve();
-          completionSub.unsubscribe();
-        },
-        onStopped: () => {
-          completionSub.unsubscribe();
-        },
-      });
-
-    await completionPromise.promise;
-
-    completionSpinner.stop();
-    if (revision!.status === "cancelled" || revision!.status === "failed") {
-      console.log(
-        `\n${red("✗")} The revision ${
-          revision!.status === "cancelled" ? "was " : ""
-        }${
-          revision!.status
-        }.\n  Please view the revision in the dashboard for more information.`,
-      );
-      Deno.exit(1);
-    }
-
-    console.log(`\n${green("✔")} Successfully deployed your application!`);
-
-    const timelines: Array<
-      { partition_config_name: string; domains: string[] }
-    > =
-      // deno-lint-ignore no-explicit-any
-      await (trpcClient.revisions as any).listTimelines.query({
-        org,
-        app,
-        revision: revisionId,
-      });
-
-    for (const timeline of timelines) {
-      console.log(
-        `${timeline.partition_config_name} url:${
-          timeline.domains.map((domain) => `\n  https://${domain}`)
-        }`,
-      );
-    }
+    await waitForRevision(context, org, app, revisionId, revision);
   } else {
     console.log(
       "To see the deployment, go to the revision page and wait for the build to complete.",
+    );
+  }
+}
+
+export async function waitForRevision(
+  context: GlobalContext,
+  org: string,
+  app: string,
+  revisionId: string,
+  revision?: Revision,
+) {
+  const trpcClient = createTrpcClient(context);
+
+  console.log(
+    "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
+  );
+
+  const completionSpinner = new Spinner({
+    message: "Awaiting revision to complete...",
+    color: "yellow",
+  });
+  completionSpinner.start();
+
+  const completionPromise = Promise.withResolvers<void>();
+
+  const completionSub = trpcClient.subscription(
+    "revisions.watchUntilReady",
+    {
+      org,
+      app,
+      revision: revisionId,
+    },
+    {
+      onData: (data: unknown) => {
+        const newRevision = data as Revision;
+        revision = newRevision;
+        const lastStep = newRevision.steps.at(-1);
+
+        if (lastStep) {
+          completionSpinner.message = lastStep.step;
+        }
+      },
+      onError: (err: unknown) => {
+        completionSub.unsubscribe();
+        error(context, Deno.inspect(err));
+      },
+      onComplete: () => {
+        completionPromise.resolve();
+        completionSub.unsubscribe();
+      },
+      onStopped: () => {
+        completionSub.unsubscribe();
+      },
+    },
+  );
+
+  await completionPromise.promise;
+
+  completionSpinner.stop();
+  if (revision?.status === "cancelled" || revision?.status === "failed") {
+    console.log(
+      `\n${red("✗")} The revision ${
+        revision.status === "cancelled" ? "was " : ""
+      }${revision.status}.\n  Please view the revision in the dashboard for more information.`,
+    );
+    Deno.exit(1);
+  }
+
+  console.log(`\n${green("✔")} Successfully deployed your application!`);
+
+  const timelines = await trpcClient.query("revisions.listTimelines", {
+    org,
+    app,
+    revision: revisionId,
+  }) as Array<{ partition_config_name: string; domains: string[] }>;
+
+  for (const timeline of timelines) {
+    console.log(
+      `${timeline.partition_config_name} url:${
+        timeline.domains.map((domain) => `\n  https://${domain}`)
+      }`,
     );
   }
 }

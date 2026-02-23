@@ -31,9 +31,10 @@ const envListCommand = new Command<EnvCommandContext>()
 
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
-      .query({ org, app });
+    const envVars = await trpcClient.query("envVarsContexts.list", {
+      org,
+      app,
+    }) as EnvVar[];
 
     if (envVars.length === 0) {
       console.log(
@@ -42,9 +43,10 @@ const envListCommand = new Command<EnvCommandContext>()
       return;
     }
 
-    // deno-lint-ignore no-explicit-any
-    const contexts: Context[] = await (trpcClient.envVarsContexts as any)
-      .listContexts.query({ org });
+    const contexts = await trpcClient.query(
+      "envVarsContexts.listContexts",
+      { org },
+    ) as Context[];
 
     const contextTitle = `CONTEXTS (${
       contexts.map((context) => context.name).join(", ")
@@ -85,14 +87,12 @@ const envAddCommand = new Command<EnvCommandContext>()
 
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    const fullApp = await (trpcClient.apps as any).get.query({
+    const fullApp = await trpcClient.query("apps.get", {
       org,
       app,
-    });
+    }) as { id: string };
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
+    await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [
         {
@@ -123,9 +123,10 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
 
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
-      .query({ org, app });
+    const envVars = await trpcClient.query("envVarsContexts.list", {
+      org,
+      app,
+    }) as EnvVar[];
 
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
@@ -133,8 +134,7 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
       error(options, `Environment variable '${variable}' not found`);
     }
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
+    await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [],
       update: [{
@@ -160,9 +160,10 @@ You can define no contexts, which is the equivalent to "All"`,
     const { app } = await getApp(options, config, false, org, options.app);
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
-      .query({ org, app });
+    const envVars = await trpcClient.query("envVarsContexts.list", {
+      org,
+      app,
+    }) as EnvVar[];
 
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
@@ -170,9 +171,10 @@ You can define no contexts, which is the equivalent to "All"`,
       error(options, `Environment variable '${variable}' not found`);
     }
 
-    // deno-lint-ignore no-explicit-any
-    const contexts: Context[] = await (trpcClient.envVarsContexts as any)
-      .listContexts.query({ org });
+    const contexts = await trpcClient.query(
+      "envVarsContexts.listContexts",
+      { org },
+    ) as Context[];
 
     const contextIds = [];
 
@@ -185,8 +187,7 @@ You can define no contexts, which is the equivalent to "All"`,
       contextIds.push(context.id);
     }
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
+    await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [],
       update: [{
@@ -209,9 +210,10 @@ const envDeleteCommand = new Command<EnvCommandContext>()
     const { app } = await getApp(options, config, false, org, options.app);
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    const envVars: EnvVar[] = await (trpcClient.envVarsContexts as any).list
-      .query({ org, app });
+    const envVars = await trpcClient.query("envVarsContexts.list", {
+      org,
+      app,
+    }) as EnvVar[];
 
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
@@ -219,8 +221,7 @@ const envDeleteCommand = new Command<EnvCommandContext>()
       error(options, `Environment variable '${variable}' not found`);
     }
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
+    await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [],
       update: [],
@@ -255,14 +256,16 @@ const envLoadCommand = new Command<EnvCommandContext>()
     const { app } = await getApp(options, config, false, org, options.app);
     const trpcClient = createTrpcClient(options);
 
-    // deno-lint-ignore no-explicit-any
-    const fullApp = await (trpcClient.apps as any).get.query({ org, app });
+    const fullApp = await trpcClient.query("apps.get", { org, app }) as {
+      id: string;
+    };
 
     const variables = dotEnvParse(await Deno.readTextFile(file));
 
-    // deno-lint-ignore no-explicit-any
-    const existingEnvVars: EnvVar[] = await (trpcClient.envVarsContexts as any)
-      .list.query({ org, app });
+    const existingEnvVars = await trpcClient.query(
+      "envVarsContexts.list",
+      { org, app },
+    ) as EnvVar[];
 
     const addEnvVars = [];
     let updateEnvVars = [];
@@ -334,8 +337,7 @@ const envLoadCommand = new Command<EnvCommandContext>()
       console.log();
     }
 
-    // deno-lint-ignore no-explicit-any
-    await (trpcClient.envVarsContexts as any).updateEnvVars.mutate({
+    await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: addEnvVars,
       update: updateEnvVars,

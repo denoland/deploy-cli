@@ -76,7 +76,7 @@ export const volumesListCommand = new Command<SandboxContext>()
 
 export const volumesDeleteCommand = new Command<SandboxContext>()
   .description("Remove a volume")
-  .arguments("<idOrSlug:string>")
+  .arguments("<id-or-slug:string>")
   .action(actionHandler(async (config, options, idOrSlug) => {
     config.noCreate();
 
@@ -94,7 +94,7 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
 
 export const volumesSnapshotCommand = new Command<SandboxContext>()
   .description("Snapshot a volume")
-  .arguments("<volumeIdOrSlug:string> <snapshotSlug:string>")
+  .arguments("<volume-id-or-slug:string> <snapshotSlug:string>")
   .action(
     actionHandler(async (config, options, volumeIdOrSlug, snapshotSlug) => {
       config.noCreate();

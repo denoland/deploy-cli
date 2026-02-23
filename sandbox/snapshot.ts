@@ -7,7 +7,7 @@ import { actionHandler, getOrg } from "../config.ts";
 
 export const snapshotsCreateCommand = new Command<SandboxContext>()
   .description("Create a snapshot from a volume")
-  .arguments("<volumeIdOrSlug:string> <snapshotSlug:string>")
+  .arguments("<volumeid-or-slug:string> <snapshotSlug:string>")
   .action(
     actionHandler(async (config, options, volumeIdOrSlug, snapshotSlug) => {
       config.noCreate();
@@ -65,7 +65,7 @@ export const snapshotsListCommand = new Command<SandboxContext>()
 
 export const snapshotsDeleteCommand = new Command<SandboxContext>()
   .description("Remove a snapshot")
-  .arguments("<idOrSlug:string>")
+  .arguments("<id-or-slug:string>")
   .action(actionHandler(async (config, options, idOrSlug) => {
     config.noCreate();
     const org = await getOrg(options, config, options.org);

@@ -4,19 +4,23 @@ import open from "open";
 import { encodeBase64 } from "@std/encoding";
 import { green } from "@std/fmt/colors";
 import {
-  createTRPCClient,
+  createTRPCUntypedClient,
   httpBatchStreamLink,
   httpSubscriptionLink,
   retryLink,
   splitLink,
   TRPCClientError,
   type TRPCLink,
+  type TRPCUntypedClient,
 } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { error } from "./util.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 import type { GlobalContext } from "./main.ts";
+
+// deno-lint-ignore no-explicit-any
+export type TRPCClient = TRPCUntypedClient<any>;
 
 export function createTrpcClient(
   context: GlobalContext,
@@ -63,8 +67,7 @@ export function createTrpcClient(
 
   let retryPromise: Promise<void> | undefined = undefined;
 
-  // deno-lint-ignore no-explicit-any
-  return createTRPCClient<any>({
+  return createTRPCUntypedClient({
     links: [
       errorLink,
       retryLink({
@@ -281,7 +284,7 @@ export async function authedFetch(
   endpoint: string,
   init: RequestInit,
 ) {
-  let auth = await tokenStorage.get();
+  let auth = tokenStorage.get();
 
   if (!auth) {
     auth = await getAuth(context);
