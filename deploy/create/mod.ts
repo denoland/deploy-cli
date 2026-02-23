@@ -255,21 +255,9 @@ export const createCommand = new Command<GlobalContext>()
       if (!buildConfig) {
         const base = {
           frameworkPreset: options.frameworkPreset ?? "" as FrameworkPreset,
-          installCommand: requiredUnless(
-            options.installCommand,
-            options.frameworkPreset,
-            "install-command",
-          ),
-          buildCommand: requiredUnless(
-            options.buildCommand,
-            options.frameworkPreset,
-            "build-command",
-          ),
-          preDeployCommand: requiredUnless(
-            options.preDeployCommand,
-            options.frameworkPreset,
-            "pre-deploy-command",
-          ),
+          installCommand: options.installCommand ?? "",
+          buildCommand: options.buildCommand ?? "",
+          preDeployCommand: options.preDeployCommand ?? "",
         };
 
         const runtimeMode = requiredUnless(
