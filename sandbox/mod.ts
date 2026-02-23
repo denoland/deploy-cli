@@ -22,6 +22,7 @@ import { createSwitchCommand, type GlobalContext } from "../main.ts";
 
 import { volumesCommand } from "./volumes.ts";
 import { snapshotsCommand } from "./snapshot.ts";
+import { sandboxDashboardCommand } from "./dashboard.ts";
 import { actionHandler, type ConfigContext, getOrg } from "../config.ts";
 
 export type SandboxContext = GlobalContext & {
@@ -626,4 +627,5 @@ export const sandboxCommand = new Command<GlobalContext>()
   .command("deploy", sandboxDeployCommand)
   .command("volumes", volumesCommand)
   .command("snapshots", snapshotsCommand)
+  .command("dashboard", sandboxDashboardCommand)
   .command("switch", createSwitchCommand(false));
