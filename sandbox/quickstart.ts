@@ -173,7 +173,7 @@ function promptCustomSelection(): {
   // We use a Set for packages so duplicates are removed automatically
   // (e.g. picking both "Python" and "NumPy" won't install python3 twice).
   const allPackages = new Set<string>();
-  const allSetupCommands: string[] = [];
+  const allSetupCommands = new Set<string>();
 
   for (const category of CUSTOM_CATEGORIES) {
     const choices = category.items.map((item) => ({
@@ -194,20 +194,18 @@ function promptCustomSelection(): {
         allPackages.add(pkg);
       }
       for (const cmd of entry.value.setupCommands) {
-        if (!allSetupCommands.includes(cmd)) {
-          allSetupCommands.push(cmd);
-        }
+        allSetupCommands.add(cmd);
       }
     }
   }
 
-  if (allPackages.size === 0 && allSetupCommands.length === 0) {
+  if (allPackages.size === 0 && allSetupCommands.size === 0) {
     return null;
   }
 
   return {
     packages: [...allPackages],
-    setupCommands: allSetupCommands,
+    setupCommands: [...allSetupCommands],
   };
 }
 
@@ -223,11 +221,7 @@ function promptRegion(): Region | null {
 }
 
 function promptSnapshotName(): string | null {
-  const name = prompt(
-    "Enter a name for this snapshot:",
-    `quickstart-${Date.now()}`,
-  );
-  return name;
+  return prompt("Enter a name for this snapshot:", `quickstart-${Date.now()}`);
 }
 
 // --- Build Logic ---
@@ -235,7 +229,6 @@ function promptSnapshotName(): string | null {
 // boots a sandbox, installs everything, then snapshots the result.
 
 async function buildSnapshot(
-  context: SandboxContext,
   client: Client,
   options: {
     packages: string[];
@@ -257,7 +250,18 @@ async function buildSnapshot(
 
   const spinner = new Spinner({ color: "yellow" });
 
-  const totalSteps = 2 + options.packages.length + options.setupCommands.length;
+  // Runs a shell command inside the sandbox and returns whether it succeeded
+  async function runInSandbox(sandbox: Sandbox, command: string): Promise<boolean> {
+    const child = await sandbox.spawn("bash", {
+      args: ["-c", command],
+      stdout: out,
+      stderr: out,
+    });
+    const status = await child.status;
+    return status.success;
+  }
+
+  const totalSteps = 1 + options.packages.length + options.setupCommands.length;
   let currentStep = 0;
   const step = (label: string) => {
     currentStep++;
@@ -276,188 +280,151 @@ async function buildSnapshot(
   spinner.stop();
   console.log(`${green("✔")} Volume created`);
 
-  let snapshotCreated = false;
+  // Boot a sandbox using this volume as its root filesystem.
+  // The sandbox is short-lived (10m timeout) — just long enough to install.
+  spinner.message = "Booting sandbox...";
+  spinner.start();
+  const sandbox = await Sandbox.create({
+    token: options.token,
+    org: options.org,
+    timeout: "10m",
+    region: options.region,
+    root: volume.id,
+  });
+  spinner.stop();
+  console.log(`${green("✔")} Sandbox booted`);
+
+  console.log();
+  const pkgCount = options.packages.length;
+  const cmdCount = options.setupCommands.length;
+  let summary = `Installing ${pkgCount} package${pkgCount === 1 ? "" : "s"}`;
+  if (cmdCount > 0) {
+    summary += ` + ${cmdCount} setup command${cmdCount === 1 ? "" : "s"}`;
+  }
+  console.log(summary);
+  console.log();
 
   try {
-    // Step 2: Boot a sandbox using this volume as its root filesystem.
-    // The sandbox is short-lived (10m timeout) — just long enough to install.
-    spinner.message = "Booting sandbox...";
+    spinner.message = step("Updating package lists...");
     spinner.start();
-    const sandbox = await Sandbox.create({
-      token: options.token,
-      org: options.org,
-      timeout: "10m",
-      region: options.region,
-      root: volume.id,
-    });
+    const updateOk = await runInSandbox(sandbox, "sudo apt update");
     spinner.stop();
-    console.log(`${green("✔")} Sandbox booted`);
+    if (!updateOk) {
+      throw new Error("Failed to update package lists");
+    }
+    console.log(`${green("✔")} Package lists updated`);
 
-    console.log();
-    console.log(
-      `Installing ${options.packages.length} package${
-        options.packages.length === 1 ? "" : "s"
-      }` +
-        (options.setupCommands.length > 0
-          ? ` + ${options.setupCommands.length} setup command${
-            options.setupCommands.length === 1 ? "" : "s"
-          }`
-          : ""),
-    );
-    console.log();
-
-    try {
-      // Step 3: Update the package list so apt knows what's available
-      spinner.message = step("Updating package lists...");
+    // DEBIAN_FRONTEND=noninteractive prevents apt from asking questions
+    for (const pkg of options.packages) {
+      spinner.message = step(`Installing ${pkg}...`);
       spinner.start();
-      const updateChild = await sandbox.spawn("bash", {
-        args: ["-c", "sudo apt update"],
-        stdout: out,
-        stderr: out,
-      });
-      const updateStatus = await updateChild.status;
+      const installOk = await runInSandbox(
+        sandbox,
+        `sudo DEBIAN_FRONTEND=noninteractive apt install -y ${pkg}`,
+      );
       spinner.stop();
-      if (!updateStatus.success) {
-        throw new Error("Failed to update package lists");
+      if (!installOk) {
+        throw new Error(`Failed to install ${pkg}`);
       }
-      console.log(`${green("✔")} Package lists updated`);
-
-      // Step 4: Install each apt package individually so we can show
-      // per-package progress. DEBIAN_FRONTEND=noninteractive prevents
-      // apt from asking questions.
-      for (let i = 0; i < options.packages.length; i++) {
-        const pkg = options.packages[i];
-        spinner.message = step(`Installing ${pkg}...`);
-        spinner.start();
-        const installCmd =
-          `sudo DEBIAN_FRONTEND=noninteractive apt install -y ${pkg}`;
-        const installChild = await sandbox.spawn("bash", {
-          args: ["-c", installCmd],
-          stdout: out,
-          stderr: out,
-        });
-        const installStatus = await installChild.status;
-        spinner.stop();
-        if (!installStatus.success) {
-          throw new Error(`Failed to install ${pkg}`);
-        }
-        console.log(`${green("✔")} Installed ${pkg}`);
-      }
-
-      // Step 5: Run any extra setup commands (like pip installs).
-      // These are optional — if one fails we warn but keep going.
-      for (const cmd of options.setupCommands) {
-        spinner.message = step(`Running: ${cmd}`);
-        spinner.start();
-        const setupChild = await sandbox.spawn("bash", {
-          args: ["-c", cmd],
-          stdout: out,
-          stderr: out,
-        });
-        const setupStatus = await setupChild.status;
-        spinner.stop();
-        if (!setupStatus.success) {
-          console.log(`${yellow("⚠")} Setup command failed: ${cmd}`);
-        } else {
-          console.log(`${green("✔")} ${cmd}`);
-        }
-      }
-    } finally {
-      // We must kill() the sandbox, not just close().
-      // close() only disconnects the WebSocket — the sandbox keeps
-      // running on the server with the volume still mounted.
-      // kill() sends a DELETE to the server which actually terminates
-      // the sandbox and releases the volume.
-      spinner.message = "Stopping sandbox and detaching volume...";
-      spinner.start();
-      try {
-        await sandbox.kill();
-      } catch (killError) {
-        // kill() may time out (10s limit), but the server is still
-        // processing the termination. Wait for the WebSocket to
-        // confirm the sandbox is gone.
-        if (options.verbose) {
-          console.log(`${yellow("⚠")} sandbox.kill() failed: ${killError}`);
-        }
-        try {
-          await Promise.race([
-            sandbox.closed,
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("timed out")), 30_000)
-            ),
-          ]);
-        } catch (closedError) {
-          console.log(
-            `${yellow("⚠")} Could not confirm sandbox termination: ${closedError}`,
-          );
-          console.log(
-            "  The sandbox may still be running. Check your dashboard.",
-          );
-        }
-      }
-      // Brief pause to let the volume fully detach after sandbox termination
-      await new Promise((resolve) => setTimeout(resolve, 5_000));
-      spinner.stop();
-      console.log(`${green("✔")} Sandbox stopped`);
+      console.log(`${green("✔")} Installed ${pkg}`);
     }
 
-    // Step 6: Snapshot the volume to create a reusable image.
-    // The volume may not be fully detached from the sandbox yet,
-    // so we retry a few times with increasing delays.
-    const maxAttempts = 3;
-    const retryDelays = [10_000, 15_000, 15_000];
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      spinner.message = attempt === 1
-        ? "Creating snapshot..."
-        : `Creating snapshot (attempt ${attempt}/${maxAttempts})...`;
+    // Setup commands are optional — if one fails we warn but keep going
+    for (const cmd of options.setupCommands) {
+      spinner.message = step(`Running: ${cmd}`);
       spinner.start();
-      try {
-        await client.volumes.snapshot(volume.id, {
-          slug: options.snapshotSlug,
-        });
-        spinner.stop();
-        console.log(`${green("✔")} Snapshot created`);
-        snapshotCreated = true;
-        break;
-      } catch (e) {
-        spinner.stop();
-        if (attempt < maxAttempts) {
-          const delaySec = retryDelays[attempt - 1] / 1000;
-          console.log(
-            `${
-              yellow("⚠")
-            } Snapshot attempt ${attempt} failed, retrying in ${delaySec}s...`,
-          );
-          await new Promise((resolve) =>
-            setTimeout(resolve, retryDelays[attempt - 1])
-          );
-        } else {
-          throw new Error(
-            `Snapshot creation failed after ${maxAttempts} attempts: ${e}\n` +
-            `  The volume '${volumeSlug}' still exists. You can try manually:\n` +
-            `  deno sandbox volumes snapshot ${volumeSlug} ${options.snapshotSlug}`,
-          );
-        }
+      const setupOk = await runInSandbox(sandbox, cmd);
+      spinner.stop();
+      if (!setupOk) {
+        console.log(`${yellow("⚠")} Setup command failed: ${cmd}`);
+      } else {
+        console.log(`${green("✔")} ${cmd}`);
       }
     }
   } finally {
-    // The volume is kept because the snapshot depends on it.
-    // It cannot be deleted while the snapshot exists.
+    // We use kill() instead of close() because close() only disconnects
+    // the client while the sandbox continues running server-side with
+    // the volume mounted. kill() terminates the sandbox on the server,
+    // which is required to release the volume for snapshotting.
+    spinner.message = "Stopping sandbox and detaching volume...";
+    spinner.start();
+    try {
+      await sandbox.kill();
+    } catch (killError) {
+      if (options.verbose) {
+        console.log(`${yellow("⚠")} sandbox.kill() failed: ${killError}`);
+      }
+      try {
+        await Promise.race([
+          sandbox.closed,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("timed out")), 30_000)
+          ),
+        ]);
+      } catch (closedError) {
+        console.log(
+          `${yellow("⚠")} Could not confirm sandbox termination: ${closedError}`,
+        );
+        console.log(
+          "  The sandbox may still be running. Check your dashboard.",
+        );
+      }
+    }
+    // Brief pause to let the volume fully detach after sandbox termination
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    spinner.stop();
+    console.log(`${green("✔")} Sandbox stopped`);
   }
 
-  if (snapshotCreated) {
-    console.log();
-    console.log(
-      `${green("✔")} Snapshot '${options.snapshotSlug}' is ready to use.`,
-    );
-    console.log();
-    console.log("To create a sandbox with this snapshot:");
-    console.log(`  deno sandbox create --root ${options.snapshotSlug}`);
-    console.log();
-    console.log("To create a sandbox and SSH into it:");
-    console.log(`  deno sandbox create --root ${options.snapshotSlug} --ssh`);
+  // Snapshot the volume to create a reusable image.
+  // The volume may not be fully detached yet, so we retry a few times.
+  const maxAttempts = 3;
+  const retryDelays = [10_000, 15_000, 15_000];
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    spinner.message = attempt === 1
+      ? "Creating snapshot..."
+      : `Creating snapshot (attempt ${attempt}/${maxAttempts})...`;
+    spinner.start();
+    try {
+      await client.volumes.snapshot(volume.id, {
+        slug: options.snapshotSlug,
+      });
+      spinner.stop();
+      console.log(`${green("✔")} Snapshot created`);
+      break;
+    } catch (e) {
+      spinner.stop();
+      if (attempt < maxAttempts) {
+        const delaySec = retryDelays[attempt - 1] / 1000;
+        console.log(
+          `${
+            yellow("⚠")
+          } Snapshot attempt ${attempt} failed, retrying in ${delaySec}s...`,
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, retryDelays[attempt - 1])
+        );
+      } else {
+        throw new Error(
+          `Snapshot creation failed after ${maxAttempts} attempts: ${e}\n` +
+          `  The volume '${volumeSlug}' still exists. You can try manually:\n` +
+          `  deno sandbox volumes snapshot ${volumeSlug} ${options.snapshotSlug}`,
+        );
+      }
+    }
   }
+
+  console.log();
+  console.log(
+    `${green("✔")} Snapshot '${options.snapshotSlug}' is ready to use.`,
+  );
+  console.log();
+  console.log("To create a sandbox with this snapshot:");
+  console.log(`  deno sandbox create --root ${options.snapshotSlug}`);
+  console.log();
+  console.log("To create a sandbox and SSH into it:");
+  console.log(`  deno sandbox create --root ${options.snapshotSlug} --ssh`);
 }
 
 // --- The Command ---
@@ -559,7 +526,7 @@ export const quickstartCommand = new Command<SandboxContext>()
       snapshotSlug = name;
     }
 
-    await buildSnapshot(options, client, {
+    await buildSnapshot(client, {
       packages,
       setupCommands,
       region,
