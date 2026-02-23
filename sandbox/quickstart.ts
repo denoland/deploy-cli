@@ -295,9 +295,13 @@ async function buildSnapshot(
 
     console.log();
     console.log(
-      `Installing ${options.packages.length} package${options.packages.length === 1 ? "" : "s"}` +
+      `Installing ${options.packages.length} package${
+        options.packages.length === 1 ? "" : "s"
+      }` +
         (options.setupCommands.length > 0
-          ? ` + ${options.setupCommands.length} setup command${options.setupCommands.length === 1 ? "" : "s"}`
+          ? ` + ${options.setupCommands.length} setup command${
+            options.setupCommands.length === 1 ? "" : "s"
+          }`
           : ""),
     );
     console.log();
@@ -413,7 +417,9 @@ async function buildSnapshot(
         if (attempt < maxAttempts) {
           const delaySec = retryDelays[attempt - 1] / 1000;
           console.log(
-            `${yellow("⚠")} Snapshot attempt ${attempt} failed, retrying in ${delaySec}s...`,
+            `${
+              yellow("⚠")
+            } Snapshot attempt ${attempt} failed, retrying in ${delaySec}s...`,
           );
           await new Promise((resolve) =>
             setTimeout(resolve, retryDelays[attempt - 1])
