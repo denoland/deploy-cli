@@ -23,6 +23,7 @@ interface SandboxInfo {
   created_at: Date;
   stopped_at: Date | null;
   cluster_hostname: string;
+  labels?: Record<string, string>;
 }
 
 interface OrgInfo {
@@ -39,7 +40,8 @@ interface DashboardState {
   loading: boolean;
   lastRefresh: Date;
   regionFilter: string | null;
-  sortBy: "created" | "status" | "region";
+  labelFilter: string | null;
+  sortBy: "created" | "status" | "region" | "label";
   sortAsc: boolean;
   mode: "normal" | "extend" | "org";
   statusMessage: string | null;
@@ -134,6 +136,7 @@ function renderScreen(state: DashboardState): string {
   let summary = ` ${total} total`;
   if (parts.length > 0) summary += ` — ${parts.join(", ")}`;
   if (state.regionFilter) summary += dim(` (region: ${state.regionFilter})`);
+  if (state.labelFilter) summary += dim(` (label: ${state.labelFilter})`);
   const sortArrow = state.sortAsc ? "↑" : "↓";
   summary += dim(`  Sort: ${state.sortBy} ${sortArrow}`);
 
@@ -191,8 +194,8 @@ function renderScreen(state: DashboardState): string {
     }
   } else {
     // Normal sandbox table
-    const headers = ["", "ID", "REGION", "STATUS", "UPTIME", "CREATED"];
-    const colWidths = [2, 16, 10, 10, 10, 22];
+    const headers = ["", "ID", "REGION", "STATUS", "UPTIME", "CREATED", "LABELS"];
+    const colWidths = [2, 16, 10, 10, 10, 22, 24];
 
     // Calculate column widths based on actual data
     for (const sandbox of displayList) {
@@ -201,19 +204,21 @@ function renderScreen(state: DashboardState): string {
       colWidths[2] = Math.max(colWidths[2], region.length);
     }
 
-    const headerLine = " " + headers.map((h, i) =>
-      dim(h.padEnd(colWidths[i]))
+    const headerLine = "   " + headers.slice(1).map((h, i) =>
+      dim(h.padEnd(colWidths[i + 1]))
     ).join("  ");
     lines.push(headerLine);
 
     // Sandbox rows — render the filtered+sorted list
     if (displayList.length === 0 && !state.loading) {
       lines.push("");
-      if (state.regionFilter) {
+      if (state.regionFilter || state.labelFilter) {
+        const filterDesc = [
+          state.regionFilter ? `region "${state.regionFilter}"` : null,
+          state.labelFilter ? `label "${state.labelFilter}"` : null,
+        ].filter(Boolean).join(", ");
         lines.push(
-          dim(
-            `  No sandboxes in region "${state.regionFilter}". Press f to cycle filters.`,
-          ),
+          dim(`  No sandboxes match ${filterDesc}. Press f/l to cycle filters.`),
         );
       } else {
         lines.push(
@@ -258,11 +263,20 @@ function renderScreen(state: DashboardState): string {
             Math.max(0, colWidths[3] - stripAnsiCode(statusText).length),
           );
 
+        const labelEntries = Object.entries(sandbox.labels ?? {});
+        let labelsStr = labelEntries.length > 0
+          ? labelEntries.map(([k, v]) => `${k}=${v}`).join(" ")
+          : "—";
+        if (labelsStr.length > colWidths[6]) {
+          labelsStr = labelsStr.slice(0, colWidths[6] - 1) + "…";
+        }
+
         const row = ` ${marker} ${sandbox.id.padEnd(colWidths[1])}  ` +
           `${region.padEnd(colWidths[2])}  ` +
           `${statusPadded}  ` +
           `${uptime.padEnd(colWidths[4])}  ` +
-          `${created}`;
+          `${created.padEnd(colWidths[5])}  ` +
+          `${labelsStr}`;
 
         if (isSelected) {
           lines.push(INVERSE + row + RESET_STYLE);
@@ -320,6 +334,7 @@ function renderScreen(state: DashboardState): string {
       bold("e") + dim(" Extend"),
       bold("c") + dim(" Copy ID"),
       bold("f") + dim(" Filter"),
+      bold("l") + dim(" Label"),
       bold("o/O") + dim(" Sort"),
       bold("t") + dim(" Org"),
       bold("r") + dim(" Refresh"),
@@ -334,7 +349,7 @@ function renderScreen(state: DashboardState): string {
 // Returns a new array — doesn't modify the original.
 function sortSandboxes(
   sandboxes: SandboxInfo[],
-  sortBy: "created" | "status" | "region",
+  sortBy: "created" | "status" | "region" | "label",
   asc: boolean,
 ): SandboxInfo[] {
   const sorted = [...sandboxes];
@@ -360,6 +375,19 @@ function sortSandboxes(
           b.cluster_hostname.split(".")[0],
         )
       );
+      break;
+    case "label":
+      // Alphabetical by first label key=value; empty labels sort last
+      sorted.sort((a, b) => {
+        const aLabel = Object.entries(a.labels ?? {})[0];
+        const bLabel = Object.entries(b.labels ?? {})[0];
+        const aStr = aLabel ? `${aLabel[0]}=${aLabel[1]}` : "";
+        const bStr = bLabel ? `${bLabel[0]}=${bLabel[1]}` : "";
+        if (!aStr && !bStr) return 0;
+        if (!aStr) return 1;
+        if (!bStr) return -1;
+        return aStr.localeCompare(bStr);
+      });
       break;
   }
   if (asc) sorted.reverse();
@@ -399,6 +427,7 @@ async function* readKeypress(): AsyncGenerator<string> {
         else if (byte === 0x6f) yield "o"; // Order/sort
         else if (byte === 0x4f) yield "O"; // Toggle sort direction
         else if (byte === 0x63) yield "c"; // Copy
+        else if (byte === 0x6c) yield "l"; // Label filter
         else if (byte === 0x74) yield "t"; // Team/org picker
         else if (byte === 0x0d) yield "enter"; // Enter/Return
         else if (byte === 0x31) yield "1"; // Extend presets
@@ -421,10 +450,17 @@ async function* readKeypress(): AsyncGenerator<string> {
 // Returns the list of sandboxes after applying the region filter.
 // Used by both the key handlers (for navigation bounds) and renderScreen.
 function getFilteredSandboxes(state: DashboardState): SandboxInfo[] {
-  if (state.regionFilter === null) return state.sandboxes;
-  return state.sandboxes.filter(
-    (s) => s.cluster_hostname.split(".")[0] === state.regionFilter,
-  );
+  let list = state.sandboxes;
+  if (state.regionFilter !== null) {
+    list = list.filter(
+      (s) => s.cluster_hostname.split(".")[0] === state.regionFilter,
+    );
+  }
+  if (state.labelFilter !== null) {
+    const [key, value] = state.labelFilter.split("=");
+    list = list.filter((s) => s.labels?.[key] === value);
+  }
+  return list;
 }
 
 // Gets the sandbox that's currently highlighted, accounting for the region filter.
@@ -539,6 +575,7 @@ async function runDashboard(
     loading: true,
     lastRefresh: new Date(),
     regionFilter: null,
+    labelFilter: null,
     sortBy: "created",
     sortAsc: false,
     mode: "normal",
@@ -682,6 +719,7 @@ async function runDashboard(
             state.org = selected.slug;
             state.selectedIndex = 0;
             state.regionFilter = null;
+            state.labelFilter = null;
             state.mode = "normal";
             await refreshAndRender();
           } else if (key === "escape") {
@@ -771,12 +809,37 @@ async function runDashboard(
           } else {
             state.selectedIndex = 0;
           }
+        } else if (key === "l") {
+          // Cycle label filter: all → label1 → label2 → ... → all
+          const labelPairs = [
+            ...new Set(
+              state.sandboxes.flatMap((s) =>
+                Object.entries(s.labels ?? {}).map(([k, v]) => `${k}=${v}`)
+              ),
+            ),
+          ].sort();
+
+          if (state.labelFilter === null) {
+            if (labelPairs.length > 0) state.labelFilter = labelPairs[0];
+          } else {
+            const idx = labelPairs.indexOf(state.labelFilter);
+            state.labelFilter = idx < labelPairs.length - 1
+              ? labelPairs[idx + 1]
+              : null;
+          }
+
+          // Clamp selection to filtered list
+          const filteredAfterLabel = getFilteredSandboxes(state);
+          state.selectedIndex = filteredAfterLabel.length > 0
+            ? Math.min(state.selectedIndex, filteredAfterLabel.length - 1)
+            : 0;
         } else if (key === "o") {
-          // Cycle sort: created → status → region → created
-          const order: Array<"created" | "status" | "region"> = [
+          // Cycle sort: created → status → region → label → created
+          const order: Array<"created" | "status" | "region" | "label"> = [
             "created",
             "status",
             "region",
+            "label",
           ];
           const idx = order.indexOf(state.sortBy);
           state.sortBy = order[(idx + 1) % order.length];
