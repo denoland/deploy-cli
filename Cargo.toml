@@ -6,7 +6,7 @@ members = [
 
 [workspace.dependencies]
 anyhow = "1.0.57"
-deno_config = "0.82.0"
+deno_config = "0.84.0"
 deno_path_util = "=0.6.4"
 js-sys = "=0.3.77"
 serde = "1.0.149"
@@ -20,6 +20,3 @@ codegen-units = 1
 incremental = true
 lto = true
 opt-level = "z"
-
-[patch.crates-io]
-deno_config = { path = "../deno/libs/config" }
