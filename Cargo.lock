@@ -114,9 +114,9 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "deno_config"
-version = "0.84.0"
+version = "0.87.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e99c846abbe7407ce329fc541c7dff5a6669f35d7b6a64d498f5503ccd828d8a"
+checksum = "9880dc42504a00cf7408f83fccb37386cf478a0900483d033e27ff131f2d8b77"
 dependencies = [
  "boxed_error",
  "capacity_builder",
@@ -165,15 +165,15 @@ dependencies = [
 
 [[package]]
 name = "deno_maybe_sync"
-version = "0.21.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94834f173bb3bd7b91127795b78028dab72d320b89192e696b648660d93fad30"
+checksum = "358a3f00400c77c4bcf5c32f2f4fb5c67f98439e4b1378a697d508b651cb1cce"
 
 [[package]]
 name = "deno_package_json"
-version = "0.36.0"
+version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c806129217ff5c5929d7ef5ab5de8a2ce7d67c291f64a71986b662eca024f326"
+checksum = "05e9c89551bdc42e670d3bed428aaa7c9ab1cddd6878c4cde463e19d28a28c16"
 dependencies = [
  "boxed_error",
  "capacity_builder",
