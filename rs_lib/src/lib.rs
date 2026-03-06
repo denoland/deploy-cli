@@ -1,5 +1,6 @@
+use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
-use deno_config::glob::{FileCollector, PathOrPatternSet};
+use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
@@ -20,7 +21,8 @@ pub fn resolve_config(
   ignore_paths: Vec<String>,
   allow_node_modules: bool,
 ) -> Result<JsValue, JsValue> {
-  let result = inner_resolve_config(root_path, ignore_paths, allow_node_modules);
+  let result =
+    inner_resolve_config(root_path, ignore_paths, allow_node_modules);
   result
     .map_err(|err| create_js_error(&err))
     .map(|val| serde_wasm_bindgen::to_value(&val).unwrap())
@@ -46,49 +48,50 @@ fn inner_resolve_config(
       maybe_vendor_override: None,
     },
   )?;
-  if let Some(deno_json) = workspace_dir.member_or_root_deno_json() {
-    if let Some(mut config) = deno_json.to_deploy_config()? {
-      if !ignore_paths.is_empty() {
-        let exclude = PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          &config.files.base,
-          &ignore_paths,
-        )?;
-        config
-          .files
-          .exclude
-          .append(exclude.into_path_or_patterns().into_iter());
-      }
 
-      let files = collect_files(&real_sys, root_path, config.files, allow_node_modules);
+  let mut pattern = FilePatterns::new_with_base(root_path.clone());
 
-      return Ok(ConfigLookup {
-        path: Some(deno_json.specifier.to_string()),
-        files,
-      });
-    } else {
-      let mut files_config = deno_json.to_exclude_files_config()?;
-      if !ignore_paths.is_empty() {
-        let exclude = PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          &files_config.base,
-          &ignore_paths,
-        )?;
-        files_config
-          .exclude
-          .append(exclude.into_path_or_patterns().into_iter());
-      }
-
-      let files = collect_files(&real_sys, root_path, files_config, allow_node_modules);
-      return Ok(ConfigLookup {
-        path: Some(deno_json.specifier.to_string()),
-        files,
-      });
-    }
+  if !ignore_paths.is_empty() {
+    let exclude = PathOrPatternSet::from_exclude_relative_path_or_patterns(
+      &root_path,
+      &ignore_paths,
+    )?;
+    pattern
+      .exclude
+      .append(exclude.into_path_or_patterns().into_iter());
   }
 
-  Ok(ConfigLookup {
-    path: None,
-    files: collect_files(&real_sys, root_path.clone(), FilePatterns::new_with_base(root_path), allow_node_modules),
-  })
+  if let Some(config) = workspace_dir.to_deploy_config(pattern)? {
+    let specifier = workspace_dir
+      .member_deno_json()
+      .filter(|config| config.to_deploy_config().is_ok())
+      .map(|member| member.specifier.to_string())
+      .or_else(|| {
+        workspace_dir
+          .member_or_root_deno_json()
+          .filter(|config| config.to_deploy_config().is_ok())
+          .map(|member| member.specifier.to_string())
+      })
+      .expect(
+        "workspace_dir.to_deploy_config should have resolved a specifier",
+      );
+    let files =
+      collect_files(&real_sys, root_path, config.files, allow_node_modules);
+    Ok(ConfigLookup {
+      path: Some(specifier),
+      files,
+    })
+  } else {
+    Ok(ConfigLookup {
+      path: None,
+      files: collect_files(
+        &real_sys,
+        root_path.clone(),
+        FilePatterns::new_with_base(root_path),
+        allow_node_modules,
+      ),
+    })
+  }
 }
 
 fn collect_files(
@@ -97,17 +100,17 @@ fn collect_files(
   files: FilePatterns,
   allow_node_modules: bool,
 ) -> Vec<String> {
-  let mut collector = FileCollector::new(|entry| {
-    entry.path.starts_with(&root_path)
-  })
-    .ignore_git_folder()
-    .use_gitignore();
+  let mut collector =
+    FileCollector::new(|entry| entry.path.starts_with(&root_path))
+      .ignore_git_folder()
+      .use_gitignore();
 
   if !allow_node_modules {
     collector = collector.ignore_node_modules();
   }
 
-  collector.collect_file_patterns(real_sys, &files)
+  collector
+    .collect_file_patterns(real_sys, &files)
     .into_iter()
     .map(|path| path.to_string_lossy().to_string())
     .collect::<Vec<String>>()
