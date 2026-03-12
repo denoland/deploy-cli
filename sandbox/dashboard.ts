@@ -43,10 +43,12 @@ interface DashboardState {
   labelFilter: string | null;
   sortBy: "created" | "status" | "region" | "label";
   sortAsc: boolean;
-  mode: "normal" | "extend" | "org";
+  mode: "normal" | "extend" | "org" | "label";
   statusMessage: string | null;
   orgs: OrgInfo[];
   orgSelectedIndex: number;
+  labelPickerItems: string[];
+  labelPickerIndex: number;
 }
 
 // --- ANSI escape helpers ---
@@ -204,6 +206,12 @@ function renderScreen(state: DashboardState): string {
       colWidths[2] = Math.max(colWidths[2], region.length);
     }
 
+    // Make the LABELS column fill the remaining terminal width.
+    // 3 chars for the leading " > " marker, plus 2 chars between each of the 7 columns.
+    const fixedColumnsWidth = colWidths.slice(0, 6).reduce((sum, w) => sum + w, 0);
+    const gutterWidth = 3 + (6 * 2);
+    colWidths[6] = Math.max(10, columns - fixedColumnsWidth - gutterWidth);
+
     const headerLine = "   " + headers.slice(1).map((h, i) =>
       dim(h.padEnd(colWidths[i + 1]))
     ).join("  ");
@@ -265,7 +273,7 @@ function renderScreen(state: DashboardState): string {
 
         const labelEntries = Object.entries(sandbox.labels ?? {});
         let labelsStr = labelEntries.length > 0
-          ? labelEntries.map(([k, v]) => `${k}=${v}`).join(" ")
+          ? labelEntries.map(([k, v]) => `${k}=${v}`).join(" | ")
           : "—";
         if (labelsStr.length > colWidths[6]) {
           labelsStr = labelsStr.slice(0, colWidths[6] - 1) + "…";
@@ -315,6 +323,11 @@ function renderScreen(state: DashboardState): string {
     lines.push(
       bold(" Select org: ") + dim("↑/↓ Navigate  Enter Select  Esc Cancel"),
     );
+  } else if (state.mode === "label") {
+    const items = state.labelPickerItems.map((item, i) =>
+      i === state.labelPickerIndex ? bold(`[${item}]`) : dim(item)
+    ).join("  ");
+    lines.push(bold(" Filter by label: ") + items);
   } else if (state.error) {
     lines.push(red(` ✗ Error: ${state.error}`));
   } else if (state.statusMessage) {
@@ -327,6 +340,8 @@ function renderScreen(state: DashboardState): string {
 
   const shortcuts = state.mode === "org"
     ? " " + green("●") + dim(" = active org")
+    : state.mode === "label"
+    ? " " + bold("←/→") + dim(" Select") + "  " + bold("Enter") + dim(" Apply") + "  " + bold("Esc") + dim(" Cancel")
     : " " + [
       bold("↑/↓") + dim(" Navigate"),
       bold("s") + dim(" SSH"),
@@ -334,7 +349,7 @@ function renderScreen(state: DashboardState): string {
       bold("e") + dim(" Extend"),
       bold("c") + dim(" Copy ID"),
       bold("f") + dim(" Filter"),
-      bold("l") + dim(" Label"),
+      bold("l") + dim(" Filter label"),
       bold("o/O") + dim(" Sort"),
       bold("t") + dim(" Org"),
       bold("r") + dim(" Refresh"),
@@ -438,6 +453,8 @@ async function* readKeypress(): AsyncGenerator<string> {
         // Arrow key escape sequences: ESC [ A/B/C/D
         if (buf[2] === 0x41) yield "up";
         if (buf[2] === 0x42) yield "down";
+        if (buf[2] === 0x43) yield "right";
+        if (buf[2] === 0x44) yield "left";
       }
     }
   } finally {
@@ -582,6 +599,8 @@ async function runDashboard(
     statusMessage: null,
     orgs: [],
     orgSelectedIndex: 0,
+    labelPickerItems: [],
+    labelPickerIndex: 0,
   };
 
   // Initial data fetch
@@ -704,6 +723,39 @@ async function runDashboard(
           continue;
         }
 
+        // When we're in label picker mode, only accept ←/→/Enter/Esc
+        if (state.mode === "label") {
+          if (key === "left") {
+            if (state.labelPickerIndex > 0) {
+              state.labelPickerIndex--;
+            }
+          } else if (key === "right") {
+            if (state.labelPickerIndex < state.labelPickerItems.length - 1) {
+              state.labelPickerIndex++;
+            }
+          } else if (key === "enter") {
+            const picked = state.labelPickerItems[state.labelPickerIndex];
+            if (picked === "Clear filter") {
+              state.labelFilter = null;
+            } else {
+              state.labelFilter = picked;
+            }
+            state.selectedIndex = 0;
+            const filtered = getFilteredSandboxes(state);
+            if (filtered.length > 0) {
+              state.selectedIndex = Math.min(
+                state.selectedIndex,
+                filtered.length - 1,
+              );
+            }
+            state.mode = "normal";
+          } else if (key === "escape") {
+            state.mode = "normal";
+          }
+          Deno.stdout.writeSync(encoder.encode(renderScreen(state)));
+          continue;
+        }
+
         // When we're in org mode, only accept ↑/↓/Enter/Esc
         if (state.mode === "org") {
           if (key === "up") {
@@ -810,29 +862,21 @@ async function runDashboard(
             state.selectedIndex = 0;
           }
         } else if (key === "l") {
-          // Cycle label filter: all → label1 → label2 → ... → all
-          const labelPairs = [
-            ...new Set(
-              state.sandboxes.flatMap((s) =>
-                Object.entries(s.labels ?? {}).map(([k, v]) => `${k}=${v}`)
-              ),
-            ),
-          ].sort();
-
-          if (state.labelFilter === null) {
-            if (labelPairs.length > 0) state.labelFilter = labelPairs[0];
+          // Open label picker for the selected sandbox's labels
+          const selected = getSelectedSandbox(state);
+          if (!selected || Object.keys(selected.labels ?? {}).length === 0) {
+            state.statusMessage = "No labels on selected sandbox";
           } else {
-            const idx = labelPairs.indexOf(state.labelFilter);
-            state.labelFilter = idx < labelPairs.length - 1
-              ? labelPairs[idx + 1]
-              : null;
+            const items = Object.entries(selected.labels!).map(([k, v]) =>
+              `${k}=${v}`
+            );
+            if (state.labelFilter !== null) {
+              items.push("Clear filter");
+            }
+            state.labelPickerItems = items;
+            state.labelPickerIndex = 0;
+            state.mode = "label";
           }
-
-          // Clamp selection to filtered list
-          const filteredAfterLabel = getFilteredSandboxes(state);
-          state.selectedIndex = filteredAfterLabel.length > 0
-            ? Math.min(state.selectedIndex, filteredAfterLabel.length - 1)
-            : 0;
         } else if (key === "o") {
           // Cycle sort: created → status → region → label → created
           const order: Array<"created" | "status" | "region" | "label"> = [
