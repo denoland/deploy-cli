@@ -4,7 +4,7 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
 import { authedFetch, createTrpcClient } from "../auth.ts";
-import { error } from "../util.ts";
+import { error, jsonOutput } from "../util.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
 
@@ -30,11 +30,13 @@ export async function publish(
   prod: boolean,
   wait: boolean,
 ) {
+  const quiet = context.quiet || context.json;
+
   const spinner = new Spinner({
     message: `Publishing '${resolve(rootPath)}'`,
     color: "yellow",
   });
-  spinner.start();
+  if (!quiet) spinner.start();
 
   const stream: ReadableStream<Chunk> = ReadableStream.from(configContext.files)
     .pipeThrough(
@@ -71,7 +73,7 @@ export async function publish(
 
   const manifest: Record<string, string> = {};
 
-  spinner.message = "Generating hashes...";
+  if (!quiet) spinner.message = "Generating hashes...";
 
   for await (const { hash, relativePath } of counter) {
     manifest[relativePath.replaceAll(SEPARATOR, "/")] = hash;
@@ -94,12 +96,15 @@ export async function publish(
   ) as string;
 
   // doing this after we initiate the cli revision in case it fails (ie app not existing).
-  spinner.message = `${green("✔")} Generated hashes`;
-  spinner.stop();
-
-  console.log(
-    `You can view the revision here:\n  ${context.endpoint}/${org}/${app}/builds/${revisionId}\n`,
-  );
+  if (!quiet) {
+    spinner.message = `${green("✔")} Generated hashes`;
+    spinner.stop();
+    console.log(
+      `You can view the revision here:\n  ${context.endpoint}/${org}/${app}/builds/${revisionId}\n`,
+    );
+  } else {
+    spinner.stop();
+  }
 
   const missingHashesPromise = Promise.withResolvers<string[]>();
 
@@ -107,7 +112,7 @@ export async function publish(
     message: "Loading previously uploaded files...",
     color: "yellow",
   });
-  existingFilesSpinner.start();
+  if (!quiet) existingFilesSpinner.start();
 
   let revision: Revision | undefined = undefined;
   const sub = trpcClient.subscription(
@@ -141,12 +146,12 @@ export async function publish(
   const missingHashes = await missingHashesPromise.promise;
 
   existingFilesSpinner.stop();
-  console.log(`${green("✔")} Loaded previously uploaded files`);
+  if (!quiet) console.log(`${green("✔")} Loaded previously uploaded files`);
 
   if (missingHashes.length > 0) {
     const skippedFilesCount = configContext.files.length - missingHashes.length;
 
-    if (skippedFilesCount > 0) {
+    if (!quiet && skippedFilesCount > 0) {
       console.log(
         `Found ${skippedFilesCount} already uploaded files, which will be skipped from uploading`,
       );
@@ -184,7 +189,7 @@ export async function publish(
         new TransformStream({
           transform({ internalPath, data, hash }, controller) {
             if (missingHashes.includes(hash)) {
-              progress.value += 1;
+              if (!quiet) progress.value += 1;
 
               controller.enqueue(
                 {
@@ -233,25 +238,27 @@ export async function publish(
       },
     );
 
-    await progress.stop();
+    if (!quiet) await progress.stop();
 
-    console.log();
+    if (!quiet) console.log();
 
     if (!resp.ok) {
       const resBody = await resp.json();
       error(context, resBody.message, resp);
     }
 
-    console.log("Successfully uploaded your application!");
+    if (!quiet) console.log("Successfully uploaded your application!");
   } else {
-    console.log("No files were changed, so there is nothing to upload.");
+    if (!quiet) {
+      console.log("No files were changed, so there is nothing to upload.");
+    }
   }
 
-  console.log();
+  if (!quiet) console.log();
 
   if (wait) {
     await waitForRevision(context, org, app, revisionId, revision);
-  } else {
+  } else if (!quiet) {
     console.log(
       "To see the deployment, go to the revision page and wait for the build to complete.",
     );
@@ -265,17 +272,20 @@ export async function waitForRevision(
   revisionId: string,
   revision?: Revision,
 ) {
+  const quiet = context.quiet || context.json;
   const trpcClient = createTrpcClient(context);
 
-  console.log(
-    "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
-  );
+  if (!quiet) {
+    console.log(
+      "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
+    );
+  }
 
   const completionSpinner = new Spinner({
     message: "Awaiting revision to complete...",
     color: "yellow",
   });
-  completionSpinner.start();
+  if (!quiet) completionSpinner.start();
 
   const completionPromise = Promise.withResolvers<void>();
 
@@ -292,7 +302,7 @@ export async function waitForRevision(
         revision = newRevision;
         const lastStep = newRevision.steps.at(-1);
 
-        if (lastStep) {
+        if (!quiet && lastStep) {
           completionSpinner.message = lastStep.step;
         }
       },
@@ -314,15 +324,22 @@ export async function waitForRevision(
 
   completionSpinner.stop();
   if (revision?.status === "cancelled" || revision?.status === "failed") {
-    console.log(
-      `\n${red("✗")} The revision ${
-        revision.status === "cancelled" ? "was " : ""
-      }${revision.status}.\n  Please view the revision in the dashboard for more information.`,
-    );
+    if (context.json) {
+      jsonOutput({
+        ok: false,
+        revisionId,
+        status: revision.status,
+        url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
+      });
+    } else {
+      console.log(
+        `\n${red("✗")} The revision ${
+          revision.status === "cancelled" ? "was " : ""
+        }${revision.status}.\n  Please view the revision in the dashboard for more information.`,
+      );
+    }
     Deno.exit(1);
   }
-
-  console.log(`\n${green("✔")} Successfully deployed your application!`);
 
   const timelines = await trpcClient.query("revisions.listTimelines", {
     org,
@@ -330,11 +347,22 @@ export async function waitForRevision(
     revision: revisionId,
   }) as Array<{ partition_config_name: string; domains: string[] }>;
 
-  for (const timeline of timelines) {
-    console.log(
-      `${timeline.partition_config_name} url:${
-        timeline.domains.map((domain) => `\n  https://${domain}`)
-      }`,
-    );
+  if (context.json) {
+    jsonOutput({
+      ok: true,
+      revisionId,
+      url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
+      domains: timelines.flatMap((t) => t.domains.map((d) => `https://${d}`)),
+    });
+  } else {
+    console.log(`\n${green("✔")} Successfully deployed your application!`);
+
+    for (const timeline of timelines) {
+      console.log(
+        `${timeline.partition_config_name} url:${
+          timeline.domains.map((domain) => `\n  https://${domain}`)
+        }`,
+      );
+    }
   }
 }

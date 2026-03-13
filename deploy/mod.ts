@@ -1,5 +1,5 @@
 import { Command, ValidationError } from "@cliffy/command";
-import { red, yellow } from "@std/fmt/colors";
+import { green, red, yellow } from "@std/fmt/colors";
 import { error, renderTemporalTimestamp } from "../util.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
 import { actionHandler, getApp, getOrg } from "../config.ts";
@@ -84,6 +84,14 @@ const logsCommand = new Command<GlobalContext>()
   .option("--end <date:string>", "The ending timestamp of the logs", {
     depends: ["start"],
   })
+  .example(
+    "Stream live logs",
+    "logs --app my-app",
+  )
+  .example(
+    "View logs from a specific time",
+    "logs --app my-app --start '2025-01-01T00:00:00Z'",
+  )
   .action(actionHandler(async (config, options) => {
     const org = await getOrg(options, config, options.org);
     const { app } = await getApp(options, config, false, org, options.app);
@@ -120,7 +128,7 @@ const logsCommand = new Command<GlobalContext>()
         onData: (data: unknown) => {
           const typedData = data as "streaming" | null | LogEntry[];
           if (typedData === "streaming") {
-            if (!onceConnected) {
+            if (!onceConnected && !options.json && !options.quiet) {
               console.log("connected, streaming logs...");
             }
             onceConnected = true;
@@ -132,6 +140,19 @@ const logsCommand = new Command<GlobalContext>()
                 continue;
               } else {
                 seenIds.add(id);
+              }
+
+              if (options.json) {
+                console.log(JSON.stringify({
+                  timestamp: log.Timestamp,
+                  traceId: log.TraceId || undefined,
+                  severity: log.SeverityText,
+                  body: log.Body,
+                  scope: log.ScopeName,
+                  revision: log.Revision,
+                  attributes: log.LogAttributes,
+                }));
+                continue;
               }
 
               const prefix = `[${renderTemporalTimestamp(log.Timestamp)}${
@@ -168,7 +189,7 @@ const logoutCommand = new Command()
   .description("Revoke the Deno Deploy token if one is present")
   .action(() => {
     tokenStorage.remove();
-    console.log("Successfully logged out");
+    console.log(`${green("✔")} Successfully logged out`);
   });
 
 export const deployCommand = new Command()
@@ -213,6 +234,17 @@ deploy your local directory to the specified application.`)
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
       tokenStorage.set(tokenEnv, true);
+    }
+
+    // Parse --json and --quiet flags manually to avoid Cliffy type issues
+    // with subcommand nesting
+    if (Deno.args.includes("--json")) {
+      (options as GlobalContext).json = true;
+    }
+    if (
+      Deno.args.includes("--quiet") || Deno.args.includes("-q")
+    ) {
+      (options as GlobalContext).quiet = true;
     }
   })
   .action(

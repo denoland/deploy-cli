@@ -3,6 +3,19 @@ import { Temporal } from "temporal-polyfill";
 
 import type { GlobalContext } from "./main.ts";
 
+export function isInteractive(): boolean {
+  return Deno.stdin.isTerminal();
+}
+
+export function requireInteractive(context: GlobalContext, hint: string): void {
+  if (!isInteractive()) {
+    error(
+      context,
+      `This command requires interactive input, but stdin is not a terminal.\n${hint}`,
+    );
+  }
+}
+
 export function error(
   context: GlobalContext,
   error: string,
@@ -171,6 +184,10 @@ export function formatDuration(ms: number): string {
   }
 
   return str;
+}
+
+export function jsonOutput(data: unknown): void {
+  console.log(JSON.stringify(data, null, 2));
 }
 
 export type SubTable = {

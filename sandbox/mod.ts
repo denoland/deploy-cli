@@ -13,6 +13,7 @@ import { Spinner } from "@std/cli/unstable-spinner";
 
 import {
   formatDuration,
+  jsonOutput,
   parseSize,
   renderTemporalTimestamp,
   tablePrinter,
@@ -36,7 +37,6 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--copy <path:string>", "Copy files or directories to the sandbox", {
     collect: true,
   })
-  .option("-q, --quiet", "Don't pipe the command to the console")
   .option("--cwd <path:string>", "Working directory of the command")
   .option("--ssh", "SSH into the sandbox")
   .option("--expose-http <port:number>", "Expose the specified port")
@@ -109,22 +109,35 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       region: options.region as Region,
       root: options.root,
     });
-    if (options.timeout === "session" || options.ssh) {
-      console.log(`Created sandbox with id '${sandbox.id}'`);
+    if (options.json) {
+      const result: Record<string, unknown> = { id: sandbox.id };
+      if (options.exposeHttp) {
+        result.url = await sandbox.exposeHttp({ port: options.exposeHttp });
+      }
+      jsonOutput(result);
+      if (options.timeout !== "session" && !options.ssh) {
+        Deno.exit();
+      }
+    } else if (options.timeout === "session" || options.ssh) {
+      console.log(`${green("✔")} Created sandbox with id '${sandbox.id}'`);
     }
 
     if (options.copy) {
-      const spinner = new Spinner({
-        message: "Copying files to the sandbox...",
-        color: "yellow",
-      });
-      spinner.start();
+      const quiet = options.quiet || options.json;
+      let spinner: Spinner | undefined;
+      if (!quiet) {
+        spinner = new Spinner({
+          message: "Copying files to the sandbox...",
+          color: "yellow",
+        });
+        spinner.start();
+      }
 
       await Promise.all(
         options.copy.map((path) => sandbox.fs.upload(path, "/app")),
       );
 
-      spinner.stop();
+      spinner?.stop();
     }
 
     if (options.exposeHttp) {
@@ -201,6 +214,17 @@ export const sandboxListCommand = new Command<SandboxContext>()
       cluster_hostname: string;
     }>;
 
+    if (options.json) {
+      jsonOutput(list.map((sandbox) => ({
+        id: sandbox.id,
+        status: sandbox.status,
+        region: sandbox.cluster_hostname.split(".")[0],
+        createdAt: sandbox.created_at,
+        stoppedAt: sandbox.stopped_at,
+      })));
+      return;
+    }
+
     tablePrinter(
       ["ID", "CREATED", "REGION", "STATUS", "UPTIME"],
       list,
@@ -253,7 +277,11 @@ export const sandboxKillCommand = new Command<SandboxContext>()
     }) as { success: boolean };
 
     if (res.success) {
-      console.log(`Sandbox ${sandboxId} killed successfully`);
+      if (options.json) {
+        jsonOutput({ ok: true, id: sandboxId });
+      } else {
+        console.log(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
+      }
     }
   }));
 
@@ -435,7 +463,6 @@ export const sandboxExecCommand = new Command<SandboxContext>()
     "Using a specific working directory",
     "exec --cwd /app someSandboxId ls",
   )
-  .option("-q, --quiet", "Don't pipe the command to the console")
   .option("--cwd <path:string>", "Working directory of the command")
   .argument("<sandbox-id:string>", "The id of the sandbox", {
     default: Deno.env.get("SANDBOX_ID"),
@@ -505,6 +532,16 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
         args: options.args,
       },
     });
+
+    if (options.json) {
+      jsonOutput({ ok: true, sandboxId, app });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } Successfully deployed sandbox '${sandboxId}' to app '${app}'.`,
+      );
+    }
   }));
 
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
@@ -606,6 +643,13 @@ export const sandboxCommand = new Command<GlobalContext>()
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
       tokenStorage.set(tokenEnv, true);
+    }
+
+    if (Deno.args.includes("--json")) {
+      (options as GlobalContext).json = true;
+    }
+    if (Deno.args.includes("--quiet") || Deno.args.includes("-q")) {
+      (options as GlobalContext).quiet = true;
     }
   })
   .action(() => {

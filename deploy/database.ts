@@ -1,6 +1,12 @@
 import { Command, ValidationError } from "@cliffy/command";
 import { createTrpcClient } from "../auth.ts";
-import { error, renderTemporalTimestamp, tablePrinter } from "../util.ts";
+import {
+  error,
+  jsonOutput,
+  renderTemporalTimestamp,
+  tablePrinter,
+} from "../util.ts";
+import { green } from "@std/fmt/colors";
 import type { GlobalContext } from "../main.ts";
 import { parse as parseConnectionString } from "pg-connection-string";
 import { actionHandler, getApp, getOrg } from "../config.ts";
@@ -11,6 +17,11 @@ export type DatabaseContext = GlobalContext & {
 
 const databasesProvisionCommand = new Command<DatabaseContext>()
   .description("Provision a database")
+  .example("Provision a Deno KV database", "provision my-db --kind denokv")
+  .example(
+    "Provision a Prisma database",
+    "provision my-db --kind prisma --region us-east-1",
+  )
   .option("--kind <string>", "The kind of database to provision", {
     required: true,
     value: (value: string): "denokv" | "prisma" => {
@@ -60,10 +71,28 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
           region: options.region,
         },
     });
+
+    if (options.json) {
+      jsonOutput({ ok: true, name, engine: options.kind });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } Successfully provisioned ${options.kind} database '${name}'.`,
+      );
+    }
   }));
 
 const databasesLinkCommand = new Command<DatabaseContext>()
   .description("Link a database")
+  .example(
+    "Link with a connection string",
+    "link my-db postgres://user:pass@host/db",
+  )
+  .example(
+    "Test connection without linking",
+    "link --dry-run my-db --hostname db.example.com",
+  )
   .option("--hostname <string>", "The hostname to use for the database", {
     required: true,
     conflicts: ["connectionString"],
@@ -98,8 +127,8 @@ const databasesLinkCommand = new Command<DatabaseContext>()
       const parsed = parseConnectionString(connectionString);
 
       if (
-        connectionString.startsWith("postgres://") ||
-        connectionString.startsWith("postgresql://")
+        !connectionString.startsWith("postgres://") &&
+        !connectionString.startsWith("postgresql://")
       ) {
         throw new TypeError(
           "Invalid connection string, expected postgres:// or postgresql:// prefix.",
@@ -139,6 +168,11 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         engine,
         connection_config: connectionConfig,
       });
+      if (options.json) {
+        jsonOutput({ ok: true, action: "test", name });
+      } else {
+        console.log(`${green("✔")} Connection test successful.`);
+      }
     } else {
       await trpcClient.mutation("databases.createInstance", {
         org: org,
@@ -146,6 +180,11 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         engine,
         connectionConfig,
       });
+      if (options.json) {
+        jsonOutput({ ok: true, action: "linked", name, engine });
+      } else {
+        console.log(`${green("✔")} Successfully linked database '${name}'.`);
+      }
     }
   }));
 
@@ -165,6 +204,16 @@ const databasesAssignCommand = new Command<DatabaseContext>()
       app,
       databaseInstance: name,
     });
+
+    if (options.json) {
+      jsonOutput({ ok: true, action: "assigned", database: name, app });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } Successfully assigned database '${name}' to app '${app}'.`,
+      );
+    }
   }));
 
 const databasesDetachCommand = new Command<DatabaseContext>()
@@ -183,10 +232,24 @@ const databasesDetachCommand = new Command<DatabaseContext>()
       app,
       databaseInstance: name,
     });
+
+    if (options.json) {
+      jsonOutput({ ok: true, action: "detached", database: name, app });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } Successfully detached database '${name}' from app '${app}'.`,
+      );
+    }
   }));
 
 const databasesQueryCommand = new Command<DatabaseContext>()
   .description("Query a database")
+  .example(
+    "Run a query",
+    "query my-db postgres -- SELECT * FROM users LIMIT 10",
+  )
   .arguments("<name:string> <database:string> [query...]")
   .action(
     actionHandler(async function (config, options, name, database, ...query) {
@@ -209,7 +272,24 @@ const databasesQueryCommand = new Command<DatabaseContext>()
       });
 
       if (res.kind === "ok") {
-        console.log(res.rows);
+        if (options.json) {
+          jsonOutput(res.rows);
+        } else if (
+          Array.isArray(res.rows) && res.rows.length > 0 &&
+          typeof res.rows[0] === "object" && res.rows[0] !== null
+        ) {
+          const keys = Object.keys(res.rows[0]);
+          tablePrinter(
+            keys.map((k) => k.toUpperCase()),
+            res.rows,
+            (row: Record<string, unknown>) =>
+              keys.map((k) => String(row[k] ?? "")),
+          );
+        } else if (Array.isArray(res.rows) && res.rows.length === 0) {
+          console.log("No rows returned.");
+        } else {
+          console.log(res.rows);
+        }
       } else if (res.kind === "postgres_error") {
         error(options, res.error);
       } else if (res.error) {
@@ -247,7 +327,7 @@ type PrismaInfo = {
 type ConnectionInfo = PostgresInfo | DenokvInfo | PrismaInfo;
 
 const databasesListCommand = new Command<DatabaseContext>()
-  .description("list databases")
+  .description("List databases")
   .arguments("[search:string]")
   .action(actionHandler(async (config, options, search) => {
     config.noCreate();
@@ -266,6 +346,22 @@ const databasesListCommand = new Command<DatabaseContext>()
         assignments: Array<{ app_slug: string }>;
       } & ConnectionInfo
     >;
+
+    if (options.json) {
+      jsonOutput(list.map((db) => ({
+        name: db.slug,
+        engine: db.engine,
+        createdAt: db.created_at,
+        assignments: db.assignments.map((a) => a.app_slug),
+        connectionConfig: db.safeConnectionConfig,
+        databases: db.databases.map((d) => ({
+          name: d.name,
+          status: d.status,
+          createdAt: d.created_at,
+        })),
+      })));
+      return;
+    }
 
     tablePrinter(
       ["NAME", "ENGINE", "ASSIGNMENTS", "CONNECTION DETAILS"],
@@ -313,6 +409,12 @@ const databasesDeleteCommand = new Command<DatabaseContext>()
       org,
       databaseInstance: name,
     });
+
+    if (options.json) {
+      jsonOutput({ ok: true, action: "deleted", database: name });
+    } else {
+      console.log(`${green("✔")} Successfully deleted database '${name}'.`);
+    }
   }));
 
 export const databasesCommand = new Command<GlobalContext>()

@@ -21,6 +21,7 @@ import {
 import { publish, waitForRevision } from "../publish.ts";
 import { resolve } from "@std/path";
 import { error } from "../../util.ts";
+import { green } from "@std/fmt/colors";
 
 export const createCommand = new Command<GlobalContext>()
   .description(
@@ -399,7 +400,9 @@ export async function createApp(
   });
 
   console.log(
-    `Created app, view it at ${context.endpoint}/${data.org}/${data.app}`,
+    `${
+      green("✔")
+    } Created app, view it at ${context.endpoint}/${data.org}/${data.app}`,
   );
 
   if (data.repo === undefined) {

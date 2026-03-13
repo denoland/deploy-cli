@@ -1,6 +1,6 @@
 import { createTrpcClient, getAuth } from "./auth.ts";
 import type { GlobalContext } from "./main.ts";
-import { error } from "./util.ts";
+import { error, requireInteractive } from "./util.ts";
 import {
   type PromptEntry,
   promptSelect,
@@ -42,6 +42,10 @@ export async function getOrg(
     } else if (orgs.length === 1) {
       org = orgs[0].slug;
     } else {
+      requireInteractive(
+        context,
+        "Use --org to specify the organization.",
+      );
       const selectedOrg = promptSelect(
         "Select an organization:",
         orgs.map((org) => ({ label: `${org.name} (${org.slug})`, value: org })),
@@ -109,6 +113,10 @@ export async function getApp(
       name: string;
       slug: string;
     }>;
+    requireInteractive(
+      context,
+      "Use --app to specify the application.",
+    );
     const appStrings: PromptEntry<{ name: string; slug: string } | null>[] =
       apps.map((app) => ({ label: app.slug, value: app }));
     if (canCreate) {
@@ -118,8 +126,7 @@ export async function getApp(
       clear: true,
     });
     if (!selectedApp) {
-      console.error("No application was selected.");
-      Deno.exit(1);
+      error(context, "No application was selected.");
     }
 
     if (selectedApp.value === null) {

@@ -1,6 +1,7 @@
 import { Command } from "@cliffy/command";
 import { parse as dotEnvParse } from "@std/dotenv";
-import { error, tablePrinter } from "../util.ts";
+import { error, isInteractive, jsonOutput, tablePrinter } from "../util.ts";
+import { green } from "@std/fmt/colors";
 import { createTrpcClient } from "../auth.ts";
 import type { GlobalContext } from "../main.ts";
 import { actionHandler, getApp, getOrg } from "../config.ts";
@@ -24,7 +25,7 @@ type EnvCommandContext = GlobalContext & {
 };
 
 const envListCommand = new Command<EnvCommandContext>()
-  .description("List all environmental variables in an application")
+  .description("List all environment variables in an application")
   .action(actionHandler(async (config, options) => {
     const org = await getOrg(options, config, options.org);
     const { app } = await getApp(options, config, false, org, options.app);
@@ -36,17 +37,31 @@ const envListCommand = new Command<EnvCommandContext>()
       app,
     }) as EnvVar[];
 
-    if (envVars.length === 0) {
-      console.log(
-        "There are no environmental variables set on this application.",
-      );
-      return;
-    }
-
     const contexts = await trpcClient.query(
       "envVarsContexts.listContexts",
       { org },
     ) as Context[];
+
+    if (options.json) {
+      jsonOutput(envVars.map((envVar) => ({
+        key: envVar.key,
+        value: envVar.value ?? null,
+        isSecret: envVar.is_secret,
+        contexts: envVar.context_ids
+          ? envVar.context_ids.map((id) =>
+            contexts.find((c) => c.id === id)!.name
+          )
+          : null,
+      })));
+      return;
+    }
+
+    if (envVars.length === 0) {
+      console.log(
+        "There are no environment variables set on this application.",
+      );
+      return;
+    }
 
     const contextTitle = `CONTEXTS (${
       contexts.map((context) => context.name).join(", ")
@@ -78,9 +93,11 @@ const envListCommand = new Command<EnvCommandContext>()
   }));
 
 const envAddCommand = new Command<EnvCommandContext>()
-  .description("Add an environmental variable to the application")
+  .description("Add an environment variable to the application")
   .option("--secret", "If the value should be secret", { default: false })
   .arguments("<variable:string> <value:string>")
+  .example("Add a variable", "add DATABASE_URL postgres://localhost/mydb")
+  .example("Add a secret", "add --secret API_KEY sk-1234")
   .action(actionHandler(async (config, options, variable, value) => {
     const org = await getOrg(options, config, options.org);
     const { app } = await getApp(options, config, false, org, options.app);
@@ -107,14 +124,20 @@ const envAddCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(
-      `Environmental variable '${variable}' has been successfully set.`,
-    );
+    if (options.json) {
+      jsonOutput({ ok: true, key: variable, action: "added" });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } Environment variable '${variable}' has been successfully set.`,
+      );
+    }
   }));
 
 const envUpdateValueCommand = new Command<EnvCommandContext>()
   .description(
-    "Update the value of an environmental variable in the application",
+    "Update the value of an environment variable in the application",
   )
   .arguments("<variable:string> <value:string>")
   .action(actionHandler(async (config, options, variable, value) => {
@@ -131,7 +154,10 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      error(options, `Environment variable '${variable}' not found`);
+      error(
+        options,
+        `Environment variable '${variable}' not found.\nUse 'env list' to see available variables.`,
+      );
     }
 
     await trpcClient.mutation("envVarsContexts.updateEnvVars", {
@@ -144,14 +170,20 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(
-      `The value of the environmental variable '${variable}' has been successfully updated.`,
-    );
+    if (options.json) {
+      jsonOutput({ ok: true, key: variable, action: "updated" });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } The value of environment variable '${variable}' has been successfully updated.`,
+      );
+    }
   }));
 
 const envUpdateContextsCommand = new Command<EnvCommandContext>()
   .description(
-    `Update the contexts of an environmental variable in the application
+    `Update the contexts of an environment variable in the application
 You can define no contexts, which is the equivalent to "All"`,
   )
   .arguments("<variable:string> [new-contexts...:string]")
@@ -168,7 +200,10 @@ You can define no contexts, which is the equivalent to "All"`,
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      error(options, `Environment variable '${variable}' not found`);
+      error(
+        options,
+        `Environment variable '${variable}' not found.\nUse 'env list' to see available variables.`,
+      );
     }
 
     const contexts = await trpcClient.query(
@@ -197,13 +232,19 @@ You can define no contexts, which is the equivalent to "All"`,
       remove: [],
     });
 
-    console.log(
-      `The contexts of the environmental variable '${variable}' have been successfully updated`,
-    );
+    if (options.json) {
+      jsonOutput({ ok: true, key: variable, action: "contexts-updated" });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } The contexts of environment variable '${variable}' have been successfully updated.`,
+      );
+    }
   }));
 
 const envDeleteCommand = new Command<EnvCommandContext>()
-  .description("Delete an environmental variable in the application")
+  .description("Delete an environment variable in the application")
   .arguments("variable:string")
   .action(actionHandler(async (config, options, variable) => {
     const org = await getOrg(options, config, options.org);
@@ -218,7 +259,10 @@ const envDeleteCommand = new Command<EnvCommandContext>()
     const envVar = envVars.find((envVar) => envVar.key === variable);
 
     if (!envVar) {
-      error(options, `Environment variable '${variable}' not found`);
+      error(
+        options,
+        `Environment variable '${variable}' not found.\nUse 'env list' to see available variables.`,
+      );
     }
 
     await trpcClient.mutation("envVarsContexts.updateEnvVars", {
@@ -228,9 +272,15 @@ const envDeleteCommand = new Command<EnvCommandContext>()
       remove: [envVar.id],
     });
 
-    console.log(
-      `Environmental variable '${variable}' has been successfully deleted`,
-    );
+    if (options.json) {
+      jsonOutput({ ok: true, key: variable, action: "deleted" });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } Environment variable '${variable}' has been successfully deleted.`,
+      );
+    }
   }));
 
 const PUBLIC_REGEX = /^PUBLIC_|^NEXT_PUBLIC_/;
@@ -244,13 +294,23 @@ function isSecretKey(key: string): boolean {
 
 const envLoadCommand = new Command<EnvCommandContext>()
   .description(
-    "Load environmental variables from a .env file into the application",
+    "Load environment variables from a .env file into the application",
   )
   .option(
     "--non-secrets <keys...:string>",
     "Which keys in the .env file to treat as non-secrets",
   )
+  .option(
+    "--replace",
+    "Replace existing env vars without prompting",
+  )
+  .option(
+    "--skip-existing",
+    "Skip existing env vars without prompting",
+  )
   .arguments("<file:string>")
+  .example("Load from .env file", "load .env")
+  .example("Replace existing variables", "load --replace .env.production")
   .action(actionHandler(async (config, options, file) => {
     const org = await getOrg(options, config, options.org);
     const { app } = await getApp(options, config, false, org, options.app);
@@ -308,33 +368,44 @@ const envLoadCommand = new Command<EnvCommandContext>()
     }
 
     if (updateEnvVars.length > 0) {
-      console.log("The following env vars are already defined:");
-      for (const updateEnvVar of updateEnvVars) {
-        console.log(` - ${updateEnvVar.key}`);
-      }
-      console.log();
-      outer: while (true) {
-        const res = prompt(
-          "Would you like to replace these with your .env file? [y = Yes, n = No, s = Ignore/Skip]",
+      if (options.skipExisting) {
+        updateEnvVars = [];
+      } else if (options.replace) {
+        // proceed with updates
+      } else if (!isInteractive()) {
+        error(
+          options,
+          "Existing env vars found and stdin is not a terminal.\nUse --replace to overwrite or --skip-existing to skip.",
         );
-        if (res) {
-          switch (res.toLowerCase()) {
-            case "y": {
-              break outer;
-            }
+      } else {
+        console.log("The following env vars are already defined:");
+        for (const updateEnvVar of updateEnvVars) {
+          console.log(` - ${updateEnvVar.key}`);
+        }
+        console.log();
+        outer: while (true) {
+          const res = prompt(
+            "Would you like to replace these with your .env file? [y = Yes, n = No, s = Ignore/Skip]",
+          );
+          if (res) {
+            switch (res.toLowerCase()) {
+              case "y": {
+                break outer;
+              }
 
-            // deno-lint-ignore no-fallthrough
-            case "n": {
-              error(options, "Env vars are already defined, exiting");
-            }
-            case "s": {
-              updateEnvVars = [];
-              break outer;
+              // deno-lint-ignore no-fallthrough
+              case "n": {
+                error(options, "Env vars are already defined, exiting");
+              }
+              case "s": {
+                updateEnvVars = [];
+                break outer;
+              }
             }
           }
         }
+        console.log();
       }
-      console.log();
     }
 
     await trpcClient.mutation("envVarsContexts.updateEnvVars", {
@@ -344,19 +415,32 @@ const envLoadCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(`.env file '${file}' has been successfully loaded.`);
+    if (options.json) {
+      jsonOutput({
+        ok: true,
+        added: addEnvVars.map((v) => v.key),
+        updated: updateEnvVars.map((v) => v.key),
+      });
+    } else {
+      console.log(
+        `${green("✔")} .env file '${file}' has been successfully loaded.`,
+      );
+    }
   }));
 
 export const envCommand = new Command<GlobalContext>()
-  .description("Modify environmental variables")
+  .description("Modify environment variables")
   .globalOption("--org <name:string>", "The name of the organization")
   .globalOption("--app <name:string>", "The name of the application")
   .action(() => {
     envCommand.showHelp();
   })
   .command("list", envListCommand)
+  .alias("ls")
   .command("add", envAddCommand)
   .command("update-value", envUpdateValueCommand)
   .command("update-contexts", envUpdateContextsCommand)
   .command("delete", envDeleteCommand)
+  .alias("remove")
+  .alias("rm")
   .command("load", envLoadCommand);

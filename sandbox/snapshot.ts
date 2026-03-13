@@ -2,7 +2,8 @@ import { Command } from "@cliffy/command";
 import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
-import { formatSize, tablePrinter } from "../util.ts";
+import { formatSize, jsonOutput, tablePrinter } from "../util.ts";
+import { green } from "@std/fmt/colors";
 import { actionHandler, getOrg } from "../config.ts";
 
 export const snapshotsCreateCommand = new Command<SandboxContext>()
@@ -23,7 +24,11 @@ export const snapshotsCreateCommand = new Command<SandboxContext>()
       const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
         slug: snapshotSlug,
       });
-      console.log(snapshot.id);
+      if (options.json) {
+        jsonOutput({ id: snapshot.id, slug: snapshotSlug });
+      } else {
+        console.log(`${green("✔")} Snapshot created: ${snapshot.id}`);
+      }
     }),
   );
 
@@ -45,6 +50,11 @@ export const snapshotsListCommand = new Command<SandboxContext>()
       limit: 100,
       search,
     });
+
+    if (options.json) {
+      jsonOutput(list.items);
+      return;
+    }
 
     tablePrinter(
       ["ID", "SLUG", "REGION", "ALLOCATED", "FLATTENED", "BOOTABLE", "BASE"],
@@ -78,6 +88,11 @@ export const snapshotsDeleteCommand = new Command<SandboxContext>()
     });
 
     await client.snapshots.delete(idOrSlug);
+    if (options.json) {
+      jsonOutput({ ok: true, action: "deleted", snapshot: idOrSlug });
+    } else {
+      console.log(`${green("✔")} Successfully deleted snapshot '${idOrSlug}'.`);
+    }
   }));
 
 export const snapshotsCommand = new Command<SandboxContext>()
