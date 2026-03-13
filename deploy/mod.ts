@@ -211,6 +211,8 @@ deploy your local directory to the specified application.`)
   .globalOption("--ignore <path:string>", "Ignore particular source files", {
     collect: true,
   })
+  .globalOption("--json", "Output results as JSON")
+  .globalOption("-q, --quiet", "Suppress non-essential output")
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
   .option("--prod", "Deploy directly to production")
@@ -234,17 +236,6 @@ deploy your local directory to the specified application.`)
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
       tokenStorage.set(tokenEnv, true);
-    }
-
-    // Parse --json and --quiet flags manually to avoid Cliffy type issues
-    // with subcommand nesting
-    if (Deno.args.includes("--json")) {
-      (options as GlobalContext).json = true;
-    }
-    if (
-      Deno.args.includes("--quiet") || Deno.args.includes("-q")
-    ) {
-      (options as GlobalContext).quiet = true;
     }
   })
   .action(

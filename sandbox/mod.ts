@@ -630,6 +630,8 @@ export const sandboxCommand = new Command<GlobalContext>()
   .globalOption("--token <token:string>", "Auth token to use")
   .globalOption("--config <config:string>", "Path for the config file")
   .globalOption("--org <name:string>", "The name of the organization")
+  .globalOption("--json", "Output results as JSON")
+  .globalOption("-q, --quiet", "Suppress non-essential output")
   .globalAction((options) => {
     const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
     if (endpoint) {
@@ -644,30 +646,34 @@ export const sandboxCommand = new Command<GlobalContext>()
     if (tokenEnv) {
       tokenStorage.set(tokenEnv, true);
     }
-
-    if (Deno.args.includes("--json")) {
-      (options as GlobalContext).json = true;
-    }
-    if (Deno.args.includes("--quiet") || Deno.args.includes("-q")) {
-      (options as GlobalContext).quiet = true;
-    }
   })
   .action(() => {
     sandboxCommand.showHelp();
   })
-  .command("create", sandboxCreateCommand)
+  // deno-lint-ignore no-explicit-any
+  .command("create", sandboxCreateCommand as any)
   .alias("new")
-  .command("list", sandboxListCommand)
+  // deno-lint-ignore no-explicit-any
+  .command("list", sandboxListCommand as any)
   .alias("ls")
-  .command("kill", sandboxKillCommand)
+  // deno-lint-ignore no-explicit-any
+  .command("kill", sandboxKillCommand as any)
   .alias("remove")
   .alias("rm")
-  .command("copy", sandboxCopyCommand)
+  // deno-lint-ignore no-explicit-any
+  .command("copy", sandboxCopyCommand as any)
   .alias("cp")
-  .command("exec", sandboxExecCommand)
-  .command("extend", sandboxExtendCommand)
-  .command("ssh", sandboxSshCommand)
-  .command("deploy", sandboxDeployCommand)
-  .command("volumes", volumesCommand)
-  .command("snapshots", snapshotsCommand)
-  .command("switch", createSwitchCommand(false));
+  // deno-lint-ignore no-explicit-any
+  .command("exec", sandboxExecCommand as any)
+  // deno-lint-ignore no-explicit-any
+  .command("extend", sandboxExtendCommand as any)
+  // deno-lint-ignore no-explicit-any
+  .command("ssh", sandboxSshCommand as any)
+  // deno-lint-ignore no-explicit-any
+  .command("deploy", sandboxDeployCommand as any)
+  // deno-lint-ignore no-explicit-any
+  .command("volumes", volumesCommand as any)
+  // deno-lint-ignore no-explicit-any
+  .command("snapshots", snapshotsCommand as any)
+  // deno-lint-ignore no-explicit-any
+  .command("switch", createSwitchCommand(false) as any);
