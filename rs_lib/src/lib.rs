@@ -81,8 +81,15 @@ fn inner_resolve_config(
       files,
     })
   } else {
+    let path = workspace_dir
+      .member_deno_json()
+      .map(|member| member.specifier.to_string())
+      .or_else(|| {
+        workspace_dir.workspace.root_deno_json()
+          .map(|member| member.specifier.to_string())
+      });
     Ok(ConfigLookup {
-      path: None,
+      path,
       files: collect_files(
         &real_sys,
         root_path.clone(),
