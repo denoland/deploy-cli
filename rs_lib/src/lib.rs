@@ -67,8 +67,7 @@ fn inner_resolve_config(
       .filter(|config| config.to_deploy_config().is_ok())
       .map(|member| member.specifier.to_string())
       .or_else(|| {
-        workspace_dir
-          .member_or_root_deno_json()
+        workspace_dir.workspace.root_deno_json()
           .filter(|config| config.to_deploy_config().is_ok())
           .map(|member| member.specifier.to_string())
       })
