@@ -17,6 +17,19 @@ import type { SandboxContext } from "./mod.ts";
 
 // --- Types ---
 
+// Represents a single event from a sandbox's activity log (HTTP requests,
+// process spawns, file operations, etc.). These come from ClickHouse via
+// the sandboxes.events tRPC query.
+interface SandboxEvent {
+  timestamp: string;
+  event_name: string;
+  body: string;
+  severity_text: string;
+  severity_number: number;
+  log_attributes: Record<string, string>;
+  resource_attributes: Record<string, string>;
+}
+
 interface SandboxInfo {
   id: string;
   status: "running" | "stopped";
@@ -43,12 +56,16 @@ interface DashboardState {
   labelFilter: string | null;
   sortBy: "created" | "status" | "region" | "label";
   sortAsc: boolean;
-  mode: "normal" | "extend" | "org" | "label";
+  mode: "normal" | "extend" | "org" | "label" | "events";
   statusMessage: string | null;
   orgs: OrgInfo[];
   orgSelectedIndex: number;
   labelPickerItems: string[];
   labelPickerIndex: number;
+  eventsLog: SandboxEvent[];
+  eventsSandboxId: string | null;
+  eventsAutoScroll: boolean;
+  eventsScrollOffset: number;
 }
 
 // --- ANSI escape helpers ---
@@ -105,6 +122,102 @@ async function killSandbox(
   }
 }
 
+// --- Event formatting ---
+
+// Takes a sandbox event and returns a single colored line for the events view.
+// Strips the "deno.sandbox." prefix from event names and maps common events
+// to human-readable summaries, similar to the web dashboard's EVENT_METADATA_MAP.
+function formatEvent(event: SandboxEvent, columns: number): string {
+  // Format timestamp as HH:MM:SS.mmm (time only, since events are recent)
+  const date = new Date(event.timestamp);
+  const timeStr = date.toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }) + "." + String(date.getMilliseconds()).padStart(3, "0");
+
+  // Strip the "deno.sandbox." prefix to get the short event name
+  const shortName = event.event_name.replace(/^deno\.sandbox\./, "");
+
+  // Parse log_attributes for common fields used in summaries
+  const attrs = event.log_attributes;
+
+  // Map event names to human-readable summaries, grouped by category
+  let summary: string;
+  let colorFn: (s: string) => string;
+
+  // Override color to red for error-level events
+  const isError = event.severity_text === "ERROR";
+
+  if (shortName === "start") {
+    summary = "Sandbox started";
+    colorFn = cyan;
+  } else if (shortName === "shutdown") {
+    summary = "Sandbox shut down";
+    colorFn = cyan;
+  } else if (shortName === "process.spawn") {
+    const cmd = attrs["command"] ?? "";
+    const args = attrs["args"] ?? "";
+    summary = `Spawn: ${cmd} ${args}`.trim();
+    colorFn = yellow;
+  } else if (shortName === "process.finished") {
+    const code = attrs["exit.code"] ?? "?";
+    summary = `Process exited (${code})`;
+    colorFn = yellow;
+  } else if (shortName === "process.kill") {
+    const signal = attrs["signal"] ?? "?";
+    summary = `Kill process (${signal})`;
+    colorFn = yellow;
+  } else if (shortName === "js.runtime.spawn") {
+    const entrypoint = attrs["entrypoint"] ?? "unknown";
+    summary = `Run: ${entrypoint}`;
+    colorFn = cyan;
+  } else if (shortName === "js.repl.spawn") {
+    summary = "Start REPL";
+    colorFn = cyan;
+  } else if (shortName === "js.http.ready") {
+    const pid = attrs["pid"] ?? "?";
+    summary = `HTTP ready (PID: ${pid})`;
+    colorFn = cyan;
+  } else if (shortName === "fetch") {
+    const method = attrs["method"] ?? "GET";
+    const url = attrs["url"] ?? "";
+    summary = `${method} ${url}`;
+    colorFn = green;
+  } else if (shortName === "expose.http") {
+    const domain = attrs["domain"] ?? "";
+    const port = attrs["port"] ?? "?";
+    summary = `Expose: ${domain} → :${port}`;
+    colorFn = green;
+  } else if (shortName.startsWith("fs.")) {
+    // Filesystem events: fs.read, fs.write, fs.mkdir, fs.remove, fs.rename, etc.
+    const action = shortName.replace("fs.", "").replace(/^\w/, (c) =>
+      c.toUpperCase()
+    );
+    const path = attrs["path"] ?? "";
+    summary = `${action}: ${path}`;
+    colorFn = dim;
+  } else {
+    // Fallback for any unrecognized event
+    const body = event.body ? ` ${event.body}` : "";
+    summary = `${shortName}${body}`;
+    colorFn = dim;
+  }
+
+  // Apply error color override
+  if (isError) colorFn = red;
+
+  // Truncate the summary if it would overflow the terminal width.
+  // 15 chars for the timestamp column ("  HH:MM:SS.mmm  ")
+  const maxSummaryWidth = columns - 17;
+  if (stripAnsiCode(summary).length > maxSummaryWidth) {
+    summary = summary.slice(0, maxSummaryWidth - 1) + "…";
+  }
+
+  return ` ${dim(timeStr)}  ${colorFn(summary)}`;
+}
+
 // --- Screen rendering ---
 
 // Builds the entire screen as one big string, then writes it all at once.
@@ -158,7 +271,58 @@ function renderScreen(state: DashboardState): string {
   // This keeps header + footer fixed and only the list rows scroll.
   const maxVisibleRows = rows - 3 - 1 - 2;
 
-  if (state.mode === "org") {
+  if (state.mode === "events") {
+    // Events tail view — shows a live-updating log of sandbox activity
+    const eventsTitle = bold(cyan(` Sandbox Events: ${state.eventsSandboxId}`));
+    const eventsOrgLabel = yellow(`Org: ${state.org}`);
+    const eventsTitlePad = columns - stripAnsiCode(eventsTitle).length -
+      stripAnsiCode(eventsOrgLabel).length;
+    lines[0] = eventsTitle + " ".repeat(Math.max(1, eventsTitlePad)) +
+      eventsOrgLabel;
+
+    const countStr = ` ${state.eventsLog.length} events`;
+    const eventsTimeStr = dim(
+      `Last refresh: ${
+        state.lastRefresh.toLocaleTimeString("en-US", { hour12: false })
+      }`,
+    );
+    const countPad = columns - stripAnsiCode(countStr).length -
+      stripAnsiCode(eventsTimeStr).length;
+    lines[1] = countStr + " ".repeat(Math.max(1, countPad)) + eventsTimeStr;
+
+    // Render the event lines
+    const eventCount = state.eventsLog.length;
+    if (eventCount === 0) {
+      lines.push("");
+      lines.push(dim("  No events yet. Waiting for activity..."));
+    } else {
+      // Determine which slice of events to show based on scroll position
+      let startIdx: number;
+      if (state.eventsAutoScroll) {
+        // Stick to the bottom — show the most recent events
+        startIdx = Math.max(0, eventCount - maxVisibleRows);
+      } else {
+        startIdx = Math.max(0, state.eventsScrollOffset);
+        startIdx = Math.min(startIdx, Math.max(0, eventCount - maxVisibleRows));
+      }
+      const endIdx = Math.min(startIdx + maxVisibleRows, eventCount);
+
+      for (let i = startIdx; i < endIdx; i++) {
+        lines.push(formatEvent(state.eventsLog[i], columns));
+      }
+
+      // Scroll indicators
+      if (eventCount > maxVisibleRows) {
+        const parts: string[] = [];
+        if (startIdx > 0) parts.push(dim("▲ more above"));
+        parts.push(
+          yellow(`[${startIdx + 1}–${endIdx} of ${eventCount}]`),
+        );
+        if (endIdx < eventCount) parts.push(dim("▼ more below"));
+        lines.push("  " + parts.join("  "));
+      }
+    }
+  } else if (state.mode === "org") {
     // Org picker — replaces the sandbox table when choosing an org
     lines.push(bold(cyan(" Select Organization")));
     lines.push(dim("  " + "NAME".padEnd(30) + "  " + "SLUG"));
@@ -314,7 +478,9 @@ function renderScreen(state: DashboardState): string {
   }
 
   // Footer — status messages and shortcut bar
-  if (state.mode === "extend") {
+  if (state.mode === "events") {
+    lines.push(state.error ? red(` ✗ Error: ${state.error}`) : "");
+  } else if (state.mode === "extend") {
     lines.push(
       bold(" Extend by: ") + "1) 5m  2) 15m  3) 30m  4) 1h  " +
         dim("(Esc cancel)"),
@@ -338,7 +504,9 @@ function renderScreen(state: DashboardState): string {
     lines.push("");
   }
 
-  const shortcuts = state.mode === "org"
+  const shortcuts = state.mode === "events"
+    ? " " + bold("↑/↓") + dim(" Scroll") + "  " + bold("Esc") + dim(" Back") + "  " + bold("q") + dim(" Quit")
+    : state.mode === "org"
     ? " " + green("●") + dim(" = active org")
     : state.mode === "label"
     ? " " + bold("←/→") + dim(" Select") + "  " + bold("Enter") + dim(" Apply") + "  " + bold("Esc") + dim(" Cancel")
@@ -352,6 +520,7 @@ function renderScreen(state: DashboardState): string {
       bold("l") + dim(" Filter label"),
       bold("o/O") + dim(" Sort"),
       bold("t") + dim(" Org"),
+      bold("T") + dim(" Events"),
       bold("r") + dim(" Refresh"),
       bold("q") + dim(" Quit"),
     ].join("  ");
@@ -443,6 +612,7 @@ async function* readKeypress(): AsyncGenerator<string> {
         else if (byte === 0x4f) yield "O"; // Toggle sort direction
         else if (byte === 0x63) yield "c"; // Copy
         else if (byte === 0x6c) yield "l"; // Label filter
+        else if (byte === 0x54) yield "T"; // Events tail view
         else if (byte === 0x74) yield "t"; // Team/org picker
         else if (byte === 0x0d) yield "enter"; // Enter/Return
         else if (byte === 0x31) yield "1"; // Extend presets
@@ -601,6 +771,10 @@ async function runDashboard(
     orgSelectedIndex: 0,
     labelPickerItems: [],
     labelPickerIndex: 0,
+    eventsLog: [],
+    eventsSandboxId: null,
+    eventsAutoScroll: true,
+    eventsScrollOffset: 0,
   };
 
   // Initial data fetch
@@ -626,6 +800,9 @@ async function runDashboard(
 
   // Auto-refresh timer — fires every 5 seconds to fetch fresh data
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Events polling timer — fires every 2.5 seconds while in events mode
+  let eventsTimer: ReturnType<typeof setInterval> | null = null;
 
   // This function refreshes the data and redraws the screen.
   // Used by both the timer and the manual refresh (r key).
@@ -656,6 +833,23 @@ async function runDashboard(
       state.selectedIndex = 0;
     }
 
+    Deno.stdout.writeSync(encoder.encode(renderScreen(state)));
+  };
+
+  // Fetches events for the currently-tailed sandbox and redraws the screen.
+  // Called on a 2.5-second interval while in events mode.
+  const fetchEvents = async () => {
+    if (state.mode !== "events" || !state.eventsSandboxId) return;
+    try {
+      const events = await client.query("sandboxes.events", {
+        org: state.org,
+        sandboxId: state.eventsSandboxId,
+      }) as SandboxEvent[];
+      state.eventsLog = events;
+      state.lastRefresh = new Date();
+    } catch (e) {
+      state.error = (e as Error).message;
+    }
     Deno.stdout.writeSync(encoder.encode(renderScreen(state)));
   };
 
@@ -781,6 +975,42 @@ async function runDashboard(
           continue;
         }
 
+        // When we're in events mode, only accept ↑/↓/Esc
+        if (state.mode === "events") {
+          if (key === "up") {
+            // Scroll up — disengage auto-scroll so the view stays put
+            state.eventsAutoScroll = false;
+            if (state.eventsScrollOffset > 0) {
+              state.eventsScrollOffset--;
+            }
+          } else if (key === "down") {
+            // Scroll down — re-engage auto-scroll when we reach the bottom
+            const { rows } = Deno.consoleSize();
+            const maxVisibleRows = rows - 3 - 1 - 2;
+            state.eventsScrollOffset++;
+            if (
+              state.eventsScrollOffset >=
+                state.eventsLog.length - maxVisibleRows
+            ) {
+              state.eventsAutoScroll = true;
+            }
+          } else if (key === "escape") {
+            // Exit events mode — stop events polling, restart sandbox refresh
+            state.mode = "normal";
+            state.eventsSandboxId = null;
+            state.eventsLog = [];
+            state.error = null;
+            if (eventsTimer) {
+              clearInterval(eventsTimer);
+              eventsTimer = null;
+            }
+            refreshTimer = setInterval(refreshAndRender, 5000);
+            await refreshAndRender();
+          }
+          Deno.stdout.writeSync(encoder.encode(renderScreen(state)));
+          continue;
+        }
+
         if (key === "up") {
           const filtered = getFilteredSandboxes(state);
           if (state.selectedIndex > 0) {
@@ -900,6 +1130,31 @@ async function runDashboard(
             );
             state.orgSelectedIndex = currentIdx >= 0 ? currentIdx : 0;
           }
+        } else if (key === "T") {
+          // Enter events tail view for the selected sandbox
+          const selected = getSelectedSandbox(state);
+          if (selected) {
+            state.eventsSandboxId = selected.id;
+            state.eventsLog = [];
+            state.eventsAutoScroll = true;
+            state.eventsScrollOffset = 0;
+            state.mode = "events";
+            state.error = null;
+
+            // Pause the sandbox list refresh while viewing events
+            if (refreshTimer) {
+              clearInterval(refreshTimer);
+              refreshTimer = null;
+            }
+
+            // Fetch events immediately so the view isn't empty
+            await fetchEvents();
+
+            // Start polling for new events every 2.5 seconds
+            eventsTimer = setInterval(fetchEvents, 2500);
+          } else {
+            state.statusMessage = "No sandbox selected";
+          }
         } else if (key === "c") {
           // Copy selected sandbox ID to clipboard
           const selected = getSelectedSandbox(state);
@@ -970,6 +1225,7 @@ async function runDashboard(
     }
   } finally {
     if (refreshTimer) clearInterval(refreshTimer);
+    if (eventsTimer) clearInterval(eventsTimer);
     Deno.removeSignalListener("SIGWINCH", resizeHandler);
     restoreTerminal();
     Deno.stdout.writeSync(encoder.encode(CLEAR_SCREEN + CURSOR_HOME));
