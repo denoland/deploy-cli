@@ -1,6 +1,6 @@
 import { Command, ValidationError } from "@cliffy/command";
 import type { GlobalContext } from "../../main.ts";
-import { actionHandler } from "../../config.ts";
+import { actionHandler, type ConfigContext } from "../../config.ts";
 import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
@@ -238,7 +238,7 @@ export const createCommand = new Command<GlobalContext>()
         buildDirectory = member?.path ??
           required(options.appDirectory, "app-directory");
       } else {
-        buildDirectory = options.appDirectory || "";
+        buildDirectory = options.appDirectory || "/";
       }
 
       let buildConfig;
@@ -314,9 +314,9 @@ export const createCommand = new Command<GlobalContext>()
     if (!options.dryRun) {
       await createApp(
         options,
+        config,
         data,
         rootPath,
-        options.allowNodeModules,
         options.wait,
       );
       config.org = data.org;
@@ -359,15 +359,15 @@ export interface CreateApp {
 
 export async function createApp(
   context: GlobalContext,
+  configContext: ConfigContext,
   data: CreateApp,
   rootPath: string,
-  allowNodeModules: boolean | undefined,
   wait: boolean | undefined,
 ) {
   const trpcClient = createTrpcClient(context);
   const buildConfig = {
     ...data.buildConfig,
-    buildDirectory: data.buildDirectory,
+    buildDirectory: data.buildDirectory || undefined,
     buildTimeout: data.buildTimeout,
     buildMemoryLimit: data.buildMemoryLimit,
   };
@@ -405,11 +405,11 @@ export async function createApp(
   if (data.repo === undefined) {
     await publish(
       context,
+      configContext,
       rootPath,
       data.org,
       data.app,
       true,
-      allowNodeModules ?? false,
       wait ?? false,
     );
   } else {

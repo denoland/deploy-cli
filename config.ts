@@ -6,15 +6,8 @@ import {
   promptSelect,
 } from "@std/cli/unstable-prompt-select";
 import { fromFileUrl, join, resolve } from "@std/path";
-import {
-  applyEdits as applyJSONCEdits,
-  modify as modifyJSONC,
-  parse as parseJSONC,
-} from "jsonc-parser";
-import {
-  resolve_config,
-  resolve_config_with_deploy_config,
-} from "./lib/rs_lib.js";
+import { parse as parseJSONC } from "@david/jsonc-morph";
+import { resolve_config } from "./lib/rs_lib.js";
 import { ValidationError } from "@cliffy/command";
 import { createFlow } from "./deploy/create/flow.ts";
 import { createApp } from "./deploy/create/mod.ts";
@@ -130,12 +123,12 @@ export async function getApp(
     }
 
     if (selectedApp.value === null) {
-      const data = await createFlow(context, rootPath!);
+      const data = await createFlow(context, rootPath!, org);
       await createApp(
         context,
+        config,
         data,
         rootPath!,
-        false,
         true,
       );
       config.org = data.org;
@@ -159,6 +152,7 @@ export async function getApp(
 export interface ConfigContext {
   org: undefined | string;
   app: undefined | string;
+  files: string[];
   configSaved: boolean;
   doNotCreate: boolean;
   save(): Promise<void>;
@@ -184,6 +178,8 @@ export function actionHandler<
       const config = await readConfig(
         rootPath?.(...args) ?? Deno.cwd(),
         context.config,
+        context.ignore ?? [],
+        context.allowNodeModules ?? false,
       );
       const configContext: ConfigContext = {
         ...getAppFromConfig(config),
@@ -230,56 +226,46 @@ export function actionHandler<
 }
 
 interface Config {
-  path: string;
-  content: string;
+  config?: {
+    path: string;
+    content: string;
+  };
+  files: string[];
 }
 
 async function readConfig(
   rootPath: string,
   maybeConfigPath: string | undefined,
-): Promise<Config | null> {
-  rootPath = resolve(rootPath);
-  if (maybeConfigPath) {
-    const content = await Deno.readTextFile(maybeConfigPath);
-    return { path: maybeConfigPath, content };
-  }
+  ignorePaths: string[],
+  allowNodeModules: boolean,
+): Promise<Config> {
+  const config = resolve_config(
+    resolve(maybeConfigPath || rootPath),
+    ignorePaths,
+    allowNodeModules,
+  );
 
-  // we prefer the configs with the deploy key. then we fallback to a general
-  // config, so when we set the values, it uses existing config files instead
-  // of trying to create a new one (which will still happen if no config file is found)
-
-  const configUrl = resolve_config_with_deploy_config(rootPath);
-
-  if (configUrl) {
-    const path = fromFileUrl(configUrl);
+  if (config.path) {
+    const path = fromFileUrl(config.path);
     const content = await Deno.readTextFile(path);
-    return { path, content };
+    return { config: { path, content }, files: config.files };
   }
 
-  const configUrlWithoutDeployConfig = resolve_config(rootPath);
-
-  if (configUrlWithoutDeployConfig) {
-    const path = fromFileUrl(configUrlWithoutDeployConfig);
-    const content = await Deno.readTextFile(path);
-    return { path, content };
-  }
-
-  return null;
+  return { files: config.files };
 }
 
 function getAppFromConfig(
-  configContent: Config | null,
-): { org: undefined | string; app: undefined | string } {
-  if (configContent) {
-    const config = parseJSONC(configContent.content);
-    if (
-      typeof config === "object" && config !== null && "deploy" in config &&
-      typeof config.deploy === "object" && config.deploy !== null &&
-      !Array.isArray(config.deploy)
-    ) {
+  configContent: Config,
+): { org: undefined | string; app: undefined | string; files: string[] } {
+  if (configContent.config) {
+    const config = parseJSONC(configContent.config.content);
+    const deployObj = config.asObject()?.getIfObject("deploy");
+
+    if (deployObj) {
       return {
-        org: config.deploy.org,
-        app: config.deploy.app,
+        org: deployObj.get("org")?.value()?.asString(),
+        app: deployObj.get("app")?.value()?.asString(),
+        files: configContent.files,
       };
     }
   }
@@ -287,18 +273,19 @@ function getAppFromConfig(
   return {
     org: undefined,
     app: undefined,
+    files: configContent.files,
   };
 }
 
 async function writeConfig(
-  configContent: Config | null,
+  configContent: Config,
   { org, app }: { org: undefined | string; app: undefined | string },
 ) {
   if (!org) {
     return;
   }
 
-  const content = configContent?.content ?? "{}\n";
+  const content = configContent.config?.content ?? "{}\n";
 
   const newConfig: Record<string, string> = { org };
 
@@ -306,19 +293,17 @@ async function writeConfig(
     newConfig.app = app;
   }
 
-  const edits = modifyJSONC(content, ["deploy"], newConfig, {
-    formattingOptions: {
-      insertSpaces: true,
-      tabSize: 2,
-    },
-  });
-  const out = applyJSONCEdits(content, edits);
+  const config = parseJSONC(content);
+  const deployObj = config.asObjectOrForce().getIfObjectOrForce("deploy");
+  deployObj.replaceWith(newConfig);
+  deployObj.ensureMultiline();
+
   await Deno.writeTextFile(
-    configContent?.path ?? join(Deno.cwd(), "deno.jsonc"),
-    out,
+    configContent.config?.path ?? join(Deno.cwd(), "deno.jsonc"),
+    config.toString() + "\n",
   );
 
-  if (!configContent) {
+  if (!configContent.config) {
     console.log(
       `Created configuration file at '${join(Deno.cwd(), "deno.jsonc")}'`,
     );

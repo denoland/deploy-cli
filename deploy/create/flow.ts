@@ -61,6 +61,7 @@ function logTitle(
 export async function createFlow(
   context: GlobalContext,
   rootPath: string,
+  preselectedOrg?: string,
 ): Promise<CreateApp> {
   const trpcClient = createTrpcClient(context);
 
@@ -71,8 +72,13 @@ export async function createFlow(
     id: string;
   }>;
 
-  if (orgs.length === 1) {
+  if (preselectedOrg) {
+    const fullOrg = orgs.find((org) => org.slug === preselectedOrg)!;
+    org = fullOrg.slug;
+    logTitle(TITLES.organization, fullOrg.name);
+  } else if (orgs.length === 1) {
     org = orgs[0].slug;
+    logTitle(TITLES.organization, orgs[0].name);
   } else {
     const selectedOrg = promptSelect(
       "Select an organization:",

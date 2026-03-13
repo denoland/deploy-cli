@@ -21,6 +21,8 @@ export type GlobalContext = {
   endpoint: string;
   token?: string;
   config?: string;
+  ignore?: string[];
+  allowNodeModules?: boolean;
 };
 
 if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
