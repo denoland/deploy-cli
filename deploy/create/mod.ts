@@ -239,7 +239,7 @@ export const createCommand = new Command<GlobalContext>()
         buildDirectory = member?.path ??
           required(options.appDirectory, "app-directory");
       } else {
-        buildDirectory = options.appDirectory || "/";
+        buildDirectory = options.appDirectory || "";
       }
 
       let buildConfig;
