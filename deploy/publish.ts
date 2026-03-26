@@ -4,7 +4,7 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
 import { authedFetch, createTrpcClient } from "../auth.ts";
-import { error, jsonOutput } from "../util.ts";
+import { error } from "../util.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
 
@@ -30,7 +30,7 @@ export async function publish(
   prod: boolean,
   wait: boolean,
 ) {
-  const quiet = context.quiet || context.json;
+  const quiet = context.quiet;
 
   const spinner = new Spinner({
     message: `Publishing '${resolve(rootPath)}'`,
@@ -272,7 +272,7 @@ export async function waitForRevision(
   revisionId: string,
   revision?: Revision,
 ) {
-  const quiet = context.quiet || context.json;
+  const quiet = context.quiet;
   const trpcClient = createTrpcClient(context);
 
   if (!quiet) {
@@ -324,20 +324,11 @@ export async function waitForRevision(
 
   completionSpinner.stop();
   if (revision?.status === "cancelled" || revision?.status === "failed") {
-    if (context.json) {
-      jsonOutput({
-        ok: false,
-        revisionId,
-        status: revision.status,
-        url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
-      });
-    } else {
-      console.log(
-        `\n${red("✗")} The revision ${
-          revision.status === "cancelled" ? "was " : ""
-        }${revision.status}.\n  Please view the revision in the dashboard for more information.`,
-      );
-    }
+    console.log(
+      `\n${red("✗")} The revision ${
+        revision.status === "cancelled" ? "was " : ""
+      }${revision.status}.\n  Please view the revision in the dashboard for more information.`,
+    );
     Deno.exit(1);
   }
 
@@ -347,22 +338,13 @@ export async function waitForRevision(
     revision: revisionId,
   }) as Array<{ partition_config_name: string; domains: string[] }>;
 
-  if (context.json) {
-    jsonOutput({
-      ok: true,
-      revisionId,
-      url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
-      domains: timelines.flatMap((t) => t.domains.map((d) => `https://${d}`)),
-    });
-  } else {
-    console.log(`\n${green("✔")} Successfully deployed your application!`);
+  console.log(`\n${green("✔")} Successfully deployed your application!`);
 
-    for (const timeline of timelines) {
-      console.log(
-        `${timeline.partition_config_name} url:${
-          timeline.domains.map((domain) => `\n  https://${domain}`)
-        }`,
-      );
-    }
+  for (const timeline of timelines) {
+    console.log(
+      `${timeline.partition_config_name} url:${
+        timeline.domains.map((domain) => `\n  https://${domain}`)
+      }`,
+    );
   }
 }

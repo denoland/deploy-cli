@@ -128,7 +128,7 @@ const logsCommand = new Command<GlobalContext>()
         onData: (data: unknown) => {
           const typedData = data as "streaming" | null | LogEntry[];
           if (typedData === "streaming") {
-            if (!onceConnected && !options.json && !options.quiet) {
+            if (!onceConnected && !options.quiet) {
               console.log("connected, streaming logs...");
             }
             onceConnected = true;
@@ -140,19 +140,6 @@ const logsCommand = new Command<GlobalContext>()
                 continue;
               } else {
                 seenIds.add(id);
-              }
-
-              if (options.json) {
-                console.log(JSON.stringify({
-                  timestamp: log.Timestamp,
-                  traceId: log.TraceId || undefined,
-                  severity: log.SeverityText,
-                  body: log.Body,
-                  scope: log.ScopeName,
-                  revision: log.Revision,
-                  attributes: log.LogAttributes,
-                }));
-                continue;
               }
 
               const prefix = `[${renderTemporalTimestamp(log.Timestamp)}${
@@ -211,7 +198,6 @@ deploy your local directory to the specified application.`)
   .globalOption("--ignore <path:string>", "Ignore particular source files", {
     collect: true,
   })
-  .globalOption("--json", "Output results as JSON")
   .globalOption("-q, --quiet", "Suppress non-essential output")
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")

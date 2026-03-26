@@ -13,7 +13,6 @@ import { Spinner } from "@std/cli/unstable-spinner";
 
 import {
   formatDuration,
-  jsonOutput,
   parseSize,
   renderTemporalTimestamp,
   tablePrinter,
@@ -109,23 +108,13 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       region: options.region as Region,
       root: options.root,
     });
-    if (options.json) {
-      const result: Record<string, unknown> = { id: sandbox.id };
-      if (options.exposeHttp) {
-        result.url = await sandbox.exposeHttp({ port: options.exposeHttp });
-      }
-      jsonOutput(result);
-      if (options.timeout !== "session" && !options.ssh) {
-        Deno.exit();
-      }
-    } else if (options.timeout === "session" || options.ssh) {
+    if (options.timeout === "session" || options.ssh) {
       console.log(`${green("✔")} Created sandbox with id '${sandbox.id}'`);
     }
 
     if (options.copy) {
-      const quiet = options.quiet || options.json;
       let spinner: Spinner | undefined;
-      if (!quiet) {
+      if (!options.quiet) {
         spinner = new Spinner({
           message: "Copying files to the sandbox...",
           color: "yellow",
@@ -214,17 +203,6 @@ export const sandboxListCommand = new Command<SandboxContext>()
       cluster_hostname: string;
     }>;
 
-    if (options.json) {
-      jsonOutput(list.map((sandbox) => ({
-        id: sandbox.id,
-        status: sandbox.status,
-        region: sandbox.cluster_hostname.split(".")[0],
-        createdAt: sandbox.created_at,
-        stoppedAt: sandbox.stopped_at,
-      })));
-      return;
-    }
-
     tablePrinter(
       ["ID", "CREATED", "REGION", "STATUS", "UPTIME"],
       list,
@@ -277,11 +255,7 @@ export const sandboxKillCommand = new Command<SandboxContext>()
     }) as { success: boolean };
 
     if (res.success) {
-      if (options.json) {
-        jsonOutput({ ok: true, id: sandboxId });
-      } else {
-        console.log(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
-      }
+      console.log(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
     }
   }));
 
@@ -533,15 +507,11 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
       },
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, sandboxId, app });
-    } else {
-      console.log(
-        `${
-          green("✔")
-        } Successfully deployed sandbox '${sandboxId}' to app '${app}'.`,
-      );
-    }
+    console.log(
+      `${
+        green("✔")
+      } Successfully deployed sandbox '${sandboxId}' to app '${app}'.`,
+    );
   }));
 
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
@@ -630,7 +600,6 @@ export const sandboxCommand = new Command<GlobalContext>()
   .globalOption("--token <token:string>", "Auth token to use")
   .globalOption("--config <config:string>", "Path for the config file")
   .globalOption("--org <name:string>", "The name of the organization")
-  .globalOption("--json", "Output results as JSON")
   .globalOption("-q, --quiet", "Suppress non-essential output")
   .globalAction((options) => {
     const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");

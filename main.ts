@@ -3,7 +3,6 @@ import { greaterOrEqual, parse as semverParse } from "@std/semver";
 import { sandboxCommand } from "./sandbox/mod.ts";
 import { deployCommand } from "./deploy/mod.ts";
 import { actionHandler, getApp, getOrg } from "./config.ts";
-import { jsonOutput } from "./util.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -24,7 +23,6 @@ export type GlobalContext = {
   config?: string;
   ignore?: string[];
   allowNodeModules?: boolean;
-  json?: true;
   quiet?: true;
 };
 
@@ -50,14 +48,10 @@ export function createSwitchCommand(
         app = out.app;
       }
 
-      if (options.json) {
-        jsonOutput({ org, app: app ?? undefined });
-      } else {
-        console.log(
-          `Switched to organization '${org}'${
-            app ? ` and application '${app}'` : ""
-          }.`,
-        );
-      }
+      console.log(
+        `Switched to organization '${org}'${
+          app ? ` and application '${app}'` : ""
+        }.`,
+      );
     }));
 }

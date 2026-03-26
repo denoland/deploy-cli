@@ -2,7 +2,7 @@ import { Command } from "@cliffy/command";
 import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
-import { formatSize, jsonOutput, parseSize, tablePrinter } from "../util.ts";
+import { formatSize, parseSize, tablePrinter } from "../util.ts";
 import { green } from "@std/fmt/colors";
 import { actionHandler, getOrg } from "../config.ts";
 
@@ -36,11 +36,7 @@ export const volumesCreateCommand = new Command<SandboxContext>()
       from: options.from,
     });
 
-    if (options.json) {
-      jsonOutput({ id: volume.id, slug: name });
-    } else {
-      console.log(`${green("✔")} Volume created: ${volume.id}`);
-    }
+    console.log(`${green("✔")} Volume created: ${volume.id}`);
   }));
 
 export const volumesListCommand = new Command<SandboxContext>()
@@ -62,11 +58,6 @@ export const volumesListCommand = new Command<SandboxContext>()
       limit: 100,
       search,
     });
-
-    if (options.json) {
-      jsonOutput(list.items);
-      return;
-    }
 
     tablePrinter(
       ["ID", "SLUG", "REGION", "USED", "TOTAL", "BASE"],
@@ -100,11 +91,7 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
     });
 
     await client.volumes.delete(idOrSlug);
-    if (options.json) {
-      jsonOutput({ ok: true, action: "deleted", volume: idOrSlug });
-    } else {
-      console.log(`${green("✔")} Successfully deleted volume '${idOrSlug}'.`);
-    }
+    console.log(`${green("✔")} Successfully deleted volume '${idOrSlug}'.`);
   }));
 
 export const volumesSnapshotCommand = new Command<SandboxContext>()
@@ -126,11 +113,7 @@ export const volumesSnapshotCommand = new Command<SandboxContext>()
       const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
         slug: snapshotSlug,
       });
-      if (options.json) {
-        jsonOutput({ id: snapshot.id, slug: snapshotSlug });
-      } else {
-        console.log(`${green("✔")} Snapshot created: ${snapshot.id}`);
-      }
+      console.log(`${green("✔")} Snapshot created: ${snapshot.id}`);
     }),
   );
 

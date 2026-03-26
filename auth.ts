@@ -192,10 +192,13 @@ export async function getAuth(
   const authUrl = `${context.endpoint}/auth?code=${code}`;
 
   const spinner = new Spinner({
-    message: `Visit ${authUrl} to authorize deploying your project.`,
+    message: "",
     color: "yellow",
   });
-  if (!quiet) spinner.start();
+  console.log(`Visit ${authUrl} to authorize deploying your project.`);
+  if (!quiet) {
+    spinner.start();
+  }
 
   await open(authUrl);
 

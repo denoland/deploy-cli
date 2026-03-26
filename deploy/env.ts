@@ -1,6 +1,6 @@
 import { Command } from "@cliffy/command";
 import { parse as dotEnvParse } from "@std/dotenv";
-import { error, isInteractive, jsonOutput, tablePrinter } from "../util.ts";
+import { error, isInteractive, tablePrinter } from "../util.ts";
 import { green } from "@std/fmt/colors";
 import { createTrpcClient } from "../auth.ts";
 import type { GlobalContext } from "../main.ts";
@@ -41,20 +41,6 @@ const envListCommand = new Command<EnvCommandContext>()
       "envVarsContexts.listContexts",
       { org },
     ) as Context[];
-
-    if (options.json) {
-      jsonOutput(envVars.map((envVar) => ({
-        key: envVar.key,
-        value: envVar.value ?? null,
-        isSecret: envVar.is_secret,
-        contexts: envVar.context_ids
-          ? envVar.context_ids.map((id) =>
-            contexts.find((c) => c.id === id)!.name
-          )
-          : null,
-      })));
-      return;
-    }
 
     if (envVars.length === 0) {
       console.log(
@@ -124,15 +110,11 @@ const envAddCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, key: variable, action: "added" });
-    } else {
-      console.log(
-        `${
-          green("✔")
-        } Environment variable '${variable}' has been successfully set.`,
-      );
-    }
+    console.log(
+      `${
+        green("✔")
+      } Environment variable '${variable}' has been successfully set.`,
+    );
   }));
 
 const envUpdateValueCommand = new Command<EnvCommandContext>()
@@ -170,15 +152,11 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, key: variable, action: "updated" });
-    } else {
-      console.log(
-        `${
-          green("✔")
-        } The value of environment variable '${variable}' has been successfully updated.`,
-      );
-    }
+    console.log(
+      `${
+        green("✔")
+      } The value of environment variable '${variable}' has been successfully updated.`,
+    );
   }));
 
 const envUpdateContextsCommand = new Command<EnvCommandContext>()
@@ -232,15 +210,11 @@ You can define no contexts, which is the equivalent to "All"`,
       remove: [],
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, key: variable, action: "contexts-updated" });
-    } else {
-      console.log(
-        `${
-          green("✔")
-        } The contexts of environment variable '${variable}' have been successfully updated.`,
-      );
-    }
+    console.log(
+      `${
+        green("✔")
+      } The contexts of environment variable '${variable}' have been successfully updated.`,
+    );
   }));
 
 const envDeleteCommand = new Command<EnvCommandContext>()
@@ -272,15 +246,11 @@ const envDeleteCommand = new Command<EnvCommandContext>()
       remove: [envVar.id],
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, key: variable, action: "deleted" });
-    } else {
-      console.log(
-        `${
-          green("✔")
-        } Environment variable '${variable}' has been successfully deleted.`,
-      );
-    }
+    console.log(
+      `${
+        green("✔")
+      } Environment variable '${variable}' has been successfully deleted.`,
+    );
   }));
 
 const PUBLIC_REGEX = /^PUBLIC_|^NEXT_PUBLIC_/;
@@ -415,17 +385,9 @@ const envLoadCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    if (options.json) {
-      jsonOutput({
-        ok: true,
-        added: addEnvVars.map((v) => v.key),
-        updated: updateEnvVars.map((v) => v.key),
-      });
-    } else {
-      console.log(
-        `${green("✔")} .env file '${file}' has been successfully loaded.`,
-      );
-    }
+    console.log(
+      `${green("✔")} .env file '${file}' has been successfully loaded.`,
+    );
   }));
 
 export const envCommand = new Command<GlobalContext>()

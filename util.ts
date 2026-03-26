@@ -186,10 +186,6 @@ export function formatDuration(ms: number): string {
   return str;
 }
 
-export function jsonOutput(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
 export type SubTable = {
   headers: string[];
   rows: string[][];

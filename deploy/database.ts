@@ -1,11 +1,6 @@
 import { Command, ValidationError } from "@cliffy/command";
 import { createTrpcClient } from "../auth.ts";
-import {
-  error,
-  jsonOutput,
-  renderTemporalTimestamp,
-  tablePrinter,
-} from "../util.ts";
+import { error, renderTemporalTimestamp, tablePrinter } from "../util.ts";
 import { green } from "@std/fmt/colors";
 import type { GlobalContext } from "../main.ts";
 import { parse as parseConnectionString } from "pg-connection-string";
@@ -72,15 +67,11 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
         },
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, name, engine: options.kind });
-    } else {
-      console.log(
-        `${
-          green("✔")
-        } Successfully provisioned ${options.kind} database '${name}'.`,
-      );
-    }
+    console.log(
+      `${
+        green("✔")
+      } Successfully provisioned ${options.kind} database '${name}'.`,
+    );
   }));
 
 const databasesLinkCommand = new Command<DatabaseContext>()
@@ -168,11 +159,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         engine,
         connection_config: connectionConfig,
       });
-      if (options.json) {
-        jsonOutput({ ok: true, action: "test", name });
-      } else {
-        console.log(`${green("✔")} Connection test successful.`);
-      }
+      console.log(`${green("✔")} Connection test successful.`);
     } else {
       await trpcClient.mutation("databases.createInstance", {
         org: org,
@@ -180,11 +167,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         engine,
         connectionConfig,
       });
-      if (options.json) {
-        jsonOutput({ ok: true, action: "linked", name, engine });
-      } else {
-        console.log(`${green("✔")} Successfully linked database '${name}'.`);
-      }
+      console.log(`${green("✔")} Successfully linked database '${name}'.`);
     }
   }));
 
@@ -205,15 +188,11 @@ const databasesAssignCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, action: "assigned", database: name, app });
-    } else {
-      console.log(
-        `${
-          green("✔")
-        } Successfully assigned database '${name}' to app '${app}'.`,
-      );
-    }
+    console.log(
+      `${
+        green("✔")
+      } Successfully assigned database '${name}' to app '${app}'.`,
+    );
   }));
 
 const databasesDetachCommand = new Command<DatabaseContext>()
@@ -233,15 +212,11 @@ const databasesDetachCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, action: "detached", database: name, app });
-    } else {
-      console.log(
-        `${
-          green("✔")
-        } Successfully detached database '${name}' from app '${app}'.`,
-      );
-    }
+    console.log(
+      `${
+        green("✔")
+      } Successfully detached database '${name}' from app '${app}'.`,
+    );
   }));
 
 const databasesQueryCommand = new Command<DatabaseContext>()
@@ -272,9 +247,7 @@ const databasesQueryCommand = new Command<DatabaseContext>()
       });
 
       if (res.kind === "ok") {
-        if (options.json) {
-          jsonOutput(res.rows);
-        } else if (
+        if (
           Array.isArray(res.rows) && res.rows.length > 0 &&
           typeof res.rows[0] === "object" && res.rows[0] !== null
         ) {
@@ -347,22 +320,6 @@ const databasesListCommand = new Command<DatabaseContext>()
       } & ConnectionInfo
     >;
 
-    if (options.json) {
-      jsonOutput(list.map((db) => ({
-        name: db.slug,
-        engine: db.engine,
-        createdAt: db.created_at,
-        assignments: db.assignments.map((a) => a.app_slug),
-        connectionConfig: db.safeConnectionConfig,
-        databases: db.databases.map((d) => ({
-          name: d.name,
-          status: d.status,
-          createdAt: d.created_at,
-        })),
-      })));
-      return;
-    }
-
     tablePrinter(
       ["NAME", "ENGINE", "ASSIGNMENTS", "CONNECTION DETAILS"],
       list,
@@ -410,11 +367,7 @@ const databasesDeleteCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    if (options.json) {
-      jsonOutput({ ok: true, action: "deleted", database: name });
-    } else {
-      console.log(`${green("✔")} Successfully deleted database '${name}'.`);
-    }
+    console.log(`${green("✔")} Successfully deleted database '${name}'.`);
   }));
 
 export const databasesCommand = new Command<GlobalContext>()
