@@ -24,7 +24,7 @@ export const snapshotsCreateCommand = new Command<SandboxContext>()
       const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
         slug: snapshotSlug,
       });
-      console.log(`${green("✔")} Snapshot created: ${snapshot.id}`);
+      console.log(snapshot.id);
     }),
   );
 

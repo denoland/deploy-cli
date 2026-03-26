@@ -619,30 +619,19 @@ export const sandboxCommand = new Command<GlobalContext>()
   .action(() => {
     sandboxCommand.showHelp();
   })
-  // deno-lint-ignore no-explicit-any
-  .command("create", sandboxCreateCommand as any)
+  .command("create", sandboxCreateCommand)
   .alias("new")
-  // deno-lint-ignore no-explicit-any
-  .command("list", sandboxListCommand as any)
+  .command("list", sandboxListCommand)
   .alias("ls")
-  // deno-lint-ignore no-explicit-any
-  .command("kill", sandboxKillCommand as any)
+  .command("kill", sandboxKillCommand)
   .alias("remove")
   .alias("rm")
-  // deno-lint-ignore no-explicit-any
-  .command("copy", sandboxCopyCommand as any)
+  .command("copy", sandboxCopyCommand)
   .alias("cp")
-  // deno-lint-ignore no-explicit-any
-  .command("exec", sandboxExecCommand as any)
-  // deno-lint-ignore no-explicit-any
-  .command("extend", sandboxExtendCommand as any)
-  // deno-lint-ignore no-explicit-any
-  .command("ssh", sandboxSshCommand as any)
-  // deno-lint-ignore no-explicit-any
-  .command("deploy", sandboxDeployCommand as any)
-  // deno-lint-ignore no-explicit-any
-  .command("volumes", volumesCommand as any)
-  // deno-lint-ignore no-explicit-any
-  .command("snapshots", snapshotsCommand as any)
-  // deno-lint-ignore no-explicit-any
-  .command("switch", createSwitchCommand(false) as any);
+  .command("exec", sandboxExecCommand)
+  .command("extend", sandboxExtendCommand)
+  .command("ssh", sandboxSshCommand)
+  .command("deploy", sandboxDeployCommand)
+  .command("volumes", volumesCommand)
+  .command("snapshots", snapshotsCommand)
+  .command("switch", createSwitchCommand(false));

@@ -36,7 +36,7 @@ export const volumesCreateCommand = new Command<SandboxContext>()
       from: options.from,
     });
 
-    console.log(`${green("✔")} Volume created: ${volume.id}`);
+    console.log(volume.id);
   }));
 
 export const volumesListCommand = new Command<SandboxContext>()
@@ -113,7 +113,7 @@ export const volumesSnapshotCommand = new Command<SandboxContext>()
       const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
         slug: snapshotSlug,
       });
-      console.log(`${green("✔")} Snapshot created: ${snapshot.id}`);
+      console.log(snapshot.id);
     }),
   );
 
