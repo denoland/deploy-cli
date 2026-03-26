@@ -15,7 +15,7 @@ import {
 } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import { Spinner } from "@std/cli/unstable-spinner";
-import { error, isInteractive } from "./util.ts";
+import { error, requireInteractive } from "./util.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 import type { GlobalContext } from "./main.ts";
 
@@ -180,12 +180,10 @@ export async function getAuth(
     return storedAuth;
   }
 
-  if (!isInteractive()) {
-    error(
-      context,
-      "Authentication required but stdin is not a terminal.\nSet the DENO_DEPLOY_TOKEN environment variable or use --token.",
-    );
-  }
+  requireInteractive(
+    context,
+    "Set the DENO_DEPLOY_TOKEN environment variable or use --token.",
+  );
 
   const { code, exchangeToken, verifier } = await interactive(context);
 

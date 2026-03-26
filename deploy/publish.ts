@@ -31,12 +31,18 @@ export async function publish(
   wait: boolean,
 ) {
   const quiet = context.quiet;
+  // deno-lint-ignore no-explicit-any
+  const log: typeof console.log = quiet
+    ? () => {}
+    : console.log.bind(console) as any;
 
-  const spinner = new Spinner({
-    message: `Publishing '${resolve(rootPath)}'`,
-    color: "yellow",
-  });
-  if (!quiet) spinner.start();
+  function startSpinner(message: string): Spinner {
+    const spinner = new Spinner({ message, color: "yellow" });
+    if (!quiet) spinner.start();
+    return spinner;
+  }
+
+  const spinner = startSpinner(`Publishing '${resolve(rootPath)}'`);
 
   const stream: ReadableStream<Chunk> = ReadableStream.from(configContext.files)
     .pipeThrough(
@@ -73,7 +79,7 @@ export async function publish(
 
   const manifest: Record<string, string> = {};
 
-  if (!quiet) spinner.message = "Generating hashes...";
+  spinner.message = "Generating hashes...";
 
   for await (const { hash, relativePath } of counter) {
     manifest[relativePath.replaceAll(SEPARATOR, "/")] = hash;
@@ -96,23 +102,17 @@ export async function publish(
   ) as string;
 
   // doing this after we initiate the cli revision in case it fails (ie app not existing).
-  if (!quiet) {
-    spinner.message = `${green("✔")} Generated hashes`;
-    spinner.stop();
-    console.log(
-      `You can view the revision here:\n  ${context.endpoint}/${org}/${app}/builds/${revisionId}\n`,
-    );
-  } else {
-    spinner.stop();
-  }
+  spinner.message = `${green("✔")} Generated hashes`;
+  spinner.stop();
+  log(
+    `You can view the revision here:\n  ${context.endpoint}/${org}/${app}/builds/${revisionId}\n`,
+  );
 
   const missingHashesPromise = Promise.withResolvers<string[]>();
 
-  const existingFilesSpinner = new Spinner({
-    message: "Loading previously uploaded files...",
-    color: "yellow",
-  });
-  if (!quiet) existingFilesSpinner.start();
+  const existingFilesSpinner = startSpinner(
+    "Loading previously uploaded files...",
+  );
 
   let revision: Revision | undefined = undefined;
   const sub = trpcClient.subscription(
@@ -146,13 +146,13 @@ export async function publish(
   const missingHashes = await missingHashesPromise.promise;
 
   existingFilesSpinner.stop();
-  if (!quiet) console.log(`${green("✔")} Loaded previously uploaded files`);
+  log(`${green("✔")} Loaded previously uploaded files`);
 
   if (missingHashes.length > 0) {
     const skippedFilesCount = configContext.files.length - missingHashes.length;
 
-    if (!quiet && skippedFilesCount > 0) {
-      console.log(
+    if (skippedFilesCount > 0) {
+      log(
         `Found ${skippedFilesCount} already uploaded files, which will be skipped from uploading`,
       );
     }
@@ -240,26 +240,24 @@ export async function publish(
 
     if (!quiet) await progress.stop();
 
-    if (!quiet) console.log();
+    log();
 
     if (!resp.ok) {
       const resBody = await resp.json();
       error(context, resBody.message, resp);
     }
 
-    if (!quiet) console.log("Successfully uploaded your application!");
+    log("Successfully uploaded your application!");
   } else {
-    if (!quiet) {
-      console.log("No files were changed, so there is nothing to upload.");
-    }
+    log("No files were changed, so there is nothing to upload.");
   }
 
-  if (!quiet) console.log();
+  log();
 
   if (wait) {
     await waitForRevision(context, org, app, revisionId, revision);
-  } else if (!quiet) {
-    console.log(
+  } else {
+    log(
       "To see the deployment, go to the revision page and wait for the build to complete.",
     );
   }
@@ -273,13 +271,15 @@ export async function waitForRevision(
   revision?: Revision,
 ) {
   const quiet = context.quiet;
+  // deno-lint-ignore no-explicit-any
+  const log: typeof console.log = quiet
+    ? () => {}
+    : console.log.bind(console) as any;
   const trpcClient = createTrpcClient(context);
 
-  if (!quiet) {
-    console.log(
-      "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
-    );
-  }
+  log(
+    "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
+  );
 
   const completionSpinner = new Spinner({
     message: "Awaiting revision to complete...",
@@ -302,7 +302,7 @@ export async function waitForRevision(
         revision = newRevision;
         const lastStep = newRevision.steps.at(-1);
 
-        if (!quiet && lastStep) {
+        if (lastStep) {
           completionSpinner.message = lastStep.step;
         }
       },
