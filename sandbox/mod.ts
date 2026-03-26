@@ -36,7 +36,6 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
   .option("--copy <path:string>", "Copy files or directories to the sandbox", {
     collect: true,
   })
-  .option("-q, --quiet", "Don't pipe the command to the console")
   .option("--cwd <path:string>", "Working directory of the command")
   .option("--ssh", "SSH into the sandbox")
   .option("--expose-http <port:number>", "Expose the specified port")
@@ -110,21 +109,24 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       root: options.root,
     });
     if (options.timeout === "session" || options.ssh) {
-      console.log(`Created sandbox with id '${sandbox.id}'`);
+      console.log(`${green("✔")} Created sandbox with id '${sandbox.id}'`);
     }
 
     if (options.copy) {
-      const spinner = new Spinner({
-        message: "Copying files to the sandbox...",
-        color: "yellow",
-      });
-      spinner.start();
+      let spinner: Spinner | undefined;
+      if (!options.quiet) {
+        spinner = new Spinner({
+          message: "Copying files to the sandbox...",
+          color: "yellow",
+        });
+        spinner.start();
+      }
 
       await Promise.all(
         options.copy.map((path) => sandbox.fs.upload(path, "/app")),
       );
 
-      spinner.stop();
+      spinner?.stop();
     }
 
     if (options.exposeHttp) {
@@ -253,7 +255,7 @@ export const sandboxKillCommand = new Command<SandboxContext>()
     }) as { success: boolean };
 
     if (res.success) {
-      console.log(`Sandbox ${sandboxId} killed successfully`);
+      console.log(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
     }
   }));
 
@@ -435,7 +437,6 @@ export const sandboxExecCommand = new Command<SandboxContext>()
     "Using a specific working directory",
     "exec --cwd /app someSandboxId ls",
   )
-  .option("-q, --quiet", "Don't pipe the command to the console")
   .option("--cwd <path:string>", "Working directory of the command")
   .argument("<sandbox-id:string>", "The id of the sandbox", {
     default: Deno.env.get("SANDBOX_ID"),
@@ -505,6 +506,12 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
         args: options.args,
       },
     });
+
+    console.log(
+      `${
+        green("✔")
+      } Successfully deployed sandbox '${sandboxId}' to app '${app}'.`,
+    );
   }));
 
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
@@ -593,6 +600,7 @@ export const sandboxCommand = new Command<GlobalContext>()
   .globalOption("--token <token:string>", "Auth token to use")
   .globalOption("--config <config:string>", "Path for the config file")
   .globalOption("--org <name:string>", "The name of the organization")
+  .globalOption("-q, --quiet", "Suppress non-essential output")
   .globalAction((options) => {
     const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
     if (endpoint) {

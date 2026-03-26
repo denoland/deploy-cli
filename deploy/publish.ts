@@ -30,11 +30,19 @@ export async function publish(
   prod: boolean,
   wait: boolean,
 ) {
-  const spinner = new Spinner({
-    message: `Publishing '${resolve(rootPath)}'`,
-    color: "yellow",
-  });
-  spinner.start();
+  const quiet = context.quiet;
+  const log: typeof console.log = quiet
+    ? () => {}
+    // deno-lint-ignore no-explicit-any
+    : console.log.bind(console) as any;
+
+  function startSpinner(message: string): Spinner {
+    const spinner = new Spinner({ message, color: "yellow" });
+    if (!quiet) spinner.start();
+    return spinner;
+  }
+
+  const spinner = startSpinner(`Publishing '${resolve(rootPath)}'`);
 
   const stream: ReadableStream<Chunk> = ReadableStream.from(configContext.files)
     .pipeThrough(
@@ -96,18 +104,15 @@ export async function publish(
   // doing this after we initiate the cli revision in case it fails (ie app not existing).
   spinner.message = `${green("✔")} Generated hashes`;
   spinner.stop();
-
-  console.log(
+  log(
     `You can view the revision here:\n  ${context.endpoint}/${org}/${app}/builds/${revisionId}\n`,
   );
 
   const missingHashesPromise = Promise.withResolvers<string[]>();
 
-  const existingFilesSpinner = new Spinner({
-    message: "Loading previously uploaded files...",
-    color: "yellow",
-  });
-  existingFilesSpinner.start();
+  const existingFilesSpinner = startSpinner(
+    "Loading previously uploaded files...",
+  );
 
   let revision: Revision | undefined = undefined;
   const sub = trpcClient.subscription(
@@ -141,13 +146,13 @@ export async function publish(
   const missingHashes = await missingHashesPromise.promise;
 
   existingFilesSpinner.stop();
-  console.log(`${green("✔")} Loaded previously uploaded files`);
+  log(`${green("✔")} Loaded previously uploaded files`);
 
   if (missingHashes.length > 0) {
     const skippedFilesCount = configContext.files.length - missingHashes.length;
 
     if (skippedFilesCount > 0) {
-      console.log(
+      log(
         `Found ${skippedFilesCount} already uploaded files, which will be skipped from uploading`,
       );
     }
@@ -184,7 +189,7 @@ export async function publish(
         new TransformStream({
           transform({ internalPath, data, hash }, controller) {
             if (missingHashes.includes(hash)) {
-              progress.value += 1;
+              if (!quiet) progress.value += 1;
 
               controller.enqueue(
                 {
@@ -233,26 +238,26 @@ export async function publish(
       },
     );
 
-    await progress.stop();
+    if (!quiet) await progress.stop();
 
-    console.log();
+    log();
 
     if (!resp.ok) {
       const resBody = await resp.json();
       error(context, resBody.message, resp);
     }
 
-    console.log("Successfully uploaded your application!");
+    log("Successfully uploaded your application!");
   } else {
-    console.log("No files were changed, so there is nothing to upload.");
+    log("No files were changed, so there is nothing to upload.");
   }
 
-  console.log();
+  log();
 
   if (wait) {
     await waitForRevision(context, org, app, revisionId, revision);
   } else {
-    console.log(
+    log(
       "To see the deployment, go to the revision page and wait for the build to complete.",
     );
   }
@@ -265,9 +270,14 @@ export async function waitForRevision(
   revisionId: string,
   revision?: Revision,
 ) {
+  const quiet = context.quiet;
+  const log: typeof console.log = quiet
+    ? () => {}
+    // deno-lint-ignore no-explicit-any
+    : console.log.bind(console) as any;
   const trpcClient = createTrpcClient(context);
 
-  console.log(
+  log(
     "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
   );
 
@@ -275,7 +285,7 @@ export async function waitForRevision(
     message: "Awaiting revision to complete...",
     color: "yellow",
   });
-  completionSpinner.start();
+  if (!quiet) completionSpinner.start();
 
   const completionPromise = Promise.withResolvers<void>();
 
@@ -322,13 +332,13 @@ export async function waitForRevision(
     Deno.exit(1);
   }
 
-  console.log(`\n${green("✔")} Successfully deployed your application!`);
-
   const timelines = await trpcClient.query("revisions.listTimelines", {
     org,
     app,
     revision: revisionId,
   }) as Array<{ partition_config_name: string; domains: string[] }>;
+
+  console.log(`\n${green("✔")} Successfully deployed your application!`);
 
   for (const timeline of timelines) {
     console.log(

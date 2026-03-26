@@ -16,6 +16,7 @@ import {
 } from "@deno/framework-detect";
 import type { GlobalContext } from "../../main.ts";
 import type { CreateApp, Repo } from "./mod.ts";
+import { requireInteractive } from "../../util.ts";
 
 export const AVAILABLE_BUILD_TIMEOUTS = [5, 10, 15, 20, 25, 30];
 export const AVAILABLE_BUILD_MEMORY_LIMITS = [1024, 2048, 3072, 4096];
@@ -63,6 +64,10 @@ export async function createFlow(
   rootPath: string,
   preselectedOrg?: string,
 ): Promise<CreateApp> {
+  requireInteractive(
+    context,
+    "Use explicit flags (--org, --app, --source, etc.) to create an app non-interactively.",
+  );
   const trpcClient = createTrpcClient(context);
 
   let org;

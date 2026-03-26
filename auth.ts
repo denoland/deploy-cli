@@ -15,7 +15,7 @@ import {
 } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import { Spinner } from "@std/cli/unstable-spinner";
-import { error } from "./util.ts";
+import { error, requireInteractive } from "./util.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 import type { GlobalContext } from "./main.ts";
 
@@ -180,15 +180,23 @@ export async function getAuth(
     return storedAuth;
   }
 
+  requireInteractive(
+    context,
+    "Set the DENO_DEPLOY_TOKEN environment variable or use --token.",
+  );
+
   const { code, exchangeToken, verifier } = await interactive(context);
 
   const authUrl = `${context.endpoint}/auth?code=${code}`;
 
   const spinner = new Spinner({
-    message: `Visit ${authUrl} to authorize deploying your project.`,
+    message: "",
     color: "yellow",
   });
-  spinner.start();
+  console.log(`Visit ${authUrl} to authorize deploying your project.`);
+  if (!quiet) {
+    spinner.start();
+  }
 
   await open(authUrl);
 
@@ -215,12 +223,11 @@ export async function interactive(context: GlobalContext): Promise<
   });
 
   if (!res.ok) {
-    console.error("An error occurred during authentication, exiting...");
-    if (context.debug) {
-      console.log(res);
-      console.log(await res.json());
-    }
-    Deno.exit(1);
+    error(
+      context,
+      "An error occurred during authentication, exiting...",
+      res,
+    );
   }
 
   const body = await res.json();

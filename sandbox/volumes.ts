@@ -3,6 +3,7 @@ import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
 import { formatSize, parseSize, tablePrinter } from "../util.ts";
+import { green } from "@std/fmt/colors";
 import { actionHandler, getOrg } from "../config.ts";
 
 export const volumesCreateCommand = new Command<SandboxContext>()
@@ -90,6 +91,7 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
     });
 
     await client.volumes.delete(idOrSlug);
+    console.log(`${green("✔")} Successfully deleted volume '${idOrSlug}'.`);
   }));
 
 export const volumesSnapshotCommand = new Command<SandboxContext>()

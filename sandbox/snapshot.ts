@@ -3,6 +3,7 @@ import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
 import { formatSize, tablePrinter } from "../util.ts";
+import { green } from "@std/fmt/colors";
 import { actionHandler, getOrg } from "../config.ts";
 
 export const snapshotsCreateCommand = new Command<SandboxContext>()
@@ -78,6 +79,7 @@ export const snapshotsDeleteCommand = new Command<SandboxContext>()
     });
 
     await client.snapshots.delete(idOrSlug);
+    console.log(`${green("✔")} Successfully deleted snapshot '${idOrSlug}'.`);
   }));
 
 export const snapshotsCommand = new Command<SandboxContext>()
