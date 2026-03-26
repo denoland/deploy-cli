@@ -31,9 +31,9 @@ export async function publish(
   wait: boolean,
 ) {
   const quiet = context.quiet;
-  // deno-lint-ignore no-explicit-any
   const log: typeof console.log = quiet
     ? () => {}
+    // deno-lint-ignore no-explicit-any
     : console.log.bind(console) as any;
 
   function startSpinner(message: string): Spinner {
@@ -271,9 +271,9 @@ export async function waitForRevision(
   revision?: Revision,
 ) {
   const quiet = context.quiet;
-  // deno-lint-ignore no-explicit-any
   const log: typeof console.log = quiet
     ? () => {}
+    // deno-lint-ignore no-explicit-any
     : console.log.bind(console) as any;
   const trpcClient = createTrpcClient(context);
 
