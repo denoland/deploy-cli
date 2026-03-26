@@ -189,9 +189,7 @@ const databasesAssignCommand = new Command<DatabaseContext>()
     });
 
     console.log(
-      `${
-        green("✔")
-      } Successfully assigned database '${name}' to app '${app}'.`,
+      `${green("✔")} Successfully assigned database '${name}' to app '${app}'.`,
     );
   }));
 
