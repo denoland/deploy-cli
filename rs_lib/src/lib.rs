@@ -6,6 +6,7 @@ use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 use serde::Serialize;
 use std::path::PathBuf;
+use sys_traits::FsMetadata;
 use url::Url;
 use wasm_bindgen::prelude::*;
 
@@ -35,10 +36,26 @@ fn inner_resolve_config(
 ) -> Result<ConfigLookup, anyhow::Error> {
   let real_sys = sys_traits::impls::RealSys;
   let root_path = resolve_absolute_path(root_path)?;
-  let root_paths = [root_path.clone()];
+
+  // When --config points to a file (not a directory), use ConfigFile
+  // discovery so non-standard filenames like deno-staging.json work.
+  let is_config_file = real_sys.fs_is_file(&root_path).unwrap_or(false);
+  let dir_path = if is_config_file {
+    root_path.parent().unwrap().to_path_buf()
+  } else {
+    root_path.clone()
+  };
+
+  let dir_paths = [dir_path.clone()];
+  let discover_start = if is_config_file {
+    WorkspaceDiscoverStart::ConfigFile(&root_path)
+  } else {
+    WorkspaceDiscoverStart::Paths(&dir_paths)
+  };
+
   let workspace_dir = WorkspaceDirectory::discover(
     &real_sys,
-    WorkspaceDiscoverStart::Paths(&root_paths),
+    discover_start,
     &WorkspaceDiscoverOptions {
       additional_config_file_names: &[],
       deno_json_cache: None,
@@ -49,11 +66,11 @@ fn inner_resolve_config(
     },
   )?;
 
-  let mut pattern = FilePatterns::new_with_base(root_path.clone());
+  let mut pattern = FilePatterns::new_with_base(dir_path.clone());
 
   if !ignore_paths.is_empty() {
     let exclude = PathOrPatternSet::from_exclude_relative_path_or_patterns(
-      &root_path,
+      &dir_path,
       &ignore_paths,
     )?;
     pattern
@@ -75,7 +92,7 @@ fn inner_resolve_config(
         "workspace_dir.to_deploy_config should have resolved a specifier",
       );
     let files =
-      collect_files(&real_sys, root_path, config.files, allow_node_modules);
+      collect_files(&real_sys, dir_path, config.files, allow_node_modules);
     Ok(ConfigLookup {
       path: Some(specifier),
       files,
@@ -92,8 +109,8 @@ fn inner_resolve_config(
       path,
       files: collect_files(
         &real_sys,
-        root_path.clone(),
-        FilePatterns::new_with_base(root_path),
+        dir_path.clone(),
+        FilePatterns::new_with_base(dir_path),
         allow_node_modules,
       ),
     })
