@@ -23,7 +23,9 @@ export function error(
 ): never {
   console.error();
   console.error(`${red("✗")} An error occurred:`);
-  console.error(`  ${String(error ?? "Unknown error").replaceAll("\n", "\n  ")}`);
+  console.error(
+    `  ${String(error ?? "Unknown error").replaceAll("\n", "\n  ")}`,
+  );
   const trace = response?.headers.get("x-deno-trace-id");
   if (context.debug) {
     console.error(`  stack:\n${new Error().stack}`);
