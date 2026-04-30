@@ -356,7 +356,7 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
                 const tempDir = await Deno.makeTempDir();
 
                 await Array.fromAsync(pooledMap(
-                  Infinity,
+                  Number.MAX_SAFE_INTEGER,
                   sourceSandbox.fs.expandGlob(sourceSandboxPath),
                   async (sandboxEntry) => {
                     const tempPath = join(tempDir, sandboxEntry.path);
@@ -367,7 +367,7 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
                     );
 
                     await Array.fromAsync(pooledMap(
-                      Infinity,
+                      Number.MAX_SAFE_INTEGER,
                       expandGlob(`${tempPath}/*`),
                       (localEntry) =>
                         targetSandbox.fs.upload(
@@ -415,7 +415,7 @@ export const sandboxCopyCommand = new Command<SandboxContext>()
 
           await Promise.all(sandboxPaths.map(async (sandboxPath) => {
             await Array.fromAsync(pooledMap(
-              Infinity,
+              Number.MAX_SAFE_INTEGER,
               sandbox.fs.expandGlob(sandboxPath),
               (entry) => sandbox.fs.download(entry.path, target),
             ));

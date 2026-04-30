@@ -16,6 +16,12 @@ jobs:
           submodules: true
 
       - uses: denoland/setup-deno@v2
+        with:
+          # Pinned to avoid TLS panic in `deno sandbox copy/extend` (regression
+          # present in at least v2.7.13 and v2.7.14; v2.7.8 is the last version
+          # confirmed working). See https://github.com/denoland/deno/issues/33713
+          # — unpin once fixed upstream.
+          deno-version: v2.7.8
 
       - name: fmt
         run: deno fmt --check
@@ -45,6 +51,12 @@ jobs:
         with:
           submodules: true
       - uses: denoland/setup-deno@v2
+        with:
+          # Pinned to avoid TLS panic in `deno sandbox copy/extend` (regression
+          # present in at least v2.7.13 and v2.7.14; v2.7.8 is the last version
+          # confirmed working). See https://github.com/denoland/deno/issues/33713
+          # — unpin once fixed upstream.
+          deno-version: v2.7.8
       - name: Build
         run: deno task build
       - name: Publish to JSR on tag

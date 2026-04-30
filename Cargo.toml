@@ -6,12 +6,12 @@ members = [
 
 [workspace.dependencies]
 anyhow = "1.0.57"
-deno_config = "0.87.0"
+deno_config = "0.97.0"
 deno_path_util = "=0.6.4"
 js-sys = "=0.3.77"
 serde = "1.0.149"
 serde-wasm-bindgen = "=0.6.5"
-sys_traits = "0.1.17"
+sys_traits = "0.1.27"
 url = "2.5"
 wasm-bindgen = "=0.2.100"
 
