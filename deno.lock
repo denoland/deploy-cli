@@ -5,19 +5,30 @@
     "jsr:@cliffy/flags@1.0.0": "1.0.0",
     "jsr:@cliffy/internal@1.0.0": "1.0.0",
     "jsr:@cliffy/table@1.0.0": "1.0.0",
+    "jsr:@david/console-static-text@0.3": "0.3.4",
+    "jsr:@david/dax@~0.44.2": "0.44.2",
     "jsr:@david/jsonc-morph@~0.3.1": "0.3.1",
+    "jsr:@david/path@0.2": "0.2.0",
+    "jsr:@david/which@~0.4.1": "0.4.1",
     "jsr:@deno/framework-detect@0.3": "0.3.0",
-    "jsr:@deno/sandbox@0.10": "0.10.1",
+    "jsr:@deno/sandbox@0.13": "0.13.2",
+    "jsr:@std/assert@^1.0.16": "1.0.19",
     "jsr:@std/async@^1.1.0": "1.1.1",
+    "jsr:@std/bytes@^1.0.6": "1.0.6",
     "jsr:@std/cli@1.0.27": "1.0.27",
     "jsr:@std/dotenv@~0.225.5": "0.225.6",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
+    "jsr:@std/fmt@1": "1.0.9",
     "jsr:@std/fmt@^1.0.8": "1.0.9",
     "jsr:@std/fmt@^1.0.9": "1.0.9",
+    "jsr:@std/fs@1": "1.0.23",
     "jsr:@std/fs@^1.0.19": "1.0.23",
+    "jsr:@std/fs@^1.0.20": "1.0.23",
     "jsr:@std/internal@^1.0.12": "1.0.12",
+    "jsr:@std/io@0.225": "0.225.3",
     "jsr:@std/json@^1.0.2": "1.0.2",
     "jsr:@std/jsonc@^1.0.2": "1.0.2",
+    "jsr:@std/path@1": "1.1.4",
     "jsr:@std/path@^1.1.2": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/semver@^1.0.8": "1.0.8",
@@ -36,6 +47,7 @@
     "npm:pg-connection-string@^2.9.1": "2.9.1",
     "npm:superjson@^2.2.2": "2.2.6",
     "npm:temporal-polyfill@0.3": "0.3.0",
+    "npm:ws@^8.18.3": "8.20.0",
     "npm:zod@^4.1.5": "4.3.6"
   },
   "jsr": {
@@ -46,6 +58,7 @@
         "jsr:@cliffy/internal",
         "jsr:@cliffy/table",
         "jsr:@std/fmt@^1.0.9",
+        "jsr:@std/semver",
         "jsr:@std/text"
       ]
     },
@@ -65,8 +78,33 @@
         "jsr:@std/fmt@^1.0.9"
       ]
     },
+    "@david/console-static-text@0.3.4": {
+      "integrity": "1c596f500b075ff3c8bab1d328ca7148a88067fd9a506b16a73eeaf230c229fd"
+    },
+    "@david/dax@0.44.2": {
+      "integrity": "26f5985f66a4340d55fb05ca90a0063bb5f0d670a326e14cb33a974aafcbb8d9",
+      "dependencies": [
+        "jsr:@david/console-static-text",
+        "jsr:@david/path",
+        "jsr:@david/which",
+        "jsr:@std/fmt@1",
+        "jsr:@std/fs@^1.0.20",
+        "jsr:@std/io",
+        "jsr:@std/path@1"
+      ]
+    },
     "@david/jsonc-morph@0.3.1": {
       "integrity": "64b0164428146c84b2bebd4a7ea13e4811c209f3ecc8af72b709da9c9a61f03b"
+    },
+    "@david/path@0.2.0": {
+      "integrity": "f2d7aa7f02ce5a55e27c09f9f1381794acb09d328f8d3c8a2e3ab3ffc294dccd",
+      "dependencies": [
+        "jsr:@std/fs@1",
+        "jsr:@std/path@1"
+      ]
+    },
+    "@david/which@0.4.1": {
+      "integrity": "896a682b111f92ab866cc70c5b4afab2f5899d2f9bde31ed00203b9c250f225e"
     },
     "@deno/framework-detect@0.3.0": {
       "integrity": "95aac5d8366e4b007f52adc576e6e3a2abece053f18a7dcb2826ed610c25cb3b",
@@ -75,25 +113,36 @@
         "jsr:@std/path@^1.1.2"
       ]
     },
-    "@deno/sandbox@0.10.1": {
-      "integrity": "98e3b6cd041c019c1af8d6528d02ee4f66d620ac38e62fc27a5db4ecc030ec95",
+    "@deno/sandbox@0.13.2": {
+      "integrity": "c24c7eb9cc00b94954ebffb4ee4f685ef731e6026788044f9eb8a1aa9bfc2cd8",
       "dependencies": [
-        "jsr:@std/fs",
+        "jsr:@std/fs@^1.0.19",
         "jsr:@std/path@^1.1.2",
         "npm:@types/ws",
+        "npm:ws",
         "npm:zod"
       ]
     },
     "@std/assert@1.0.17": {
       "integrity": "df5ebfffe77c03b3fa1401e11c762cc8f603d51021c56c4d15a8c7ab45e90dbe"
     },
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
     "@std/async@1.1.1": {
       "integrity": "8a79beb3378cc229ce65ba2c746cfd03e4855ddd891d1eb6b9e32128e0d5339c"
+    },
+    "@std/bytes@1.0.6": {
+      "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
     },
     "@std/cli@1.0.27": {
       "integrity": "eba97edd0891871a7410e835dd94b3c260c709cca5983df2689c25a71fbe04de",
       "dependencies": [
-        "jsr:@std/fmt@^1.0.9"
+        "jsr:@std/fmt@^1.0.9",
+        "jsr:@std/internal"
       ]
     },
     "@std/dotenv@0.225.6": {
@@ -114,6 +163,12 @@
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
+    },
+    "@std/io@0.225.3": {
+      "integrity": "27b07b591384d12d7b568f39e61dff966b8230559122df1e9fd11cc068f7ddd1",
+      "dependencies": [
+        "jsr:@std/bytes"
+      ]
     },
     "@std/json@1.0.2": {
       "integrity": "d9e5497801c15fb679f55a2c01c7794ad7a5dfda4dd1bebab5e409cb5e0d34d4"
@@ -2479,6 +2534,9 @@
         "strip-ansi@7.1.2"
       ]
     },
+    "ws@8.20.0": {
+      "integrity": "sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA=="
+    },
     "wsl-utils@0.1.0": {
       "integrity": "sha512-h3Fbisa2nKGPxCpm89Hk33lBLsnaGBvctQopaBSOW/uIs6FTe1ATyAnKFJrzVs9vpGdsTe73WF3V4lIsk4Gacw==",
       "dependencies": [
@@ -2532,7 +2590,7 @@
       "jsr:@david/dax@~0.44.2",
       "jsr:@david/jsonc-morph@~0.3.1",
       "jsr:@deno/framework-detect@0.3",
-      "jsr:@deno/sandbox@0.10",
+      "jsr:@deno/sandbox@0.13",
       "jsr:@std/assert@^1.0.16",
       "jsr:@std/async@^1.1.0",
       "jsr:@std/cli@1.0.27",
