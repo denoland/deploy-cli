@@ -151,3 +151,62 @@ fn resolve_absolute_path(path: String) -> Result<PathBuf, anyhow::Error> {
 fn create_js_error(err: &anyhow::Error) -> JsValue {
   wasm_bindgen::JsError::new(&format!("{:#}", err)).into()
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+  use super::inner_resolve_config;
+  use std::fs;
+  use std::path::Path;
+  use tempfile::TempDir;
+
+  fn write_file(root: &Path, rel: &str, contents: &str) {
+    let path = root.join(rel);
+    if let Some(parent) = path.parent() {
+      fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(path, contents).unwrap();
+  }
+
+  // Regression test for denoland/deno#33562: running `deno deploy` from a
+  // workspace root with a top-level `deploy` config must include workspace
+  // member files in the upload manifest. Before the fix this returned an
+  // empty file list because members were silently appended to the exclude
+  // patterns.
+  #[test]
+  fn workspace_root_includes_member_files() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_file(
+      root,
+      "deno.json",
+      r#"{
+        "workspace": ["./packages/backend"],
+        "deploy": { "org": "myorg", "app": "myapp" }
+      }"#,
+    );
+    write_file(root, "packages/backend/deno.json", "{}");
+    write_file(
+      root,
+      "packages/backend/main.ts",
+      "Deno.serve(() => new Response('hello'));",
+    );
+
+    let result = inner_resolve_config(
+      root.to_string_lossy().into_owned(),
+      Vec::new(),
+      false,
+    )
+    .unwrap();
+
+    let expected = root.join("packages/backend/main.ts");
+    assert!(
+      result
+        .files
+        .iter()
+        .any(|f| Path::new(f) == expected.as_path()),
+      "expected {} in deploy files; got {:?}",
+      expected.display(),
+      result.files,
+    );
+  }
+}
