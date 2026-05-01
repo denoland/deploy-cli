@@ -187,6 +187,7 @@ export function actionHandler<
         context.config,
         context.ignore ?? [],
         context.allowNodeModules ?? false,
+        context.debug,
       );
       const configContext: ConfigContext = {
         ...getAppFromConfig(config),
@@ -245,11 +246,13 @@ async function readConfig(
   maybeConfigPath: string | undefined,
   ignorePaths: string[],
   allowNodeModules: boolean,
+  debug: boolean,
 ): Promise<Config> {
   const config = resolve_config(
     resolve(maybeConfigPath || rootPath),
     ignorePaths,
     allowNodeModules,
+    debug,
   );
 
   if (config.path) {
