@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 anyhow.workspace = true
 deno_config.workspace = true
 deno_path_util.workspace = true
+web-sys = { version = "=0.3.77", features = ["console"] }
 js-sys.workspace = true
 sys_traits = { workspace = true, features = ["real"] }
 serde.workspace = true
