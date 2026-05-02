@@ -10,22 +10,11 @@ use sys_traits::FsMetadata;
 use url::Url;
 use wasm_bindgen::prelude::*;
 
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-extern "C" {
-  #[wasm_bindgen(js_namespace = console, js_name = log)]
-  fn console_log(s: &str);
-}
-
-#[cfg(target_arch = "wasm32")]
 fn debug_log(debug: bool, msg: &str) {
   if debug {
-    console_log(&format!("[rs_lib] {}", msg));
+    web_sys::console::log_1(&serde_wasm_bindgen::to_value(&format!("[rs_lib] {}", msg)).unwrap());
   }
 }
-
-#[cfg(not(target_arch = "wasm32"))]
-fn debug_log(_debug: bool, _msg: &str) {}
 
 #[derive(Serialize)]
 pub struct ConfigLookup {
