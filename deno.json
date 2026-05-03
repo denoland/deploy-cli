@@ -4,6 +4,7 @@
     "astro-demo"
   ],
   "name": "@deno/deploy",
+  "version": "0.0.98",
   "license": "MIT",
   "tasks": {
     "build": "deno run -A jsr:@deno/wasmbuild@0.19.2"
