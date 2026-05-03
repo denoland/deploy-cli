@@ -2,6 +2,7 @@ import { Command, ValidationError } from "@cliffy/command";
 import { green, red, yellow } from "@std/fmt/colors";
 import { error, renderTemporalTimestamp } from "../util.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
+import { VERSION } from "../version.ts";
 import { actionHandler, getApp, getOrg } from "../config.ts";
 import { publish } from "./publish.ts";
 import { setupAws, setupGcp } from "./setup-cloud.ts";
@@ -181,6 +182,7 @@ const logoutCommand = new Command()
 
 export const deployCommand = new Command()
   .name("deno deploy")
+  .version(VERSION)
   .description(`Interact with Deno Deploy
 
 Calling this subcommand without any further subcommands will
@@ -222,6 +224,14 @@ deploy your local directory to the specified application.`)
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
       tokenStorage.set(tokenEnv, true);
+    }
+
+    if (options.debug) {
+      console.error(
+        yellow(
+          `Debug mode is enabled (deno ${Deno.version.deno}, @deno/deploy ${VERSION}, endpoint=${options.endpoint})`,
+        ),
+      );
     }
   })
   .action(
