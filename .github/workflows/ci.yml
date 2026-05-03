@@ -9,6 +9,9 @@ jobs:
       !startsWith(github.event.pull_request.head.label, 'denoland:')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -59,5 +62,5 @@ jobs:
           deno-version: v2.7.8
       - name: Build
         run: deno task build
-      - name: Publish to JSR on tag
-        run: deno run -A jsr:@david/publish-on-tag@0.2.0
+      - name: Publish to JSR
+        run: deno publish
