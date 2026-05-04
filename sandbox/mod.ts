@@ -5,7 +5,7 @@ import {
   type VolumeId,
   type VolumeSlug,
 } from "@deno/sandbox";
-import { green, magenta, red } from "@std/fmt/colors";
+import { green, magenta, red, yellow } from "@std/fmt/colors";
 import { pooledMap } from "@std/async";
 import { expandGlob } from "@std/fs";
 import { join } from "@std/path";
@@ -19,6 +19,7 @@ import {
 } from "../util.ts";
 import { createTrpcClient, getAuth, tokenStorage } from "../auth.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
+import { VERSION } from "../version.ts";
 
 import { volumesCommand } from "./volumes.ts";
 import { snapshotsCommand } from "./snapshot.ts";
@@ -588,6 +589,7 @@ Example:
 
 export const sandboxCommand = new Command<GlobalContext>()
   .name("deno sandbox")
+  .version(VERSION)
   .description("Interact with sandboxes")
   .globalOption("--endpoint <endpoint:string>", "the endpoint", {
     default: "https://console.deno.com",
@@ -614,6 +616,14 @@ export const sandboxCommand = new Command<GlobalContext>()
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
       tokenStorage.set(tokenEnv, true);
+    }
+
+    if (options.debug) {
+      console.error(
+        yellow(
+          `Debug mode is enabled (deno ${Deno.version.deno}, @deno/deploy ${VERSION}, endpoint=${options.endpoint})`,
+        ),
+      );
     }
   })
   .action(() => {
