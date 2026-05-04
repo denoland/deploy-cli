@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  jsr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: denoland/setup-deno@v2
+        with:
+          # Pinned to avoid TLS panic in `deno sandbox copy/extend` (regression
+          # present in at least v2.7.13 and v2.7.14; v2.7.8 is the last version
+          # confirmed working). See https://github.com/denoland/deno/issues/33713
+          # — unpin once fixed upstream.
+          deno-version: v2.7.8
+      - name: Build
+        run: deno task build
+      - name: Publish to JSR
+        run: deno publish
