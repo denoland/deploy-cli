@@ -188,6 +188,8 @@ Deno.test("sandbox with volume mount", async () => {
         "--quiet",
         "--timeout",
         "60s",
+        "--region",
+        "ord",
         "--volume",
         `${volumeId}:/data/dataset`,
       );
