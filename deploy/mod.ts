@@ -19,6 +19,15 @@ const setupAWSCommand = new Command<GlobalContext>()
   .option("--app <name:string>", "The name of the application", {
     required: true,
   })
+  .option(
+    "--policies <arn:string>",
+    "IAM policy ARN to attach to the new role (repeatable; bypasses the interactive policy picker)",
+    { collect: true },
+  )
+  .option(
+    "--role-name <name:string>",
+    "Name for the IAM role to create (omit for a random-suffixed default; pass to allow idempotent re-runs)",
+  )
   .arguments("[contexts:string]")
   .action(actionHandler(async (config, options, contexts) => {
     const org = await getOrg(options, config, options.org);
@@ -30,7 +39,10 @@ const setupAWSCommand = new Command<GlobalContext>()
       )
       : [];
 
-    await setupAws(options, org, app, contextList);
+    await setupAws(options, org, app, contextList, {
+      policies: options.policies,
+      roleName: options.roleName as unknown as string | undefined,
+    });
   }));
 
 const setupGCPCommand = new Command<GlobalContext>()
@@ -41,6 +53,19 @@ const setupGCPCommand = new Command<GlobalContext>()
   .option("--app <name:string>", "The name of the application", {
     required: true,
   })
+  .option(
+    "--roles <role:string>",
+    "IAM role to grant to the service account (repeatable; bypasses the interactive role picker)",
+    { collect: true },
+  )
+  .option(
+    "--service-account-name <name:string>",
+    "Name for the service account to create (omit for a random-suffixed default; pass to allow idempotent re-runs)",
+  )
+  .option(
+    "--enable-apis",
+    "Auto-enable required APIs that are missing, without prompting",
+  )
   .arguments("[contexts:string]")
   .action(actionHandler(async (config, options, contexts) => {
     const org = await getOrg(options, config, options.org);
@@ -52,7 +77,13 @@ const setupGCPCommand = new Command<GlobalContext>()
       )
       : [];
 
-    await setupGcp(options, org, app, contextList);
+    await setupGcp(options, org, app, contextList, {
+      roles: options.roles,
+      serviceAccountName: options.serviceAccountName as unknown as
+        | string
+        | undefined,
+      enableApis: options.enableApis as unknown as boolean | undefined,
+    });
   }));
 
 const tunnelLoginCommand = new Command<GlobalContext>()
