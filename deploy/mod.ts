@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-explicit-any
 import { Command, ValidationError } from "@cliffy/command";
 import { green, red, setColorEnabled, yellow } from "@std/fmt/colors";
 import { error, renderTemporalTimestamp } from "../util.ts";
@@ -11,6 +10,9 @@ import { createTrpcClient, getAuth, tokenStorage } from "../auth.ts";
 import { databasesCommand } from "./database.ts";
 import { envCommand } from "./env.ts";
 import { createCommand } from "./create/mod.ts";
+import { appsCommand } from "./apps.ts";
+import { orgsCommand } from "./orgs.ts";
+import { deploymentsCommand } from "./deployments.ts";
 
 const setupAWSCommand = new Command<GlobalContext>()
   .description("Setup cloud connections for AWS")
@@ -328,15 +330,15 @@ deploy your local directory to the specified application.`)
       (rootPath) => rootPath,
     ),
   )
-  // Cliffy's accumulated generic chain (parent options × subcommand contexts)
-  // overflows the inference budget once enough globalOptions are stacked;
-  // the casts here are type-only, the runtime is unaffected.
-  .command("create", createCommand as Command<any>)
-  .command("env", envCommand as Command<any>)
-  .command("database", databasesCommand as Command<any>)
-  .command("logs", logsCommand as Command<any>)
-  .command("setup-aws", setupAWSCommand as Command<any>)
-  .command("setup-gcp", setupGCPCommand as Command<any>)
-  .command("tunnel-login", tunnelLoginCommand as Command<any>)
-  .command("switch", createSwitchCommand(true) as Command<any>)
-  .command("logout", logoutCommand as Command<any>);
+  .command("create", createCommand)
+  .command("env", envCommand)
+  .command("database", databasesCommand)
+  .command("apps", appsCommand)
+  .command("orgs", orgsCommand)
+  .command("deployments", deploymentsCommand)
+  .command("logs", logsCommand)
+  .command("setup-aws", setupAWSCommand)
+  .command("setup-gcp", setupGCPCommand)
+  .command("tunnel-login", tunnelLoginCommand)
+  .command("switch", createSwitchCommand(true))
+  .command("logout", logoutCommand);
