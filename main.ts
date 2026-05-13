@@ -24,12 +24,22 @@ export type GlobalContext = {
   ignore?: string[];
   allowNodeModules?: boolean;
   quiet?: true;
+  /** Emit JSON to stdout (single object/array per command) and structured errors to stderr. */
+  json?: true;
+  /** Refuse interactive prompts; missing inputs must come from flags/env. */
+  nonInteractive?: true;
 };
 
 if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
   await sandboxCommand.parse(Deno.args);
 } else {
-  await deployCommand.command("sandbox", sandboxCommand).parse(Deno.args);
+  // Cliffy's accumulated generic chain (parent options × subcommand contexts)
+  // overflows the inference budget when stacking root commands with several
+  // globalOptions. The cast is type-only; runtime is unaffected.
+  // deno-lint-ignore no-explicit-any
+  await deployCommand.command("sandbox", sandboxCommand as Command<any>).parse(
+    Deno.args,
+  );
 }
 
 export function createSwitchCommand(

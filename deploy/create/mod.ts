@@ -20,7 +20,7 @@ import {
 
 import { publish, waitForRevision } from "../publish.ts";
 import { resolve } from "@std/path";
-import { error } from "../../util.ts";
+import { error, writeJsonResult } from "../../util.ts";
 import { green } from "@std/fmt/colors";
 
 export const createCommand = new Command<GlobalContext>()
@@ -296,8 +296,10 @@ export const createCommand = new Command<GlobalContext>()
 
       const region = required(options.region, "region");
 
-      console.log("Using the following build configuration:");
-      console.log(renderBuildConfig(buildConfig satisfies BuildConfig));
+      if (!options.json) {
+        console.log("Using the following build configuration:");
+        console.log(renderBuildConfig(buildConfig satisfies BuildConfig));
+      }
 
       data = {
         org,
@@ -312,7 +314,21 @@ export const createCommand = new Command<GlobalContext>()
     } else {
       data = await createFlow(options, rootPath);
     }
-    if (!options.dryRun) {
+    if (options.dryRun) {
+      if (options.json) {
+        writeJsonResult({
+          dryRun: true,
+          org: data.org,
+          app: data.app,
+          repo: data.repo,
+          buildDirectory: data.buildDirectory,
+          buildConfig: data.buildConfig,
+          buildTimeout: data.buildTimeout,
+          buildMemoryLimit: data.buildMemoryLimit,
+          region: data.region,
+        });
+      }
+    } else {
       await createApp(
         options,
         config,
@@ -399,10 +415,42 @@ export async function createApp(
     deviceCreation,
   });
 
+  const appUrl = `${context.endpoint}/${data.org}/${data.app}`;
+  if (context.json) {
+    // Local-source path will call publish() which emits its own JSON envelope;
+    // the github path emits the create-only envelope here.
+    if (data.repo !== undefined) {
+      const revisionId = await trpcClient.mutation("apps.triggerGitHubBuild", {
+        org: data.org,
+        app: data.app,
+        branch: null,
+      }) as string;
+      writeJsonResult({
+        org: data.org,
+        app: data.app,
+        url: appUrl,
+        revisionId,
+        source: "github",
+      });
+      if (wait) {
+        await waitForRevision(context, data.org, data.app, revisionId);
+      }
+      return;
+    }
+    await publish(
+      context,
+      configContext,
+      rootPath,
+      data.org,
+      data.app,
+      true,
+      wait ?? false,
+    );
+    return;
+  }
+
   console.log(
-    `${
-      green("✔")
-    } Created app, view it at ${context.endpoint}/${data.org}/${data.app}`,
+    `${green("✔")} Created app, view it at ${appUrl}`,
   );
 
   if (data.repo === undefined) {

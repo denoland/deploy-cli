@@ -15,9 +15,39 @@ import {
 } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import { Spinner } from "@std/cli/unstable-spinner";
-import { error, requireInteractive } from "./util.ts";
+import { error, ExitCode, requireInteractive } from "./util.ts";
 import { EventSourcePolyfill } from "event-source-polyfill";
 import type { GlobalContext } from "./main.ts";
+
+/** Map a tRPC error envelope (with `data.httpStatus` / `data.code`) to our taxonomy. */
+function mapTrpcError(
+  err: unknown,
+): { code: ExitCode; errorCode: string; hint?: string } {
+  // deno-lint-ignore no-explicit-any
+  const data = (err as any)?.data;
+  const httpStatus: number | undefined = data?.httpStatus;
+  const backendCode: string | undefined = data?.code;
+  if (
+    backendCode === "NOT_AUTHENTICATED" || backendCode === "TOKEN_EXPIRED" ||
+    httpStatus === 401 || httpStatus === 403
+  ) {
+    return {
+      code: ExitCode.AUTH,
+      errorCode: backendCode ?? "AUTH",
+      hint: "Set DENO_DEPLOY_TOKEN or run `deno deploy login`.",
+    };
+  }
+  if (httpStatus === 404) {
+    return { code: ExitCode.NOT_FOUND, errorCode: backendCode ?? "NOT_FOUND" };
+  }
+  if (httpStatus === 409) {
+    return { code: ExitCode.CONFLICT, errorCode: backendCode ?? "CONFLICT" };
+  }
+  if (httpStatus !== undefined && httpStatus >= 500) {
+    return { code: ExitCode.NETWORK, errorCode: backendCode ?? "BACKEND" };
+  }
+  return { code: ExitCode.GENERIC, errorCode: backendCode ?? "GENERIC" };
+}
 
 // deno-lint-ignore no-explicit-any
 export type TRPCClient = TRPCUntypedClient<any>;
@@ -40,11 +70,13 @@ export function createTrpcClient(
             if (context.debug) {
               console.error(err);
             }
-            error(
-              context,
-              err.message || Deno.inspect(err),
-              err.meta?.response as Response | undefined,
-            );
+            const mapped = mapTrpcError(err);
+            error(context, err.message || Deno.inspect(err), {
+              code: mapped.code,
+              errorCode: mapped.errorCode,
+              hint: mapped.hint,
+              response: err.meta?.response as Response | undefined,
+            });
           },
           complete() {
             observer.complete();
@@ -85,7 +117,13 @@ export function createTrpcClient(
           if (tokenIsTemp) {
             error(
               context,
-              "The token specified via 'DENO_DEPLOY_TOKEN' or the '--token' flag is invalid.",
+              "The token specified via 'DENO_DEPLOY_TOKEN' or the '--token' flag is invalid or expired.",
+              {
+                code: ExitCode.AUTH,
+                errorCode: "AUTH_INVALID_TOKEN",
+                hint:
+                  `Generate a new token at ${context.endpoint}/account/tokens and re-export DENO_DEPLOY_TOKEN.`,
+              },
             );
           }
 
@@ -94,6 +132,10 @@ export function createTrpcClient(
             error(
               context,
               "Already re-attempted authorization, please re-run this command",
+              {
+                code: ExitCode.AUTH,
+                errorCode: "AUTH_RETRY_EXHAUSTED",
+              },
             );
           }
 
@@ -362,7 +404,7 @@ export const tokenStorage = {
       } catch {
         if (!cannotInteractWithKeychain) {
           cannotInteractWithKeychain = true;
-          console.log(KEYCHAIN_WARNING);
+          console.error(KEYCHAIN_WARNING);
         }
         return null;
       }
@@ -377,7 +419,7 @@ export const tokenStorage = {
       } catch {
         if (!cannotInteractWithKeychain) {
           cannotInteractWithKeychain = true;
-          console.log(KEYCHAIN_WARNING);
+          console.error(KEYCHAIN_WARNING);
         }
       }
     } else {

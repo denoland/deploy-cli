@@ -3,35 +3,137 @@ import { Temporal } from "temporal-polyfill";
 
 import type { GlobalContext } from "./main.ts";
 
+/**
+ * Exit codes returned by the CLI. Agents pattern-match on these before parsing
+ * stderr. Keep this list small and stable — new categories require a docs bump.
+ */
+export enum ExitCode {
+  OK = 0,
+  GENERIC = 1,
+  USAGE = 2,
+  AUTH = 3,
+  NOT_FOUND = 4,
+  CONFLICT = 5,
+  NETWORK = 6,
+}
+
+export interface ErrorOptions {
+  /** Numeric exit code from {@link ExitCode}. Defaults to `GENERIC`. */
+  code?: ExitCode;
+  /** Stable string identifier for the error (used in `--json` envelope). */
+  errorCode?: string;
+  /** Human/agent hint on how to recover (e.g. "set DENO_DEPLOY_TOKEN"). */
+  hint?: string;
+  /** Originating response, used to extract the `x-deno-trace-id` header. */
+  response?: Response;
+}
+
 export function isInteractive(): boolean {
   return Deno.stdin.isTerminal();
 }
 
+export function isNonInteractive(context: GlobalContext): boolean {
+  return context.nonInteractive === true || !isInteractive();
+}
+
 export function requireInteractive(context: GlobalContext, hint: string): void {
+  if (context.nonInteractive) {
+    error(context, `This command requires interactive input.\n${hint}`, {
+      code: ExitCode.USAGE,
+      errorCode: "NON_INTERACTIVE_REQUIRED",
+      hint,
+    });
+  }
   if (!isInteractive()) {
     error(
       context,
       `This command requires interactive input, but stdin is not a terminal.\n${hint}`,
+      {
+        code: ExitCode.USAGE,
+        errorCode: "NON_INTERACTIVE_REQUIRED",
+        hint,
+      },
     );
   }
 }
 
+/**
+ * Whether spinners, progress bars, and other terminal chrome should be drawn.
+ * Suppressed in `--json` and `--quiet` modes and when stderr is not a TTY.
+ */
+export function shouldUseSpinner(context: GlobalContext): boolean {
+  if (context.json || context.quiet) return false;
+  return Deno.stderr.isTerminal();
+}
+
+/**
+ * Emit the final result of a `--json` command as a single JSON object on stdout.
+ * Use exactly once per command in JSON mode.
+ */
+export function writeJsonResult(value: unknown): void {
+  Deno.stdout.writeSync(
+    new TextEncoder().encode(JSON.stringify(value) + "\n"),
+  );
+}
+
 export function error(
   context: GlobalContext,
-  error: string,
-  response?: Response,
+  message: string,
+  responseOrOpts?: Response | ErrorOptions,
 ): never {
-  console.error();
-  console.error(`${red("✗")} An error occurred:`);
-  console.error(`  ${error.replaceAll("\n", "\n  ")}`);
-  const trace = response?.headers.get("x-deno-trace-id");
-  if (context.debug) {
-    console.error(`  stack:\n${new Error().stack}`);
+  const opts: ErrorOptions = responseOrOpts instanceof Response
+    ? { response: responseOrOpts }
+    : (responseOrOpts ?? {});
+  const exitCode = opts.code ?? ExitCode.GENERIC;
+  const trace = opts.response?.headers.get("x-deno-trace-id") ?? undefined;
+
+  if (context.json) {
+    const envelope = {
+      error: {
+        code: opts.errorCode ?? exitCodeToName(exitCode),
+        message,
+        hint: opts.hint,
+        traceId: trace,
+      },
+    };
+    Deno.stderr.writeSync(
+      new TextEncoder().encode(JSON.stringify(envelope) + "\n"),
+    );
+  } else {
+    console.error();
+    console.error(`${red("✗")} An error occurred:`);
+    console.error(`  ${message.replaceAll("\n", "\n  ")}`);
+    if (opts.hint) {
+      console.error(`  hint: ${opts.hint.replaceAll("\n", "\n        ")}`);
+    }
+    if (context.debug) {
+      console.error(`  stack:\n${new Error().stack}`);
+    }
+    if (trace) {
+      console.error(`  trace id: ${trace}`);
+    }
   }
-  if (trace) {
-    console.error(`  trace id: ${trace}`);
+  Deno.exit(exitCode);
+}
+
+function exitCodeToName(code: ExitCode): string {
+  switch (code) {
+    case ExitCode.OK:
+      return "OK";
+    case ExitCode.USAGE:
+      return "USAGE";
+    case ExitCode.AUTH:
+      return "AUTH";
+    case ExitCode.NOT_FOUND:
+      return "NOT_FOUND";
+    case ExitCode.CONFLICT:
+      return "CONFLICT";
+    case ExitCode.NETWORK:
+      return "NETWORK";
+    case ExitCode.GENERIC:
+    default:
+      return "GENERIC";
   }
-  Deno.exit(1);
 }
 
 export function renderTemporalTimestamp(timestamp: string, hideDate = false) {
