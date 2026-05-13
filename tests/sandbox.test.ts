@@ -11,6 +11,28 @@ const sandbox = async (...args: string[]) => {
   return (await $.raw`deno sandbox ${args.join(" ")}`.text()).trim();
 };
 
+/**
+ * `sandbox volumes create` returns the volume id immediately, but the
+ * backend may take a moment to make the volume visible to subsequent
+ * operations (mount, list). Poll `volumes list` until the volume appears
+ * to avoid a flaky `VOLUME_NOT_FOUND` race when the next step tries to
+ * mount it.
+ */
+async function waitForVolumeReady(
+  volumeId: string,
+  { timeoutMs = 15_000, intervalMs = 500 } = {},
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const list = await sandbox("volumes", "list");
+    if (list.includes(volumeId)) return;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(
+    `Timed out waiting for volume ${volumeId} to become visible via 'volumes list'`,
+  );
+}
+
 Deno.test("sandbox create", async () => {
   const sandboxId = await sandbox(
     "create",
@@ -143,6 +165,7 @@ Deno.test("sandbox with volume mount", async () => {
     "--region",
     "ord",
   );
+  await waitForVolumeReady(volumeId);
 
   const sandboxId = await sandbox(
     "create",
