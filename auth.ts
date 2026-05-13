@@ -41,7 +41,15 @@ function mapTrpcError(
     return { code: ExitCode.NOT_FOUND, errorCode: backendCode ?? "NOT_FOUND" };
   }
   if (httpStatus === 409) {
-    return { code: ExitCode.CONFLICT, errorCode: backendCode ?? "CONFLICT" };
+    const hint = backendCode === "SLUG_ALREADY_IN_USE"
+      ? "A resource with that name already exists. Use a different name, " +
+        "or run the corresponding update/publish command against the existing one."
+      : undefined;
+    return {
+      code: ExitCode.CONFLICT,
+      errorCode: backendCode ?? "CONFLICT",
+      hint,
+    };
   }
   if (httpStatus !== undefined && httpStatus >= 500) {
     return { code: ExitCode.NETWORK, errorCode: backendCode ?? "BACKEND" };

@@ -1,6 +1,11 @@
 import { Command, ValidationError } from "@cliffy/command";
 import { green, red, setColorEnabled, yellow } from "@std/fmt/colors";
-import { error, renderTemporalTimestamp } from "../util.ts";
+import {
+  error,
+  renderTemporalTimestamp,
+  tablePrinter,
+  writeJsonResult,
+} from "../util.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
 import { VERSION } from "../version.ts";
 import { actionHandler, getApp, getOrg } from "../config.ts";
@@ -234,6 +239,61 @@ const logoutCommand = new Command()
     console.log(`${green("✔")} Successfully logged out`);
   });
 
+interface WhoamiOrg {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string | null;
+}
+
+const whoamiCommand = new Command<GlobalContext>()
+  .description(
+    "Verify the current Deno Deploy token and list reachable organizations",
+  )
+  .example(
+    "Check that DENO_DEPLOY_TOKEN works",
+    "whoami --json",
+  )
+  .action(actionHandler(async (config, options) => {
+    config.noCreate();
+    // Touch tokenStorage via the tRPC client; this will surface a clean
+    // AUTH_INVALID_TOKEN envelope from the errorLink if the token is bad,
+    // without ever calling `requireInteractive()` or opening a browser.
+    const trpcClient = createTrpcClient(options);
+    const orgs = await trpcClient.query("orgs.list") as WhoamiOrg[];
+
+    if (options.json) {
+      writeJsonResult({
+        authenticated: true,
+        // The deployng tRPC router does not currently expose user identity,
+        // so we surface what we can (orgs the token can reach). When that
+        // procedure lands, this output will gain a `user` field; existing
+        // consumers reading `authenticated` / `orgs[]` keep working.
+        user: null,
+        orgs: orgs.map((org) => ({
+          id: org.id,
+          slug: org.slug,
+          name: org.name,
+          plan: org.plan,
+        })),
+      });
+      return;
+    }
+
+    console.log(
+      `${green("✔")} Authenticated. ${orgs.length} reachable organization${
+        orgs.length === 1 ? "" : "s"
+      }:`,
+    );
+    if (orgs.length > 0) {
+      tablePrinter(
+        ["SLUG", "NAME", "PLAN"],
+        orgs,
+        (org) => [org.slug, org.name, org.plan ?? "—"],
+      );
+    }
+  }));
+
 export const deployCommand = new Command()
   .name("deno deploy")
   .version(VERSION)
@@ -341,4 +401,5 @@ deploy your local directory to the specified application.`)
   .command("setup-gcp", setupGCPCommand)
   .command("tunnel-login", tunnelLoginCommand)
   .command("switch", createSwitchCommand(true))
-  .command("logout", logoutCommand);
+  .command("logout", logoutCommand)
+  .command("whoami", whoamiCommand);
