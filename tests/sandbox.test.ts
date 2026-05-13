@@ -175,14 +175,35 @@ Deno.test("sandbox with volume mount", async () => {
   );
   await waitForVolumeReady(volumeId);
 
-  const sandboxId = await sandbox(
-    "create",
-    "--quiet",
-    "--timeout",
-    "60s",
-    "--volume",
-    `${volumeId}:/data/dataset`,
-  );
+  // The sandbox-side volume lookup hits a different service from the
+  // volumes list endpoint we just polled; that service propagates the
+  // new volume asynchronously, so a one-shot wait isn't enough. Retry
+  // the mount-bearing create a few times.
+  let sandboxId: string | undefined;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      sandboxId = await sandbox(
+        "create",
+        "--quiet",
+        "--timeout",
+        "60s",
+        "--volume",
+        `${volumeId}:/data/dataset`,
+      );
+      break;
+    } catch (err) {
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
+  }
+  if (!sandboxId) {
+    throw new Error(
+      `sandbox create with --volume kept failing: ${
+        lastErr instanceof Error ? lastErr.message : String(lastErr)
+      }`,
+    );
+  }
 
   await sandbox(
     "exec",
