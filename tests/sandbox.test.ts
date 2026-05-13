@@ -13,19 +13,27 @@ const sandbox = async (...args: string[]) => {
 
 /**
  * `sandbox volumes create` returns the volume id immediately, but the
- * backend may take a moment to make the volume visible to subsequent
- * operations (mount, list). Poll `volumes list` until the volume appears
- * to avoid a flaky `VOLUME_NOT_FOUND` race when the next step tries to
- * mount it.
+ * backend takes a moment to make the volume mountable inside a sandbox
+ * even after it's queryable via `volumes list`. Poll the list endpoint
+ * first, then sleep `postListSleepMs` to let the cluster sync — without
+ * that extra sleep we still hit `VOLUME_NOT_FOUND` when the follow-up
+ * `sandbox create --volume <id>:path` runs.
  */
 async function waitForVolumeReady(
   volumeId: string,
-  { timeoutMs = 15_000, intervalMs = 500 } = {},
+  {
+    timeoutMs = 30_000,
+    intervalMs = 500,
+    postListSleepMs = 5_000,
+  } = {},
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const list = await sandbox("volumes", "list");
-    if (list.includes(volumeId)) return;
+    if (list.includes(volumeId)) {
+      await new Promise((r) => setTimeout(r, postListSleepMs));
+      return;
+    }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error(
