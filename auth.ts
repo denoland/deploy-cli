@@ -113,7 +113,7 @@ export function createTrpcClient(
       retryLink({
         retry(opts) {
           if (context.debug) {
-            console.log(opts);
+            console.error(opts);
           }
 
           if (
@@ -243,7 +243,8 @@ export async function getAuth(
     message: "",
     color: "yellow",
   });
-  console.log(`Visit ${authUrl} to authorize deploying your project.`);
+  // Prompt-style message — goes to stderr so it doesn't pollute `--json` callers' stdout.
+  console.error(`Visit ${authUrl} to authorize deploying your project.`);
   if (!quiet) {
     spinner.start();
   }
@@ -310,7 +311,8 @@ export function tokenExchange(
         const { token, user } = await res.json();
         spinner.stop();
         if (!quiet) {
-          console.log(
+          // Status message — stderr so JSON callers' stdout stays clean.
+          console.error(
             `${
               green("✔")
             } Authorization successful. Authenticated as ${user.name}\n`,
@@ -368,7 +370,8 @@ export async function authedFetch(
   });
 
   if (res.status === 401) {
-    console.log(await res.text());
+    // Diagnostic body — stderr only, and only when debugging.
+    if (context.debug) console.error(await res.text());
     tokenStorage.remove();
     auth = await getAuth(context);
 
