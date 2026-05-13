@@ -1,6 +1,11 @@
 import { Command, ValidationError } from "@cliffy/command";
 import { createTrpcClient } from "../auth.ts";
-import { error, renderTemporalTimestamp, tablePrinter } from "../util.ts";
+import {
+  error,
+  renderTemporalTimestamp,
+  tablePrinter,
+  writeJsonResult,
+} from "../util.ts";
 import { green } from "@std/fmt/colors";
 import type { GlobalContext } from "../main.ts";
 import { parse as parseConnectionString } from "pg-connection-string";
@@ -244,6 +249,20 @@ const databasesQueryCommand = new Command<DatabaseContext>()
         array: false,
       });
 
+      if (options.json) {
+        if (res.kind === "ok") {
+          writeJsonResult({ rows: res.rows ?? [] });
+          return;
+        }
+        if (res.kind === "postgres_error") {
+          error(options, res.error, { errorCode: "POSTGRES_ERROR" });
+        }
+        if (res.error) {
+          error(options, res.message, { errorCode: "QUERY_ERROR" });
+        }
+        return;
+      }
+
       if (res.kind === "ok") {
         if (
           Array.isArray(res.rows) && res.rows.length > 0 &&
@@ -317,6 +336,22 @@ const databasesListCommand = new Command<DatabaseContext>()
         assignments: Array<{ app_slug: string }>;
       } & ConnectionInfo
     >;
+
+    if (options.json) {
+      writeJsonResult(list.map((database) => ({
+        name: database.slug,
+        engine: database.engine,
+        createdAt: database.created_at,
+        assignments: database.assignments.map((a) => a.app_slug),
+        connection: database.safeConnectionConfig,
+        databases: database.databases.map((db) => ({
+          name: db.name,
+          status: db.status,
+          createdAt: db.created_at,
+        })),
+      })));
+      return;
+    }
 
     tablePrinter(
       ["NAME", "ENGINE", "ASSIGNMENTS", "CONNECTION DETAILS"],

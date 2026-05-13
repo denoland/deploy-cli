@@ -1,6 +1,11 @@
 import { Command } from "@cliffy/command";
 import { parse as dotEnvParse } from "@std/dotenv";
-import { error, isNonInteractive, tablePrinter } from "../util.ts";
+import {
+  error,
+  isNonInteractive,
+  tablePrinter,
+  writeJsonResult,
+} from "../util.ts";
 import { green } from "@std/fmt/colors";
 import { createTrpcClient } from "../auth.ts";
 import type { GlobalContext } from "../main.ts";
@@ -41,6 +46,21 @@ const envListCommand = new Command<EnvCommandContext>()
       "envVarsContexts.listContexts",
       { org },
     ) as Context[];
+
+    if (options.json) {
+      writeJsonResult(envVars.map((envVar) => ({
+        id: envVar.id,
+        key: envVar.key,
+        value: envVar.is_secret ? null : envVar.value,
+        isSecret: envVar.is_secret,
+        contexts: envVar.context_ids
+          ? envVar.context_ids.map((id) =>
+            contexts.find((c) => c.id === id)?.name ?? id
+          )
+          : null,
+      })));
+      return;
+    }
 
     if (envVars.length === 0) {
       console.log(
