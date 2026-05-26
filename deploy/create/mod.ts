@@ -416,27 +416,14 @@ export async function createApp(
   });
 
   const appUrl = `${context.endpoint}/${data.org}/${data.app}`;
-  if (context.json) {
-    // Local-source path will call publish() which emits its own JSON envelope;
-    // the github path emits the create-only envelope here.
-    if (data.repo !== undefined) {
-      const revisionId = await trpcClient.mutation("apps.triggerGitHubBuild", {
-        org: data.org,
-        app: data.app,
-        branch: null,
-      }) as string;
-      writeJsonResult({
-        org: data.org,
-        app: data.app,
-        url: appUrl,
-        revisionId,
-        source: "github",
-      });
-      if (wait) {
-        await waitForRevision(context, data.org, data.app, revisionId);
-      }
-      return;
-    }
+  if (!context.json) {
+    console.log(`${green("✔")} Created app, view it at ${appUrl}`);
+  }
+
+  // Local-source apps deploy via publish(), which emits its own JSON envelope
+  // under --json. GitHub-linked apps need an explicit first-build trigger
+  // because apps.create only persists the repo association.
+  if (data.repo === undefined) {
     await publish(
       context,
       configContext,
@@ -449,37 +436,31 @@ export async function createApp(
     return;
   }
 
-  console.log(
-    `${green("✔")} Created app, view it at ${appUrl}`,
-  );
+  const revisionId = await trpcClient.mutation("apps.triggerGitHubBuild", {
+    org: data.org,
+    app: data.app,
+    branch: null,
+  }) as string;
 
-  if (data.repo === undefined) {
-    await publish(
-      context,
-      configContext,
-      rootPath,
-      data.org,
-      data.app,
-      true,
-      wait ?? false,
-    );
-  } else {
-    const revisionId = await trpcClient.mutation("apps.triggerGitHubBuild", {
+  if (context.json) {
+    writeJsonResult({
       org: data.org,
       app: data.app,
-      branch: null,
-    }) as string;
-
+      url: appUrl,
+      revisionId,
+      source: "github",
+    });
+  } else {
     console.log(
       `You can view the revision here:\n  ${context.endpoint}/${data.org}/${data.app}/builds/${revisionId}\n`,
     );
+  }
 
-    if (wait) {
-      await waitForRevision(context, data.org, data.app, revisionId);
-    } else {
-      console.log(
-        "To see the deployment, go to the revision page and wait for the build to complete.",
-      );
-    }
+  if (wait) {
+    await waitForRevision(context, data.org, data.app, revisionId);
+  } else if (!context.json) {
+    console.log(
+      "To see the deployment, go to the revision page and wait for the build to complete.",
+    );
   }
 }

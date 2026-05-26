@@ -33,13 +33,7 @@ export type GlobalContext = {
 if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
   await sandboxCommand.parse(Deno.args);
 } else {
-  // Cliffy's accumulated generic chain (parent options × subcommand contexts)
-  // overflows the inference budget when stacking root commands with several
-  // globalOptions. The cast is type-only; runtime is unaffected.
-  // deno-lint-ignore no-explicit-any
-  await deployCommand.command("sandbox", sandboxCommand as Command<any>).parse(
-    Deno.args,
-  );
+  await deployCommand.command("sandbox", sandboxCommand).parse(Deno.args);
 }
 
 export function createSwitchCommand(
