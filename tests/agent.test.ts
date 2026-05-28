@@ -119,6 +119,20 @@ Deno.test("setup-aws --non-interactive without --policies surfaces MISSING_FLAG"
   );
 });
 
+Deno.test("whoami --json with bad token emits AUTH envelope (exit 3, no browser)", async () => {
+  const res = await deployRaw(
+    "--json",
+    "--token",
+    "obviously-invalid-token",
+    "--endpoint",
+    "http://127.0.0.1:1",
+    "whoami",
+  );
+  assertEquals(res.code, 3, `stderr: ${res.stderr}`);
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "AUTH_INVALID_TOKEN");
+});
+
 Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", async () => {
   // Cliffy's ValidationError handler exits with code 1 by default;
   // verify the agent can pattern-match on stderr text either way.
