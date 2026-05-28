@@ -10,6 +10,9 @@ import { createTrpcClient, getAuth, tokenStorage } from "../auth.ts";
 import { databasesCommand } from "./database.ts";
 import { envCommand } from "./env.ts";
 import { createCommand } from "./create/mod.ts";
+import { appsCommand } from "./apps.ts";
+import { orgsCommand } from "./orgs.ts";
+import { deploymentsCommand } from "./deployments.ts";
 
 const setupAWSCommand = new Command<GlobalContext>()
   .description("Setup cloud connections for AWS")
@@ -330,6 +333,9 @@ deploy your local directory to the specified application.`)
   .command("create", createCommand)
   .command("env", envCommand)
   .command("database", databasesCommand)
+  .command("apps", appsCommand)
+  .command("orgs", orgsCommand)
+  .command("deployments", deploymentsCommand)
   .command("logs", logsCommand)
   .command("setup-aws", setupAWSCommand)
   .command("setup-gcp", setupGCPCommand)
