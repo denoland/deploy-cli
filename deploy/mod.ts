@@ -146,6 +146,7 @@ const logsCommand = new Command<GlobalContext>()
     const seenIds = new Set();
     let onceConnected = false;
 
+    const encoder = new TextEncoder();
     const sub = trpcClient.subscription(
       "apps.logs",
       {
@@ -160,7 +161,7 @@ const logsCommand = new Command<GlobalContext>()
         onData: (data: unknown) => {
           const typedData = data as "streaming" | null | LogEntry[];
           if (typedData === "streaming") {
-            if (!onceConnected && !options.quiet) {
+            if (!onceConnected && !options.quiet && !options.json) {
               console.log("connected, streaming logs...");
             }
             onceConnected = true;
@@ -172,6 +173,25 @@ const logsCommand = new Command<GlobalContext>()
                 continue;
               } else {
                 seenIds.add(id);
+              }
+
+              if (options.json) {
+                // NDJSON: one record per line on stdout, severity preserved as
+                // a numeric field so agents can filter without re-parsing.
+                Deno.stdout.writeSync(encoder.encode(
+                  JSON.stringify({
+                    timestamp: log.Timestamp,
+                    traceId: log.TraceId || null,
+                    spanId: log.SpanId || null,
+                    severity: log.SeverityText,
+                    severityNumber: log.SeverityNumber,
+                    body: log.Body,
+                    scope: log.ScopeName,
+                    revision: log.Revision,
+                    attributes: log.LogAttributes,
+                  }) + "\n",
+                ));
+                continue;
               }
 
               const prefix = `[${renderTemporalTimestamp(log.Timestamp)}${
