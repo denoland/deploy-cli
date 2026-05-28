@@ -1,5 +1,5 @@
 import { Command, ValidationError } from "@cliffy/command";
-import { green, red, yellow } from "@std/fmt/colors";
+import { green, red, setColorEnabled, yellow } from "@std/fmt/colors";
 import { error, renderTemporalTimestamp } from "../util.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
 import { VERSION } from "../version.ts";
@@ -201,6 +201,14 @@ deploy your local directory to the specified application.`)
     collect: true,
   })
   .globalOption("-q, --quiet", "Suppress non-essential output")
+  .globalOption(
+    "-j, --json",
+    "Emit JSON on stdout instead of human-readable output",
+  )
+  .globalOption(
+    "-y, --non-interactive",
+    "Fail fast instead of prompting; values must be supplied via flags or env vars (alias: -y)",
+  )
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
   .option("--prod", "Deploy directly to production")
@@ -224,6 +232,12 @@ deploy your local directory to the specified application.`)
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
       tokenStorage.set(tokenEnv, true);
+    }
+
+    // `--json` implies machine-readable output: kill ANSI color so structured
+    // payloads piped to `jq` don't carry escape sequences.
+    if (options.json) {
+      setColorEnabled(false);
     }
 
     if (options.debug) {

@@ -4,7 +4,7 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
 import { authedFetch, createTrpcClient } from "../auth.ts";
-import { error } from "../util.ts";
+import { error, shouldUseSpinner, writeJsonResult } from "../util.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
 
@@ -30,7 +30,7 @@ export async function publish(
   prod: boolean,
   wait: boolean,
 ) {
-  const quiet = context.quiet;
+  const quiet = context.quiet || context.json;
   const log: typeof console.log = quiet
     ? () => {}
     // deno-lint-ignore no-explicit-any
@@ -38,7 +38,7 @@ export async function publish(
 
   function startSpinner(message: string): Spinner {
     const spinner = new Spinner({ message, color: "yellow" });
-    if (!quiet) spinner.start();
+    if (shouldUseSpinner(context)) spinner.start();
     return spinner;
   }
 
@@ -161,6 +161,7 @@ export async function publish(
       console.log("Missing hashes", missingHashes);
     }
 
+    const useProgress = shouldUseSpinner(context);
     const progress = new ProgressBar({
       max: missingHashes.length,
       emptyChar: " ",
@@ -189,7 +190,7 @@ export async function publish(
         new TransformStream({
           transform({ internalPath, data, hash }, controller) {
             if (missingHashes.includes(hash)) {
-              if (!quiet) progress.value += 1;
+              if (useProgress) progress.value += 1;
 
               controller.enqueue(
                 {
@@ -238,7 +239,7 @@ export async function publish(
       },
     );
 
-    if (!quiet) await progress.stop();
+    if (useProgress) await progress.stop();
 
     log();
 
@@ -270,7 +271,7 @@ export async function waitForRevision(
   revisionId: string,
   revision?: Revision,
 ) {
-  const quiet = context.quiet;
+  const quiet = context.quiet || context.json;
   const log: typeof console.log = quiet
     ? () => {}
     // deno-lint-ignore no-explicit-any
@@ -285,7 +286,7 @@ export async function waitForRevision(
     message: "Awaiting revision to complete...",
     color: "yellow",
   });
-  if (!quiet) completionSpinner.start();
+  if (shouldUseSpinner(context)) completionSpinner.start();
 
   const completionPromise = Promise.withResolvers<void>();
 
@@ -324,6 +325,16 @@ export async function waitForRevision(
 
   completionSpinner.stop();
   if (revision?.status === "cancelled" || revision?.status === "failed") {
+    if (context.json) {
+      error(context, `The revision ${revision.status}.`, {
+        code: 1,
+        errorCode: revision.status === "cancelled"
+          ? "REVISION_CANCELLED"
+          : "REVISION_FAILED",
+        hint:
+          `View ${context.endpoint}/${org}/${app}/builds/${revisionId} for details.`,
+      });
+    }
     console.log(
       `\n${red("✗")} The revision ${
         revision.status === "cancelled" ? "was " : ""
@@ -337,6 +348,21 @@ export async function waitForRevision(
     app,
     revision: revisionId,
   }) as Array<{ partition_config_name: string; domains: string[] }>;
+
+  if (context.json) {
+    writeJsonResult({
+      org,
+      app,
+      revisionId,
+      url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
+      status: revision?.status ?? "ready",
+      timelines: timelines.map((t) => ({
+        partition: t.partition_config_name,
+        domains: t.domains.map((d) => `https://${d}`),
+      })),
+    });
+    return;
+  }
 
   console.log(`\n${green("✔")} Successfully deployed your application!`);
 

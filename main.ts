@@ -24,6 +24,10 @@ export type GlobalContext = {
   ignore?: string[];
   allowNodeModules?: boolean;
   quiet?: true;
+  /** Emit JSON to stdout (single object/array per command) and structured errors to stderr. */
+  json?: true;
+  /** Refuse interactive prompts; missing inputs must come from flags/env. */
+  nonInteractive?: true;
 };
 
 if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
