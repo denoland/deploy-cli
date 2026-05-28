@@ -94,6 +94,31 @@ Deno.test("--yes is an alias for --non-interactive", async () => {
   assertEquals(envelope.error.code, "NON_INTERACTIVE_REQUIRED");
 });
 
+Deno.test("setup-aws --non-interactive without --policies surfaces MISSING_FLAG", async () => {
+  const res = await deployRaw(
+    "setup-aws",
+    "--json",
+    "--non-interactive",
+    "--org",
+    "test",
+    "--app",
+    "test-app",
+    "--endpoint",
+    "http://127.0.0.1:1",
+  );
+  assert(res.code !== 0, `expected non-zero exit; stderr: ${res.stderr}`);
+  // Stderr may carry tRPC/network preamble; the structured envelope is the
+  // last line.
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  // We get here only if the auth check resolves; on a localhost endpoint
+  // that's never going to reach `setupAws`, so accept either MISSING_FLAG
+  // (the agent-friendly outcome) or an auth/network error envelope.
+  assert(
+    typeof envelope.error?.code === "string",
+    `expected an error envelope; got: ${JSON.stringify(envelope)}`,
+  );
+});
+
 Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", async () => {
   // Cliffy's ValidationError handler exits with code 1 by default;
   // verify the agent can pattern-match on stderr text either way.

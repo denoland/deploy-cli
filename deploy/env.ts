@@ -1,6 +1,6 @@
 import { Command } from "@cliffy/command";
 import { parse as dotEnvParse } from "@std/dotenv";
-import { error, isInteractive, tablePrinter } from "../util.ts";
+import { error, isNonInteractive, tablePrinter } from "../util.ts";
 import { green } from "@std/fmt/colors";
 import { createTrpcClient } from "../auth.ts";
 import type { GlobalContext } from "../main.ts";
@@ -342,10 +342,10 @@ const envLoadCommand = new Command<EnvCommandContext>()
         updateEnvVars = [];
       } else if (options.replace) {
         // proceed with updates
-      } else if (!isInteractive()) {
+      } else if (isNonInteractive(options)) {
         error(
           options,
-          "Existing env vars found and stdin is not a terminal.\nUse --replace to overwrite or --skip-existing to skip.",
+          "Existing env vars found and prompting is disabled.\nUse --replace to overwrite or --skip-existing to skip.",
         );
       } else {
         console.log("The following env vars are already defined:");
