@@ -246,6 +246,17 @@ interface WhoamiOrg {
   plan: string | null;
 }
 
+interface AccountMe {
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    avatarUrl: string | null;
+    githubLogin: string | null;
+  } | null;
+  tokenType: string;
+}
+
 const whoamiCommand = new Command<GlobalContext>()
   .description(
     "Verify the current Deno Deploy token and list reachable organizations",
@@ -260,16 +271,16 @@ const whoamiCommand = new Command<GlobalContext>()
     // AUTH_INVALID_TOKEN envelope from the errorLink if the token is bad,
     // without ever calling `requireInteractive()` or opening a browser.
     const trpcClient = createTrpcClient(options);
-    const orgs = await trpcClient.query("orgs.list") as WhoamiOrg[];
+    const [me, orgs] = await Promise.all([
+      trpcClient.query("account.me") as Promise<AccountMe>,
+      trpcClient.query("orgs.list") as Promise<WhoamiOrg[]>,
+    ]);
 
     if (options.json) {
       writeJsonResult({
         authenticated: true,
-        // The deployng tRPC router does not currently expose user identity,
-        // so we surface what we can (orgs the token can reach). When that
-        // procedure lands, this output will gain a `user` field; existing
-        // consumers reading `authenticated` / `orgs[]` keep working.
-        user: null,
+        user: me.user,
+        tokenType: me.tokenType,
         orgs: orgs.map((org) => ({
           id: org.id,
           slug: org.slug,
@@ -280,8 +291,15 @@ const whoamiCommand = new Command<GlobalContext>()
       return;
     }
 
+    const who = me.user
+      ? (me.user.githubLogin
+        ? `@${me.user.githubLogin}`
+        : me.user.email ?? me.user.name ?? me.user.id)
+      : `org-scoped token (${me.tokenType})`;
     console.log(
-      `${green("✔")} Authenticated. ${orgs.length} reachable organization${
+      `${
+        green("✔")
+      } Authenticated as ${who}. ${orgs.length} reachable organization${
         orgs.length === 1 ? "" : "s"
       }:`,
     );
