@@ -149,3 +149,55 @@ Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", asyn
   assert(res.code !== 0);
   assertStringIncludes(res.stderr + res.stdout, "Invalid source");
 });
+
+async function sandboxRaw(...args: string[]): Promise<
+  { code: number; stdout: string; stderr: string }
+> {
+  const escaped = args.map((a) => $.escapeArg(a)).join(" ");
+  const result = await $.raw`deno sandbox ${escaped}`.noThrow()
+    .stdout("piped").stderr("piped");
+  return {
+    code: result.code,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+Deno.test("sandbox --help advertises --json and --non-interactive", async () => {
+  // The standalone `deno sandbox` root must expose the same agent flags as
+  // `deno deploy`, otherwise agents can't drive it non-interactively.
+  const res = await sandboxRaw("--help");
+  assertEquals(res.code, 0, `stderr: ${res.stderr}`);
+  assertStringIncludes(res.stdout, "--json");
+  assertStringIncludes(res.stdout, "--non-interactive");
+});
+
+Deno.test("sandbox list --json emits a structured error envelope, never a browser/hang", async () => {
+  // Bad token + unreachable endpoint: the command must fail fast with a
+  // machine-parseable envelope on stderr (and a clean stdout) rather than
+  // attempting the OAuth browser flow or blocking on a prompt.
+  const res = await sandboxRaw(
+    "--json",
+    "--token",
+    "obviously-invalid-token",
+    "--endpoint",
+    "http://127.0.0.1:1",
+    "list",
+    "--org",
+    "test",
+  );
+  assert(res.code !== 0, `expected non-zero exit; stderr: ${res.stderr}`);
+  // The structured envelope is the last line of stderr (tRPC/network preamble
+  // may precede it). Exact code is auth-vs-network dependent on the endpoint;
+  // assert the agent-facing contract: a single error object with a string code.
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assert(
+    typeof envelope.error?.code === "string",
+    `expected an error envelope; got: ${JSON.stringify(envelope)}`,
+  );
+  assertEquals(
+    res.stdout.trim(),
+    "",
+    `stdout should stay clean: ${res.stdout}`,
+  );
+});

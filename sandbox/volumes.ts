@@ -2,7 +2,12 @@ import { Command } from "@cliffy/command";
 import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
 import { Client } from "@deno/sandbox";
-import { formatSize, parseSize, tablePrinter } from "../util.ts";
+import {
+  formatSize,
+  parseSize,
+  tablePrinter,
+  writeJsonResult,
+} from "../util.ts";
 import { green } from "@std/fmt/colors";
 import { actionHandler, getOrg } from "../config.ts";
 
@@ -36,7 +41,11 @@ export const volumesCreateCommand = new Command<SandboxContext>()
       from: options.from,
     });
 
-    console.log(volume.id);
+    if (options.json) {
+      writeJsonResult({ id: volume.id, slug: name });
+    } else {
+      console.log(volume.id);
+    }
   }));
 
 export const volumesListCommand = new Command<SandboxContext>()
@@ -58,6 +67,21 @@ export const volumesListCommand = new Command<SandboxContext>()
       limit: 100,
       search,
     });
+
+    if (options.json) {
+      writeJsonResult({
+        items: list.items.map((volume) => ({
+          id: volume.id,
+          slug: volume.slug,
+          region: volume.region,
+          usedBytes: volume.estimatedFlattenedSize,
+          capacityBytes: volume.capacity,
+          baseSnapshot: volume.baseSnapshot ? volume.baseSnapshot.slug : null,
+        })),
+        org,
+      });
+      return;
+    }
 
     tablePrinter(
       ["ID", "SLUG", "REGION", "USED", "TOTAL", "BASE"],
@@ -91,7 +115,11 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
     });
 
     await client.volumes.delete(idOrSlug);
-    console.log(`${green("✔")} Successfully deleted volume '${idOrSlug}'.`);
+    if (options.json) {
+      writeJsonResult({ id: idOrSlug, deleted: true });
+    } else {
+      console.log(`${green("✔")} Successfully deleted volume '${idOrSlug}'.`);
+    }
   }));
 
 export const volumesSnapshotCommand = new Command<SandboxContext>()
@@ -113,7 +141,11 @@ export const volumesSnapshotCommand = new Command<SandboxContext>()
       const snapshot = await client.volumes.snapshot(volumeIdOrSlug, {
         slug: snapshotSlug,
       });
-      console.log(snapshot.id);
+      if (options.json) {
+        writeJsonResult({ id: snapshot.id, slug: snapshotSlug });
+      } else {
+        console.log(snapshot.id);
+      }
     }),
   );
 
