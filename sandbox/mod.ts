@@ -627,7 +627,12 @@ Example:
 export const sandboxCommand = new Command<GlobalContext>()
   .name("deno sandbox")
   .version(VERSION)
-  .description("Interact with sandboxes")
+  .description(`Interact with sandboxes
+
+For headless / CI use, authenticate via the DENO_DEPLOY_TOKEN env var
+(or --token) — no browser flow is opened when a token is supplied.
+See https://docs.deno.com/runtime/reference/cli/sandbox/ for the
+full reference.`)
   .globalOption("--endpoint <endpoint:string>", "the endpoint", {
     default: "https://console.deno.com",
     hidden: true,

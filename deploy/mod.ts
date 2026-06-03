@@ -246,6 +246,17 @@ interface WhoamiOrg {
   plan: string | null;
 }
 
+interface AccountMe {
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    avatarUrl: string | null;
+    githubLogin: string | null;
+  } | null;
+  tokenType: string;
+}
+
 const whoamiCommand = new Command<GlobalContext>()
   .description(
     "Verify the current Deno Deploy token and list reachable organizations",
@@ -260,16 +271,16 @@ const whoamiCommand = new Command<GlobalContext>()
     // AUTH_INVALID_TOKEN envelope from the errorLink if the token is bad,
     // without ever calling `requireInteractive()` or opening a browser.
     const trpcClient = createTrpcClient(options);
-    const orgs = await trpcClient.query("orgs.list") as WhoamiOrg[];
+    const [me, orgs] = await Promise.all([
+      trpcClient.query("account.me") as Promise<AccountMe>,
+      trpcClient.query("orgs.list") as Promise<WhoamiOrg[]>,
+    ]);
 
     if (options.json) {
       writeJsonResult({
         authenticated: true,
-        // The deployng tRPC router does not currently expose user identity,
-        // so we surface what we can (orgs the token can reach). When that
-        // procedure lands, this output will gain a `user` field; existing
-        // consumers reading `authenticated` / `orgs[]` keep working.
-        user: null,
+        user: me.user,
+        tokenType: me.tokenType,
         orgs: orgs.map((org) => ({
           id: org.id,
           slug: org.slug,
@@ -280,8 +291,15 @@ const whoamiCommand = new Command<GlobalContext>()
       return;
     }
 
+    const who = me.user
+      ? (me.user.githubLogin
+        ? `@${me.user.githubLogin}`
+        : me.user.email ?? me.user.name ?? me.user.id)
+      : `org-scoped token (${me.tokenType})`;
     console.log(
-      `${green("✔")} Authenticated. ${orgs.length} reachable organization${
+      `${
+        green("✔")
+      } Authenticated as ${who}. ${orgs.length} reachable organization${
         orgs.length === 1 ? "" : "s"
       }:`,
     );
@@ -300,7 +318,27 @@ export const deployCommand = new Command()
   .description(`Interact with Deno Deploy
 
 Calling this subcommand without any further subcommands will
-deploy your local directory to the specified application.`)
+deploy your local directory to the specified application.
+
+For non-interactive use (CI, AI agents), authenticate via the
+DENO_DEPLOY_TOKEN env var (or --token) and pass --json --non-interactive
+to every subcommand. The CLI then emits a single JSON object on stdout,
+a structured { error: { code, message, hint } } envelope on stderr,
+and a stable exit code (0 OK, 1 GENERIC, 2 USAGE, 3 AUTH, 4 NOT_FOUND,
+5 CONFLICT, 6 NETWORK). See https://docs.deno.com/runtime/reference/cli/deploy/#agent--ci-usage
+for the full reference.`)
+  .example(
+    "Verify the active token",
+    "whoami --json",
+  )
+  .example(
+    "Deploy current directory non-interactively",
+    "--json --non-interactive --org my-org --app my-app --prod",
+  )
+  .example(
+    "Create a static app from CI",
+    "create --json --non-interactive --org my-org --app my-app --source local --runtime-mode static --static-dir dist --region us",
+  )
   .globalOption("--endpoint <endpoint:string>", "the endpoint", {
     default: "https://console.deno.com",
     hidden: true,
