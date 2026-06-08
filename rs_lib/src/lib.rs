@@ -211,7 +211,7 @@ fn collect_files(
   let collected: Vec<String> = collector
     .collect_file_patterns(real_sys, &files)
     .into_iter()
-    .map(|path| path.to_string_lossy().to_string())
+    .map(|path| sys_traits::impls::wasm_path_to_str(&path).into_owned())
     .collect();
 
   debug_log(
