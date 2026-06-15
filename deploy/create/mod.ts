@@ -1,6 +1,6 @@
 import { Command, ValidationError } from "@cliffy/command";
 import type { GlobalContext } from "../../main.ts";
-import { actionHandler, type ConfigContext } from "../../config.ts";
+import { type ConfigContext, sourceActionHandler } from "../../config.ts";
 import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
@@ -180,166 +180,168 @@ export const createCommand = new Command<GlobalContext>()
     },
   )
   .arguments("[root-path:string]")
-  .action(actionHandler(async (config, options, rootPath = Deno.cwd()) => {
-    await getAuth(options);
-    let data;
-    if (
-      options.org ||
-      options.app ||
-      options.source ||
-      options.owner ||
-      options.repo ||
-      options.appDirectory ||
-      options.frameworkPreset ||
-      options.installCommand ||
-      options.buildCommand ||
-      options.preDeployCommand ||
-      options.runtimeMode ||
-      options.entrypoint ||
-      options.arguments ||
-      options.workingDirectory ||
-      options.staticDir ||
-      options.singlePageApp ||
-      options.region
-    ) {
-      const org = required(options.org, "org");
-      const app = required(options.app, "app");
-      const source = required(options.source, "source");
-      let repo: Repo = undefined;
-      let appDirectories: WorkspaceDetectionResult;
-      if (source === "github") {
-        repo = {
-          owner: required(options.owner, "owner"),
-          repo: required(options.repo, "repo"),
-        };
+  .action(
+    sourceActionHandler(async (config, options, rootPath = Deno.cwd()) => {
+      await getAuth(options);
+      let data;
+      if (
+        options.org ||
+        options.app ||
+        options.source ||
+        options.owner ||
+        options.repo ||
+        options.appDirectory ||
+        options.frameworkPreset ||
+        options.installCommand ||
+        options.buildCommand ||
+        options.preDeployCommand ||
+        options.runtimeMode ||
+        options.entrypoint ||
+        options.arguments ||
+        options.workingDirectory ||
+        options.staticDir ||
+        options.singlePageApp ||
+        options.region
+      ) {
+        const org = required(options.org, "org");
+        const app = required(options.app, "app");
+        const source = required(options.source, "source");
+        let repo: Repo = undefined;
+        let appDirectories: WorkspaceDetectionResult;
+        if (source === "github") {
+          repo = {
+            owner: required(options.owner, "owner"),
+            repo: required(options.repo, "repo"),
+          };
 
-        const trpcClient = createTrpcClient(options);
-        appDirectories = await trpcClient.query(
-          "github.detectWorkspaceForRepo",
-          repo,
-        ) as WorkspaceDetectionResult;
-      } else {
-        appDirectories = await detectWorkspace(
-          new FrameworkFileSystemReader(rootPath),
-        );
-      }
-
-      const member = appDirectories.members.find((member) => {
-        if (source === "local") {
-          return resolve(rootPath, member.path) ===
-            resolve(rootPath, options.appDirectory || "");
+          const trpcClient = createTrpcClient(options);
+          appDirectories = await trpcClient.query(
+            "github.detectWorkspaceForRepo",
+            repo,
+          ) as WorkspaceDetectionResult;
         } else {
-          return member.path === (options.appDirectory || "");
-        }
-      });
-
-      let buildDirectory;
-
-      if (source === "github") {
-        buildDirectory = member?.path ??
-          required(options.appDirectory, "app-directory");
-      } else {
-        buildDirectory = options.appDirectory || "";
-      }
-
-      let buildConfig;
-      if (!options.doNotUseDetectedBuildConfig) {
-        if (member?.buildConfig) {
-          buildConfig = member?.buildConfig;
-        } else {
-          console.warn(
-            `No build configuration was detected in '${buildDirectory}'.`,
+          appDirectories = await detectWorkspace(
+            new FrameworkFileSystemReader(rootPath),
           );
         }
-      }
 
-      if (!buildConfig) {
-        const base = {
-          frameworkPreset: options.frameworkPreset ?? "" as FrameworkPreset,
-          installCommand: options.installCommand ?? "",
-          buildCommand: options.buildCommand ?? "",
-          preDeployCommand: options.preDeployCommand ?? "",
-        };
-
-        const runtimeMode = requiredUnless(
-          options.runtimeMode,
-          options.frameworkPreset,
-          "runtime-mode",
-        );
-
-        switch (runtimeMode) {
-          case "dynamic": {
-            buildConfig = {
-              ...base,
-              mode: "dynamic" as const,
-              entrypoint: required(options.entrypoint, "entrypoint"),
-              args: options.arguments,
-              cwd: options.workingDirectory,
-            };
-            break;
+        const member = appDirectories.members.find((member) => {
+          if (source === "local") {
+            return resolve(rootPath, member.path) ===
+              resolve(rootPath, options.appDirectory || "");
+          } else {
+            return member.path === (options.appDirectory || "");
           }
-          case "static": {
-            buildConfig = {
-              ...base,
-              mode: "static" as const,
-              staticDir: required(options.staticDir, "static-dir"),
-              singlePageApp: options.singlePageApp ?? false,
-            };
-            break;
-          }
-          default: {
-            buildConfig = base;
-            break;
+        });
+
+        let buildDirectory;
+
+        if (source === "github") {
+          buildDirectory = member?.path ??
+            required(options.appDirectory, "app-directory");
+        } else {
+          buildDirectory = options.appDirectory || "";
+        }
+
+        let buildConfig;
+        if (!options.doNotUseDetectedBuildConfig) {
+          if (member?.buildConfig) {
+            buildConfig = member?.buildConfig;
+          } else {
+            console.warn(
+              `No build configuration was detected in '${buildDirectory}'.`,
+            );
           }
         }
-      }
 
-      const region = required(options.region, "region");
+        if (!buildConfig) {
+          const base = {
+            frameworkPreset: options.frameworkPreset ?? "" as FrameworkPreset,
+            installCommand: options.installCommand ?? "",
+            buildCommand: options.buildCommand ?? "",
+            preDeployCommand: options.preDeployCommand ?? "",
+          };
 
-      if (!options.json) {
-        console.log("Using the following build configuration:");
-        console.log(renderBuildConfig(buildConfig satisfies BuildConfig));
-      }
+          const runtimeMode = requiredUnless(
+            options.runtimeMode,
+            options.frameworkPreset,
+            "runtime-mode",
+          );
 
-      data = {
-        org,
-        app,
-        repo,
-        buildDirectory,
-        buildConfig: buildConfig satisfies BuildConfig,
-        buildTimeout: options.buildTimeout,
-        buildMemoryLimit: options.buildMemoryLimit,
-        region,
-      };
-    } else {
-      data = await createFlow(options, rootPath);
-    }
-    if (options.dryRun) {
-      if (options.json) {
-        writeJsonResult({
-          dryRun: true,
-          org: data.org,
-          app: data.app,
-          repo: data.repo,
-          buildDirectory: data.buildDirectory,
-          buildConfig: data.buildConfig,
-          buildTimeout: data.buildTimeout,
-          buildMemoryLimit: data.buildMemoryLimit,
-          region: data.region,
-        });
+          switch (runtimeMode) {
+            case "dynamic": {
+              buildConfig = {
+                ...base,
+                mode: "dynamic" as const,
+                entrypoint: required(options.entrypoint, "entrypoint"),
+                args: options.arguments,
+                cwd: options.workingDirectory,
+              };
+              break;
+            }
+            case "static": {
+              buildConfig = {
+                ...base,
+                mode: "static" as const,
+                staticDir: required(options.staticDir, "static-dir"),
+                singlePageApp: options.singlePageApp ?? false,
+              };
+              break;
+            }
+            default: {
+              buildConfig = base;
+              break;
+            }
+          }
+        }
+
+        const region = required(options.region, "region");
+
+        if (!options.json) {
+          console.log("Using the following build configuration:");
+          console.log(renderBuildConfig(buildConfig satisfies BuildConfig));
+        }
+
+        data = {
+          org,
+          app,
+          repo,
+          buildDirectory,
+          buildConfig: buildConfig satisfies BuildConfig,
+          buildTimeout: options.buildTimeout,
+          buildMemoryLimit: options.buildMemoryLimit,
+          region,
+        };
+      } else {
+        data = await createFlow(options, rootPath);
       }
-    } else {
-      await createApp(
-        options,
-        config,
-        data,
-        rootPath,
-        options.wait,
-      );
-      config.org = data.org;
-      config.app = data.app;
-    }
-  }, (rootPath) => rootPath));
+      if (options.dryRun) {
+        if (options.json) {
+          writeJsonResult({
+            dryRun: true,
+            org: data.org,
+            app: data.app,
+            repo: data.repo,
+            buildDirectory: data.buildDirectory,
+            buildConfig: data.buildConfig,
+            buildTimeout: data.buildTimeout,
+            buildMemoryLimit: data.buildMemoryLimit,
+            region: data.region,
+          });
+        }
+      } else {
+        await createApp(
+          options,
+          config,
+          data,
+          rootPath,
+          options.wait,
+        );
+        config.org = data.org;
+        config.app = data.app;
+      }
+    }, (rootPath) => rootPath),
+  );
 
 function required<T>(value: T | undefined, option: string): T {
   if (value === undefined) {
@@ -374,6 +376,24 @@ export interface CreateApp {
   region: string;
 }
 
+async function readDeviceCreateErrorMessage(
+  response: Response,
+): Promise<string> {
+  const fallback = response.statusText || `HTTP ${response.status}`;
+  try {
+    const body: unknown = await response.json();
+    if (
+      typeof body === "object" && body !== null && "message" in body &&
+      typeof body.message === "string"
+    ) {
+      return body.message;
+    }
+  } catch {
+    // Ignore malformed/non-JSON error bodies and use the HTTP status instead.
+  }
+  return fallback;
+}
+
 export async function createApp(
   context: GlobalContext,
   configContext: ConfigContext,
@@ -398,8 +418,7 @@ export async function createApp(
       }),
     });
     if (!deviceCreate.ok) {
-      // deno-lint-ignore no-explicit-any
-      error(context, (await deviceCreate.json() as any).message);
+      error(context, await readDeviceCreateErrorMessage(deviceCreate));
     }
     const { id } = await deviceCreate.json();
     deviceCreation = id;

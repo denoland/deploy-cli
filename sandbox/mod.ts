@@ -23,7 +23,11 @@ import { VERSION } from "../version.ts";
 
 import { volumesCommand } from "./volumes.ts";
 import { snapshotsCommand } from "./snapshot.ts";
-import { actionHandler, type ConfigContext, getOrg } from "../config.ts";
+import {
+  actionHandler,
+  type ConfigMetadataContext,
+  getOrg,
+} from "../config.ts";
 
 export type SandboxContext = GlobalContext & {
   org?: string;
@@ -535,7 +539,7 @@ function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
 
 async function connectToSandbox(
   options: SandboxContext,
-  config: ConfigContext,
+  config: ConfigMetadataContext,
   sandboxId: string,
 ): Promise<Sandbox> {
   const org = await getOrg(options, config, options.org);

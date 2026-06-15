@@ -8,7 +8,12 @@ import {
 } from "../util.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
 import { VERSION } from "../version.ts";
-import { actionHandler, getApp, getOrg } from "../config.ts";
+import {
+  actionHandler,
+  getApp,
+  getOrg,
+  sourceActionHandler,
+} from "../config.ts";
 import { publish } from "./publish.ts";
 import { setupAws, setupGcp } from "./setup-cloud.ts";
 import { createTrpcClient, getAuth, tokenStorage } from "../auth.ts";
@@ -401,7 +406,7 @@ for the full reference.`)
     }
   })
   .action(
-    actionHandler(
+    sourceActionHandler(
       async (config, options, rootPath = Deno.cwd()) => {
         const org = await getOrg(options, config, options.org);
         const { app, created } = await getApp(

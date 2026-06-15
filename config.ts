@@ -14,7 +14,7 @@ import { createApp } from "./deploy/create/mod.ts";
 
 export async function getOrg(
   context: GlobalContext,
-  config: ConfigContext,
+  config: ConfigMetadataContext,
   org: string | undefined,
 ): Promise<string> {
   await getAuth(context, false);
@@ -69,7 +69,7 @@ export async function getOrg(
 
 export async function getApp(
   context: GlobalContext,
-  config: ConfigContext,
+  config: ConfigMetadataContext,
   canCreate: false,
   org: string,
   app: string | undefined | null,
@@ -84,7 +84,7 @@ export async function getApp(
 ): Promise<{ app: string; created: boolean }>;
 export async function getApp(
   context: GlobalContext,
-  config: ConfigContext,
+  config: ConfigMetadataContext,
   canCreate: boolean,
   org: string,
   app: string | undefined | null,
@@ -131,9 +131,12 @@ export async function getApp(
 
     if (selectedApp.value === null) {
       const data = await createFlow(context, rootPath!, org);
+      // The "create a new application" entry is only offered when canCreate is
+      // true, and that overload requires a files-bearing ConfigContext, so the
+      // subsequent publish() inside createApp() always has source files.
       await createApp(
         context,
-        config,
+        config as ConfigContext,
         data,
         rootPath!,
         true,
@@ -156,10 +159,16 @@ export async function getApp(
   };
 }
 
-export interface ConfigContext {
+/**
+ * Config-derived state shared by every command: the resolved `deploy.org` /
+ * `deploy.app` plus helpers to persist them back to `deno.json(c)`. This carries
+ * NO source-file list, so commands that only need metadata (sandbox, logs, env,
+ * database, apps, orgs, deployments, whoami, ...) never trigger a downward
+ * filesystem walk.
+ */
+export interface ConfigMetadataContext {
   org: undefined | string;
   app: undefined | string;
-  files: string[];
   configSaved: boolean;
   doNotCreate: boolean;
   save(): Promise<void>;
@@ -167,22 +176,82 @@ export interface ConfigContext {
   noCreate(): void;
 }
 
+/**
+ * Metadata plus the collected local source files for publish/diffsync. Only
+ * local deploy/create flows use this; it is produced exclusively by
+ * {@link sourceActionHandler}.
+ */
+export interface ConfigContext extends ConfigMetadataContext {
+  files: string[];
+}
+
+interface CommandActionThis {
+  getLiteralArgs(): string[];
+}
+
+/**
+ * Wrap a command action that only needs deploy-config metadata (org/app). The
+ * config file is discovered via an upward lookup; source files are NOT
+ * collected. This is the default for management and sandbox commands.
+ */
 export function actionHandler<
   O extends GlobalContext,
   A extends unknown[] = unknown[],
 >(
   cb: (
-    // deno-lint-ignore no-explicit-any
-    this: any,
+    this: CommandActionThis,
+    configContext: ConfigMetadataContext,
+    options: O,
+    ...args: A
+  ) => void | Promise<void>,
+  rootPath?: (...args: A) => string | undefined,
+): (options: O, ...args: A) => Promise<void> {
+  return async function (this: CommandActionThis, context: O, ...args: A) {
+    try {
+      const metadata = await readDeployConfigMetadata(
+        rootPath?.(...args) ?? Deno.cwd(),
+        context.config,
+        context.debug,
+      );
+      const configContext = createConfigContext(metadata);
+
+      await cb.call(
+        this,
+        configContext,
+        context,
+        ...args,
+      );
+
+      await configContext.save();
+    } catch (e) {
+      if (e instanceof ValidationError) {
+        throw e;
+      }
+      error(context, errorMessage(e));
+    }
+  };
+}
+
+/**
+ * Wrap a command action that needs the local source files for publish/diffsync
+ * (local `deno deploy` and `deno deploy create`). This performs the downward
+ * source-file collection that {@link actionHandler} deliberately skips.
+ */
+export function sourceActionHandler<
+  O extends GlobalContext,
+  A extends unknown[] = unknown[],
+>(
+  cb: (
+    this: CommandActionThis,
     configContext: ConfigContext,
     options: O,
     ...args: A
   ) => void | Promise<void>,
   rootPath?: (...args: A) => string | undefined,
 ): (options: O, ...args: A) => Promise<void> {
-  return async function (this: unknown, context: O, ...args: A) {
+  return async function (this: CommandActionThis, context: O, ...args: A) {
     try {
-      const config = await readConfig(
+      const source = await collectDeploySourceFiles(
         rootPath?.(...args) ?? Deno.cwd(),
         context.config,
         context.ignore ?? [],
@@ -190,30 +259,8 @@ export function actionHandler<
         context.debug,
       );
       const configContext: ConfigContext = {
-        ...getAppFromConfig(config),
-        configSaved: false,
-        doNotCreate: false,
-        save() {
-          if (this.configSaved) {
-            return Promise.resolve();
-          }
-          this.configSaved = true;
-
-          if (this.doNotCreate && !config) {
-            return Promise.resolve();
-          }
-
-          return writeConfig(config, {
-            org: this.org,
-            app: this.app,
-          });
-        },
-        noSave() {
-          this.configSaved = true;
-        },
-        noCreate() {
-          this.doNotCreate = true;
-        },
+        ...createConfigContext(source),
+        files: source.files,
       };
 
       await cb.call(
@@ -228,30 +275,106 @@ export function actionHandler<
       if (e instanceof ValidationError) {
         throw e;
       }
-      error(context, (e as Error).message);
+      error(context, errorMessage(e));
     }
   };
 }
 
-interface Config {
-  config?: {
-    path: string;
-    content: string;
-  };
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+interface ConfigFile {
+  path: string;
+  content: string;
+}
+
+interface ResolvedConfig {
+  config?: ConfigFile;
   files: string[];
 }
 
-async function readConfig(
+/**
+ * Deploy-config metadata: the resolved config file (if any) plus the
+ * `deploy.org` / `deploy.app` values read from it. Contains no source files.
+ */
+export interface DeployConfigMetadata {
+  config?: ConfigFile;
+  org?: string;
+  app?: string;
+}
+
+/**
+ * The local source files to publish, plus the deploy-config metadata they were
+ * resolved alongside.
+ */
+export interface DeploySourceFiles extends DeployConfigMetadata {
+  files: string[];
+}
+
+/**
+ * Read deploy-config metadata (`deploy.org` / `deploy.app`) without collecting
+ * any source files. Safe to call from any directory, including `/`.
+ */
+export async function readDeployConfigMetadata(
+  rootPath: string,
+  maybeConfigPath: string | undefined,
+  debug: boolean,
+): Promise<DeployConfigMetadata> {
+  const resolved = await resolveConfig(
+    rootPath,
+    maybeConfigPath,
+    [],
+    false,
+    false,
+    debug,
+  );
+  return { config: resolved.config, ...parseDeployOrgApp(resolved) };
+}
+
+/**
+ * Collect the local source files for publish/diffsync, applying
+ * `deploy.include` / `deploy.exclude`, explicit ignore paths, and the
+ * `node_modules` default. Also returns the deploy-config metadata.
+ */
+export async function collectDeploySourceFiles(
   rootPath: string,
   maybeConfigPath: string | undefined,
   ignorePaths: string[],
   allowNodeModules: boolean,
   debug: boolean,
-): Promise<Config> {
+): Promise<DeploySourceFiles> {
+  const resolved = await resolveConfig(
+    rootPath,
+    maybeConfigPath,
+    ignorePaths,
+    allowNodeModules,
+    true,
+    debug,
+  );
+  return {
+    config: resolved.config,
+    files: resolved.files,
+    ...parseDeployOrgApp(resolved),
+  };
+}
+
+async function resolveConfig(
+  rootPath: string,
+  maybeConfigPath: string | undefined,
+  ignorePaths: string[],
+  allowNodeModules: boolean,
+  collectFiles: boolean,
+  debug: boolean,
+): Promise<ResolvedConfig> {
   const config = resolve_config(
     resolve(maybeConfigPath || rootPath),
     ignorePaths,
     allowNodeModules,
+    collectFiles,
     debug,
   );
 
@@ -264,18 +387,17 @@ async function readConfig(
   return { files: config.files };
 }
 
-function getAppFromConfig(
-  configContent: Config,
-): { org: undefined | string; app: undefined | string; files: string[] } {
-  if (configContent.config) {
-    const config = parseJSONC(configContent.config.content);
+function parseDeployOrgApp(
+  resolved: ResolvedConfig,
+): { org: undefined | string; app: undefined | string } {
+  if (resolved.config) {
+    const config = parseJSONC(resolved.config.content);
     const deployObj = config.asObject()?.getIfObject("deploy");
 
     if (deployObj) {
       return {
         org: deployObj.get("org")?.value()?.asString(),
         app: deployObj.get("app")?.value()?.asString(),
-        files: configContent.files,
       };
     }
   }
@@ -283,12 +405,43 @@ function getAppFromConfig(
   return {
     org: undefined,
     app: undefined,
-    files: configContent.files,
+  };
+}
+
+function createConfigContext(
+  metadata: DeployConfigMetadata,
+): ConfigMetadataContext {
+  return {
+    org: metadata.org,
+    app: metadata.app,
+    configSaved: false,
+    doNotCreate: false,
+    save() {
+      if (this.configSaved) {
+        return Promise.resolve();
+      }
+      this.configSaved = true;
+
+      if (this.doNotCreate && !metadata) {
+        return Promise.resolve();
+      }
+
+      return writeConfig(metadata, {
+        org: this.org,
+        app: this.app,
+      });
+    },
+    noSave() {
+      this.configSaved = true;
+    },
+    noCreate() {
+      this.doNotCreate = true;
+    },
   };
 }
 
 async function writeConfig(
-  configContent: Config,
+  configContent: { config?: ConfigFile },
   { org, app }: { org: undefined | string; app: undefined | string },
 ) {
   if (!org) {

@@ -27,26 +27,38 @@ pub fn resolve_config(
   root_path: String,
   ignore_paths: Vec<String>,
   allow_node_modules: bool,
+  collect_files: bool,
   debug: bool,
 ) -> Result<JsValue, JsValue> {
-  let result =
-    inner_resolve_config(root_path, ignore_paths, allow_node_modules, debug);
+  let result = inner_resolve_config(
+    root_path,
+    ignore_paths,
+    allow_node_modules,
+    collect_files,
+    debug,
+  );
   result
     .map_err(|err| create_js_error(&err))
     .map(|val| serde_wasm_bindgen::to_value(&val).unwrap())
 }
 
+// `collect_files` toggles the downward source-file walk. Deploy-config metadata
+// (the `deno.json` path that holds `deploy.org` / `deploy.app`) is found via the
+// upward workspace discovery above, which never descends into cwd. The expensive
+// (and, from `/`, pathological) part is `collect_files`, so management/sandbox
+// commands pass `collect_files=false` and only local publish flows pass `true`.
 fn inner_resolve_config(
   root_path: String,
   ignore_paths: Vec<String>,
   allow_node_modules: bool,
+  collect_files: bool,
   debug: bool,
 ) -> Result<ConfigLookup, anyhow::Error> {
   debug_log(
     debug,
     &format!(
-      "resolve_config(root_path={:?}, ignore_paths={:?}, allow_node_modules={})",
-      root_path, ignore_paths, allow_node_modules
+      "resolve_config(root_path={:?}, ignore_paths={:?}, allow_node_modules={}, collect_files={})",
+      root_path, ignore_paths, allow_node_modules, collect_files
     ),
   );
 
@@ -139,8 +151,18 @@ fn inner_resolve_config(
         "workspace_dir.to_deploy_config should have resolved a specifier",
       );
     debug_log(debug, &format!("deploy config specifier={}", specifier));
-    let files =
-      collect_files(&real_sys, dir_path, config.files, allow_node_modules, debug);
+    let files = if collect_files {
+      collect_source_files(
+        &real_sys,
+        dir_path,
+        config.files,
+        allow_node_modules,
+        debug,
+      )
+    } else {
+      debug_log(debug, "skipping source-file collection (metadata-only lookup)");
+      Vec::new()
+    };
     Ok(ConfigLookup {
       path: Some(specifier),
       files,
@@ -160,18 +182,23 @@ fn inner_resolve_config(
         path,
       ),
     );
-    let files = collect_files(
-      &real_sys,
-      dir_path.clone(),
-      FilePatterns::new_with_base(dir_path),
-      allow_node_modules,
-      debug,
-    );
+    let files = if collect_files {
+      collect_source_files(
+        &real_sys,
+        dir_path.clone(),
+        FilePatterns::new_with_base(dir_path),
+        allow_node_modules,
+        debug,
+      )
+    } else {
+      debug_log(debug, "skipping source-file collection (metadata-only lookup)");
+      Vec::new()
+    };
     Ok(ConfigLookup { path, files })
   }
 }
 
-fn collect_files(
+fn collect_source_files(
   real_sys: &sys_traits::impls::RealSys,
   root_path: PathBuf,
   files: FilePatterns,
@@ -286,6 +313,7 @@ mod tests {
       root.to_string_lossy().into_owned(),
       Vec::new(),
       false,
+      true,
       false,
     )
     .unwrap();
@@ -299,6 +327,63 @@ mod tests {
       "expected {} in deploy files; got {:?}",
       expected.display(),
       result.files,
+    );
+  }
+
+  // Metadata-only lookups (collect_files=false) must resolve the deploy config
+  // path (so org/app can be read) without performing any downward source-file
+  // walk. This is what keeps non-publish commands from traversing /sys, /proc,
+  // etc. when run from `/`.
+  #[test]
+  fn metadata_only_skips_file_collection() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_file(
+      root,
+      "deno.json",
+      r#"{ "deploy": { "org": "myorg", "app": "myapp" } }"#,
+    );
+    // A trap subtree that a downward walk would pick up but a metadata-only
+    // lookup must ignore.
+    write_file(root, "trap/sentinel.txt", "trap");
+    write_file(root, "main.ts", "Deno.serve(() => new Response('hi'));");
+
+    let metadata = inner_resolve_config(
+      root.to_string_lossy().into_owned(),
+      Vec::new(),
+      false,
+      false,
+      false,
+    )
+    .unwrap();
+
+    assert!(
+      metadata.path.is_some(),
+      "expected the deploy config path to be resolved for metadata lookup",
+    );
+    assert!(
+      metadata.files.is_empty(),
+      "metadata-only lookup must not collect files; got {:?}",
+      metadata.files,
+    );
+
+    // The same tree, collected for publish, still yields the source files.
+    let collected = inner_resolve_config(
+      root.to_string_lossy().into_owned(),
+      Vec::new(),
+      false,
+      true,
+      false,
+    )
+    .unwrap();
+    let trap = root.join("trap/sentinel.txt");
+    assert!(
+      collected
+        .files
+        .iter()
+        .any(|f| Path::new(f) == trap.as_path()),
+      "expected source collection to still walk the tree; got {:?}",
+      collected.files,
     );
   }
 }
