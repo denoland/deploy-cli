@@ -180,7 +180,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         org: org,
         slug: name,
         engine,
-        connectionConfig,
+        connection_config: connectionConfig,
       });
       console.log(`${green("✔")} Successfully linked database '${name}'.`);
     }
