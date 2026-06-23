@@ -89,19 +89,10 @@ const databasesLinkCommand = new Command<DatabaseContext>()
     "Test connection without linking",
     "link --dry-run my-db --hostname db.example.com",
   )
-  .option("--hostname <string>", "The hostname to use for the database", {
-    required: true,
-    conflicts: ["connectionString"],
-  })
-  .option("--username <string>", "The username to use for the database", {
-    conflicts: ["connectionString"],
-  })
-  .option("--password <string>", "The password to use for the database", {
-    conflicts: ["connectionString"],
-  })
-  .option("--port <number>", "The port to use for the database", {
-    conflicts: ["connectionString"],
-  })
+  .option("--hostname <string>", "The hostname to use for the database")
+  .option("--username <string>", "The username to use for the database")
+  .option("--password <string>", "The password to use for the database")
+  .option("--port <number>", "The port to use for the database")
   .option("--cert <string>", "The SSL certificate to use for the database")
   .option(
     "--dry-run",
@@ -110,6 +101,23 @@ const databasesLinkCommand = new Command<DatabaseContext>()
   .arguments("<name:string> [connectionString:string]")
   .action(actionHandler(async (config, options, name, connectionString) => {
     config.noCreate();
+
+    // `connectionString` is a positional argument, so its mutual exclusion
+    // with --hostname/--port/--username/--password can't be expressed via
+    // cliffy's `conflicts` (which only accepts option names). Validate manually.
+    const hasIndividualFlags = options.hostname || options.port !== undefined ||
+      options.username || options.password;
+    if (connectionString && hasIndividualFlags) {
+      throw new TypeError(
+        "Provide either a connection string or the individual " +
+          "--hostname/--port/--username/--password flags, not both.",
+      );
+    }
+    if (!connectionString && !options.hostname) {
+      throw new TypeError(
+        "A connection string or --hostname is required.",
+      );
+    }
 
     const org = await getOrg(options, config, options.org);
     const trpcClient = createTrpcClient(options);
@@ -152,7 +160,9 @@ const databasesLinkCommand = new Command<DatabaseContext>()
 
     const connectionConfig = {
       hostname: hostname,
-      port: port || null,
+      // The backend expects a number; `--port <number>` and the parsed
+      // connection-string port both arrive as strings, so coerce here.
+      port: port != null ? Number(port) : null,
       username: username || null,
       password: password || null,
       certificate: options.cert || null,
