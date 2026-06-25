@@ -133,6 +133,31 @@ Deno.test("whoami --json with bad token emits AUTH envelope (exit 3, no browser)
   assertEquals(envelope.error.code, "AUTH_INVALID_TOKEN");
 });
 
+Deno.test("publish (default command) --json keeps stdout clean and emits an AUTH envelope on stderr", async () => {
+  // The root command is the publish flow. With --org/--app supplied, org/app
+  // resolve without a network round-trip, so publish() runs and fails on its
+  // first backend call against the unreachable endpoint. The temp token makes
+  // that a deterministic AUTH_INVALID_TOKEN. Asserts --json stdout discipline:
+  // nothing on stdout, the structured error on stderr.
+  const res = await deployRaw(
+    "--json",
+    "--non-interactive",
+    "--token",
+    "obviously-invalid-token",
+    "--endpoint",
+    "http://127.0.0.1:1",
+    "--org",
+    "test",
+    "--app",
+    "test-app",
+    ".",
+  );
+  assertEquals(res.code, 3, `unexpected exit; stderr: ${res.stderr}`);
+  assertEquals(res.stdout.trim(), "", `stdout should be empty: ${res.stdout}`);
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "AUTH_INVALID_TOKEN");
+});
+
 Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", async () => {
   // Cliffy's ValidationError handler exits with code 1 by default;
   // verify the agent can pattern-match on stderr text either way.
