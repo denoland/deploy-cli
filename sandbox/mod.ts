@@ -5,7 +5,7 @@ import {
   type VolumeId,
   type VolumeSlug,
 } from "@deno/sandbox";
-import { green, magenta, red, yellow } from "@std/fmt/colors";
+import { green, magenta, red, setColorEnabled, yellow } from "@std/fmt/colors";
 import { pooledMap } from "@std/async";
 import { expandGlob } from "@std/fs";
 import { join } from "@std/path";
@@ -16,6 +16,7 @@ import {
   parseSize,
   renderTemporalTimestamp,
   tablePrinter,
+  writeJsonResult,
 } from "../util.ts";
 import { createTrpcClient, getAuth, tokenStorage } from "../auth.ts";
 import { createSwitchCommand, type GlobalContext } from "../main.ts";
@@ -109,7 +110,9 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       region: options.region as Region,
       root: options.root,
     });
-    if (options.timeout === "session" || options.ssh) {
+    if (
+      (options.timeout === "session" || options.ssh) && !options.json
+    ) {
       console.log(`${green("✔")} Created sandbox with id '${sandbox.id}'`);
     }
 
@@ -132,7 +135,12 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 
     if (options.exposeHttp) {
       const url = await sandbox.exposeHttp({ port: options.exposeHttp });
-      console.log(`Exposed port ${options.exposeHttp} to ${url}`);
+      // In JSON mode this is progress, not the final result; keep stdout clean.
+      if (options.json) {
+        console.error(`Exposed port ${options.exposeHttp} to ${url}`);
+      } else {
+        console.log(`Exposed port ${options.exposeHttp} to ${url}`);
+      }
     }
 
     const args = this.getLiteralArgs().length > 0
@@ -183,7 +191,11 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
         Deno.exit();
       });
     } else {
-      console.log(sandbox.id);
+      if (options.json) {
+        writeJsonResult({ id: sandbox.id });
+      } else {
+        console.log(sandbox.id);
+      }
 
       Deno.exit();
     }
@@ -203,6 +215,20 @@ export const sandboxListCommand = new Command<SandboxContext>()
       stopped_at: Date | null;
       cluster_hostname: string;
     }>;
+
+    if (options.json) {
+      writeJsonResult({
+        items: list.map((sandbox) => ({
+          id: sandbox.id,
+          status: sandbox.status,
+          region: sandbox.cluster_hostname.split(".")[0],
+          createdAt: sandbox.created_at,
+          stoppedAt: sandbox.stopped_at,
+        })),
+        org,
+      });
+      return;
+    }
 
     tablePrinter(
       ["ID", "CREATED", "REGION", "STATUS", "UPTIME"],
@@ -255,7 +281,9 @@ export const sandboxKillCommand = new Command<SandboxContext>()
       clusterHostname: cluster.hostname,
     }) as { success: boolean };
 
-    if (res.success) {
+    if (options.json) {
+      writeJsonResult({ id: sandboxId, killed: res.success });
+    } else if (res.success) {
       console.log(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
     }
   }));
@@ -477,9 +505,14 @@ export const sandboxExtendCommand = new Command<SandboxContext>()
   .action(actionHandler(async (config, options, sandboxId, timeout) => {
     config.noCreate();
     await using sandbox = await connectToSandbox(options, config, sandboxId);
-    console.log(
-      await sandbox.extendTimeout(timeout as `${number}s` | `${number}m`),
+    const result = await sandbox.extendTimeout(
+      timeout as `${number}s` | `${number}m`,
     );
+    if (options.json) {
+      writeJsonResult({ id: sandboxId, timeout: result });
+    } else {
+      console.log(result);
+    }
   }));
 
 export const sandboxDeployCommand = new Command<SandboxContext>()
@@ -508,11 +541,15 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
       },
     });
 
-    console.log(
-      `${
-        green("✔")
-      } Successfully deployed sandbox '${sandboxId}' to app '${app}'.`,
-    );
+    if (options.json) {
+      writeJsonResult({ id: sandboxId, app, deployed: true });
+    } else {
+      console.log(
+        `${
+          green("✔")
+        } Successfully deployed sandbox '${sandboxId}' to app '${app}'.`,
+      );
+    }
   }));
 
 function groupPathsBySandbox(paths: string[]): Record<string, string[]> {
@@ -608,6 +645,14 @@ full reference.`)
   .globalOption("--config <config:string>", "Path for the config file")
   .globalOption("--org <name:string>", "The name of the organization")
   .globalOption("-q, --quiet", "Suppress non-essential output")
+  .globalOption(
+    "-j, --json",
+    "Emit JSON on stdout instead of human-readable output",
+  )
+  .globalOption(
+    "-y, --non-interactive",
+    "Fail fast instead of prompting; values must be supplied via flags or env vars (alias: -y)",
+  )
   .globalAction((options) => {
     const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
     if (endpoint) {
@@ -621,6 +666,12 @@ full reference.`)
     const tokenEnv = options.token || Deno.env.get("DENO_DEPLOY_TOKEN");
     if (tokenEnv) {
       tokenStorage.set(tokenEnv, true);
+    }
+
+    // `--json` implies machine-readable output: kill ANSI color so structured
+    // payloads piped to `jq` don't carry escape sequences.
+    if (options.json) {
+      setColorEnabled(false);
     }
 
     if (options.debug) {
