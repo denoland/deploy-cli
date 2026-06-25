@@ -3,6 +3,32 @@ import { promptMultipleSelect } from "@std/cli/unstable-prompt-multiple-select";
 import { gray, green, yellow } from "@std/fmt/colors";
 import { createTrpcClient } from "../auth.ts";
 import type { GlobalContext } from "../main.ts";
+import { error, ExitCode, isNonInteractive } from "../util.ts";
+
+export interface SetupAwsOptions {
+  /** AWS IAM policy ARNs to attach. When set, the interactive multi-select is skipped. */
+  policies?: string[];
+  /** Use this IAM role name instead of generating a random-suffixed one. Enables idempotent re-runs. */
+  roleName?: string;
+}
+
+export interface SetupGcpOptions {
+  /** GCP IAM role names to grant. When set, the interactive multi-select is skipped. */
+  roles?: string[];
+  /** Use this service-account name instead of generating a random-suffixed one. Enables idempotent re-runs. */
+  serviceAccountName?: string;
+  /** Auto-accept the API-enable prompt for any missing required APIs. */
+  enableApis?: boolean;
+}
+
+/**
+ * Apply-confirmation helper. In non-interactive mode (`--yes`/`--non-interactive`
+ * or no TTY) we proceed automatically; otherwise we still prompt the human.
+ */
+function confirmApply(context: GlobalContext, message: string): boolean {
+  if (isNonInteractive(context)) return true;
+  return confirm(message);
+}
 
 const AWS_OIDC_AUDIENCE = "sts.amazonaws.com";
 
@@ -110,6 +136,7 @@ export async function setupAws(
   org: string,
   app: string,
   contexts: string[],
+  opts: SetupAwsOptions = {},
 ) {
   // Print out "AWS Setup Wizard for Deno Deploy" in an orange box
   console.log(
@@ -173,51 +200,66 @@ export async function setupAws(
     ),
   );
 
-  log(gray("  Loading IAM policies..."));
-  const allPolicies = await runAwsCommand<{
-    Policies: Array<{ PolicyName: string; Arn: string }>;
-  }>(["iam", "list-policies"]);
-  log("\r");
-
-  const choices = allPolicies.Policies.map((policy) => ({
-    label: policy.PolicyName,
-    value: policy.Arn,
-  }));
-
-  let policies;
-  while (true) {
-    const result = promptMultipleSelect(
-      "Select permission policies you want to attach to the new role",
-      choices,
+  let policies: Array<{ label: string; value: string }>;
+  if (opts.policies !== undefined) {
+    // Flag path: trust the caller, skip the listing and the prompt entirely.
+    policies = opts.policies.map((arn) => ({ label: arn, value: arn }));
+  } else if (isNonInteractive(context)) {
+    error(
+      context,
+      "Selecting AWS policies requires interactive input.\nUse --policies <arn> (repeatable) to pre-supply policies.",
       {
-        clear: true,
-        fitToRemainingHeight: true,
+        code: ExitCode.USAGE,
+        errorCode: "MISSING_FLAG",
+        hint: "Pass --policies <arn> for each policy you want attached.",
       },
     );
+  } else {
+    log(gray("  Loading IAM policies..."));
+    const allPolicies = await runAwsCommand<{
+      Policies: Array<{ PolicyName: string; Arn: string }>;
+    }>(["iam", "list-policies"]);
+    log("\r");
 
-    if (result === null) {
-      console.log("%c   Exiting setup.", "color: yellow;");
-      Deno.exit(1);
-    }
+    const choices = allPolicies.Policies.map((policy) => ({
+      label: policy.PolicyName,
+      value: policy.Arn,
+    }));
 
-    if (result.length === 0) {
-      const confirmNoPolicies = confirm(
-        "Are you sure you don't want to associate any policies? Remember to use Space to select a policy, and Enter to confirm your selections.",
+    while (true) {
+      const result = promptMultipleSelect(
+        "Select permission policies you want to attach to the new role",
+        choices,
+        {
+          clear: true,
+          fitToRemainingHeight: true,
+        },
       );
-      if (!confirmNoPolicies) {
-        continue;
+
+      if (result === null) {
+        console.log("%c   Exiting setup.", "color: yellow;");
+        Deno.exit(1);
       }
-      console.log(
-        "%c  No policies selected. You can attach policies later through the AWS Console.",
-        "color: yellow;",
-      );
-    }
 
-    policies = result;
-    break;
+      if (result.length === 0) {
+        const confirmNoPolicies = confirm(
+          "Are you sure you don't want to associate any policies? Remember to use Space to select a policy, and Enter to confirm your selections.",
+        );
+        if (!confirmNoPolicies) {
+          continue;
+        }
+        console.log(
+          "%c  No policies selected. You can attach policies later through the AWS Console.",
+          "color: yellow;",
+        );
+      }
+
+      policies = result;
+      break;
+    }
   }
 
-  const roleName = `DenoDeploy-${org}-${app}-${
+  const roleName = opts.roleName ?? `DenoDeploy-${org}-${app}-${
     Math.random()
       .toString(36)
       .substring(2, 8)
@@ -285,7 +327,7 @@ export async function setupAws(
 
   console.log("");
 
-  if (!confirm("Do you want to apply these changes?")) {
+  if (!confirmApply(context, "Do you want to apply these changes?")) {
     console.log("%c  Exiting setup.", "color: yellow;");
     Deno.exit(1);
   }
@@ -405,6 +447,7 @@ export async function setupGcp(
   org: string,
   app: string,
   contexts: string[],
+  opts: SetupGcpOptions = {},
 ) {
   // Print out "GCP Setup Wizard for Deno Deploy" in a blue box
   console.log(
@@ -499,7 +542,9 @@ export async function setupGcp(
     }
     console.log("");
 
-    const enableApis = confirm("Do you want to enable these APIs now?");
+    const enableApis = opts.enableApis ||
+      isNonInteractive(context) ||
+      confirm("Do you want to enable these APIs now?");
 
     if (!enableApis) {
       console.log(
@@ -568,58 +613,78 @@ export async function setupGcp(
     ),
   );
 
-  // List available IAM roles for selection
-  log(gray("  Loading IAM roles..."));
-  const roles = await runGcloudCommand<Array<{ name: string; title: string }>>(
-    ["iam", "roles", "list", "--filter=stage:GA"],
-  );
-  log("\r");
-
-  const roleChoices = roles.map((role) => ({
-    label: `${role.title} (${role.name.split("/").pop()})`,
-    value: role.name,
-  }));
-
-  let selectedRoles;
-  while (true) {
-    const result = promptMultipleSelect(
-      "Select IAM roles you want to grant to the service account",
-      roleChoices,
+  let selectedRoles: Array<{ label: string; value: string }>;
+  if (opts.roles !== undefined) {
+    selectedRoles = opts.roles.map((role) => ({ label: role, value: role }));
+  } else if (isNonInteractive(context)) {
+    error(
+      context,
+      "Selecting GCP roles requires interactive input.\nUse --roles <role> (repeatable) to pre-supply roles.",
       {
-        clear: true,
-        fitToRemainingHeight: true,
+        code: ExitCode.USAGE,
+        errorCode: "MISSING_FLAG",
+        hint: "Pass --roles <role> for each role you want granted.",
       },
     );
+  } else {
+    log(gray("  Loading IAM roles..."));
+    const roles = await runGcloudCommand<
+      Array<{ name: string; title: string }>
+    >(["iam", "roles", "list", "--filter=stage:GA"]);
+    log("\r");
 
-    if (result === null) {
-      console.log("%c   Exiting setup.", "color: yellow;");
-      Deno.exit(1);
-    }
+    const roleChoices = roles.map((role) => ({
+      label: `${role.title} (${role.name.split("/").pop()})`,
+      value: role.name,
+    }));
 
-    if (result.length === 0) {
-      const confirmNoRoles = confirm(
-        "Are you sure you don't want to associate any roles? Remember to use Space to select a role, and Enter to confirm your selections.",
+    while (true) {
+      const result = promptMultipleSelect(
+        "Select IAM roles you want to grant to the service account",
+        roleChoices,
+        {
+          clear: true,
+          fitToRemainingHeight: true,
+        },
       );
-      if (!confirmNoRoles) {
-        continue;
+
+      if (result === null) {
+        console.log("%c   Exiting setup.", "color: yellow;");
+        Deno.exit(1);
       }
-      console.log(
-        "%c  No roles selected. You can grant roles later through the GCP Console.",
-        "color: yellow;",
-      );
-    }
 
-    selectedRoles = result;
-    break;
+      if (result.length === 0) {
+        const confirmNoRoles = confirm(
+          "Are you sure you don't want to associate any roles? Remember to use Space to select a role, and Enter to confirm your selections.",
+        );
+        if (!confirmNoRoles) {
+          continue;
+        }
+        console.log(
+          "%c  No roles selected. You can grant roles later through the GCP Console.",
+          "color: yellow;",
+        );
+      }
+
+      selectedRoles = result;
+      break;
+    }
   }
 
-  // service account name must be between 6 and 30 characters, lowercase, and can contain letters, numbers, and dashes
-  let serviceAccountName = "deno-";
-  const orgPart = org.slice(0, 8).replaceAll(/-+$/g, "");
-  const appPart = app.slice(0, 17 - orgPart.length).replaceAll(/-+$/g, "");
-  serviceAccountName += `${orgPart}-${appPart}-${
-    Math.random().toString(36).substring(2, 8)
-  }`;
+  // Service-account name must be 6-30 chars, lowercase, [a-z0-9-]. With
+  // --service-account-name we trust the caller; otherwise we derive a
+  // random-suffixed default to avoid colliding with existing user resources.
+  let serviceAccountName: string;
+  if (opts.serviceAccountName !== undefined) {
+    serviceAccountName = opts.serviceAccountName;
+  } else {
+    serviceAccountName = "deno-";
+    const orgPart = org.slice(0, 8).replaceAll(/-+$/g, "");
+    const appPart = app.slice(0, 17 - orgPart.length).replaceAll(/-+$/g, "");
+    serviceAccountName += `${orgPart}-${appPart}-${
+      Math.random().toString(36).substring(2, 8)
+    }`;
+  }
 
   const serviceAccountEmail =
     `${serviceAccountName}@${projectId}.iam.gserviceaccount.com`;
@@ -696,7 +761,7 @@ export async function setupGcp(
 
   console.log("");
 
-  if (!confirm("Do you want to apply these changes?")) {
+  if (!confirmApply(context, "Do you want to apply these changes?")) {
     console.log("%c  Exiting setup.", "color: yellow;");
     Deno.exit(1);
   }

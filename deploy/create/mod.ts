@@ -20,7 +20,7 @@ import {
 
 import { publish, waitForRevision } from "../publish.ts";
 import { resolve } from "@std/path";
-import { error } from "../../util.ts";
+import { error, writeJsonResult } from "../../util.ts";
 import { green } from "@std/fmt/colors";
 
 export const createCommand = new Command<GlobalContext>()
@@ -296,8 +296,10 @@ export const createCommand = new Command<GlobalContext>()
 
       const region = required(options.region, "region");
 
-      console.log("Using the following build configuration:");
-      console.log(renderBuildConfig(buildConfig satisfies BuildConfig));
+      if (!options.json) {
+        console.log("Using the following build configuration:");
+        console.log(renderBuildConfig(buildConfig satisfies BuildConfig));
+      }
 
       data = {
         org,
@@ -312,7 +314,21 @@ export const createCommand = new Command<GlobalContext>()
     } else {
       data = await createFlow(options, rootPath);
     }
-    if (!options.dryRun) {
+    if (options.dryRun) {
+      if (options.json) {
+        writeJsonResult({
+          dryRun: true,
+          org: data.org,
+          app: data.app,
+          repo: data.repo,
+          buildDirectory: data.buildDirectory,
+          buildConfig: data.buildConfig,
+          buildTimeout: data.buildTimeout,
+          buildMemoryLimit: data.buildMemoryLimit,
+          region: data.region,
+        });
+      }
+    } else {
       await createApp(
         options,
         config,
@@ -399,12 +415,14 @@ export async function createApp(
     deviceCreation,
   });
 
-  console.log(
-    `${
-      green("✔")
-    } Created app, view it at ${context.endpoint}/${data.org}/${data.app}`,
-  );
+  const appUrl = `${context.endpoint}/${data.org}/${data.app}`;
+  if (!context.json) {
+    console.log(`${green("✔")} Created app, view it at ${appUrl}`);
+  }
 
+  // Local-source apps deploy via publish(), which emits its own JSON envelope
+  // under --json. GitHub-linked apps need an explicit first-build trigger
+  // because apps.create only persists the repo association.
   if (data.repo === undefined) {
     await publish(
       context,
@@ -415,23 +433,34 @@ export async function createApp(
       true,
       wait ?? false,
     );
-  } else {
-    const revisionId = await trpcClient.mutation("apps.triggerGitHubBuild", {
+    return;
+  }
+
+  const revisionId = await trpcClient.mutation("apps.triggerGitHubBuild", {
+    org: data.org,
+    app: data.app,
+    branch: null,
+  }) as string;
+
+  if (context.json) {
+    writeJsonResult({
       org: data.org,
       app: data.app,
-      branch: null,
-    }) as string;
-
+      url: appUrl,
+      revisionId,
+      source: "github",
+    });
+  } else {
     console.log(
       `You can view the revision here:\n  ${context.endpoint}/${data.org}/${data.app}/builds/${revisionId}\n`,
     );
+  }
 
-    if (wait) {
-      await waitForRevision(context, data.org, data.app, revisionId);
-    } else {
-      console.log(
-        "To see the deployment, go to the revision page and wait for the build to complete.",
-      );
-    }
+  if (wait) {
+    await waitForRevision(context, data.org, data.app, revisionId);
+  } else if (!context.json) {
+    console.log(
+      "To see the deployment, go to the revision page and wait for the build to complete.",
+    );
   }
 }
