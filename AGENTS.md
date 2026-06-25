@@ -39,12 +39,12 @@ exact flag to pass, e.g. `Use --org to specify the organization.`
 
 Values that can come from the environment:
 
-| Env var                 | Equivalent flag | Used for                          |
-| ----------------------- | --------------- | --------------------------------- |
-| `DENO_DEPLOY_TOKEN`     | `--token`       | auth token                        |
-| `DENO_DEPLOY_ORG`       | `--org`         | default organization slug         |
-| `DENO_DEPLOY_APP`       | `--app`         | default application slug          |
-| `DENO_DEPLOY_ENDPOINT`  | `--endpoint`    | API endpoint (defaults to prod)   |
+| Env var                | Equivalent flag | Used for                        |
+| ---------------------- | --------------- | ------------------------------- |
+| `DENO_DEPLOY_TOKEN`    | `--token`       | auth token                      |
+| `DENO_DEPLOY_ORG`      | `--org`         | default organization slug       |
+| `DENO_DEPLOY_APP`      | `--app`         | default application slug        |
+| `DENO_DEPLOY_ENDPOINT` | `--endpoint`    | API endpoint (defaults to prod) |
 
 ## Structured output (`--json`)
 
@@ -64,15 +64,15 @@ may be absent.
 
 ## Exit codes
 
-| Code | Name        | Meaning                                            |
-| ---- | ----------- | -------------------------------------------------- |
-| 0    | OK          | success                                            |
-| 1    | GENERIC     | unclassified error                                 |
-| 2    | USAGE       | missing/invalid flag or argument                   |
-| 3    | AUTH        | missing, invalid, or expired token                 |
-| 4    | NOT_FOUND   | org / app / database / resource does not exist     |
-| 5    | CONFLICT    | resource already exists (re-running create, etc.)  |
-| 6    | NETWORK     | backend or network failure                         |
+| Code | Name      | Meaning                                            |
+| ---- | --------- | -------------------------------------------------- |
+| 0    | OK        | success                                            |
+| 1    | GENERIC   | unclassified error                                 |
+| 2    | USAGE     | missing/invalid flag or argument                   |
+| 3    | AUTH      | missing, invalid, or expired token                 |
+| 4    | NOT_FOUND | org / app / database / resource does not exist     |
+| 5    | CONFLICT  | resource already exists (re-running create, etc.)  |
+| 6    | NETWORK   | backend or network failure                         |
 
 Stack traces are printed only when `--debug` is set; otherwise errors are a
 single line (or the JSON envelope above).
@@ -81,15 +81,15 @@ single line (or the JSON envelope above).
 
 These work on every subcommand:
 
-| Flag                  | Description                                              |
-| --------------------- | ------------------------------------------------------- |
-| `-j, --json`          | Emit JSON on stdout instead of human-readable output    |
-| `-y, --non-interactive` | Fail fast instead of prompting                        |
-| `-q, --quiet`         | Suppress non-essential output                           |
-| `--token <token>`     | Auth token (overrides `DENO_DEPLOY_TOKEN`)              |
-| `--config <path>`     | Path to the config file                                 |
-| `--ignore <path>`     | Ignore particular source files (repeatable)             |
-| `--debug`             | Enable debug output and stack traces                    |
+| Flag                    | Description                                          |
+| ----------------------- | ---------------------------------------------------- |
+| `-j, --json`            | Emit JSON on stdout instead of human-readable output |
+| `-y, --non-interactive` | Fail fast instead of prompting                       |
+| `-q, --quiet`           | Suppress non-essential output                        |
+| `--token <token>`       | Auth token (overrides `DENO_DEPLOY_TOKEN`)           |
+| `--config <path>`       | Path to the config file                              |
+| `--ignore <path>`       | Ignore particular source files (repeatable)          |
+| `--debug`               | Enable debug output and stack traces                 |
 
 ## Subcommand flags
 
