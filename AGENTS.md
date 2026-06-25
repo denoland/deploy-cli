@@ -20,8 +20,8 @@ export DENO_DEPLOY_TOKEN=ddp_xxxxxxxxxxxxxxxx   # generate at <endpoint>/account
 - When `DENO_DEPLOY_TOKEN` (or `--token <token>`) is set, the CLI uses it
   directly and never opens a browser or prompts for login.
 - An invalid or expired token fails with exit code `3` (AUTH) and a message
-  telling you to regenerate the token and re-export `DENO_DEPLOY_TOKEN` — it does
-  **not** fall back to the browser flow.
+  telling you to regenerate the token and re-export `DENO_DEPLOY_TOKEN` — it
+  does **not** fall back to the browser flow.
 - Verify auth without side effects:
 
   ```sh
@@ -50,13 +50,16 @@ Values that can come from the environment:
 
 Pass `--json` (alias `-j`) to any command. It emits a single JSON object or
 array on **stdout** and nothing else — no spinners, no progress bars, no ANSI
-color. Human progress still goes to **stderr**, so `deno deploy publish --json |
+color. Human progress still goes to **stderr**, so
+`deno deploy publish --json |
 jq` is safe to pipe.
 
 Errors in `--json` mode are emitted as a single object on **stderr**:
 
 ```json
-{ "error": { "code": "AUTH", "message": "...", "hint": "...", "traceId": "..." } }
+{
+  "error": { "code": "AUTH", "message": "...", "hint": "...", "traceId": "..." }
+}
 ```
 
 `code` is the symbolic name of the exit code (see below); `hint` and `traceId`
@@ -64,15 +67,15 @@ may be absent.
 
 ## Exit codes
 
-| Code | Name      | Meaning                                            |
-| ---- | --------- | -------------------------------------------------- |
-| 0    | OK        | success                                            |
-| 1    | GENERIC   | unclassified error                                 |
-| 2    | USAGE     | missing/invalid flag or argument                   |
-| 3    | AUTH      | missing, invalid, or expired token                 |
-| 4    | NOT_FOUND | org / app / database / resource does not exist     |
-| 5    | CONFLICT  | resource already exists (re-running create, etc.)  |
-| 6    | NETWORK   | backend or network failure                         |
+| Code | Name      | Meaning                                           |
+| ---- | --------- | ------------------------------------------------- |
+| 0    | OK        | success                                           |
+| 1    | GENERIC   | unclassified error                                |
+| 2    | USAGE     | missing/invalid flag or argument                  |
+| 3    | AUTH      | missing, invalid, or expired token                |
+| 4    | NOT_FOUND | org / app / database / resource does not exist    |
+| 5    | CONFLICT  | resource already exists (re-running create, etc.) |
+| 6    | NETWORK   | backend or network failure                        |
 
 Stack traces are printed only when `--debug` is set; otherwise errors are a
 single line (or the JSON envelope above).
