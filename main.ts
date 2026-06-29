@@ -1,8 +1,9 @@
-import { Command } from "@cliffy/command";
+import { Command, ValidationError } from "@cliffy/command";
 import { greaterOrEqual, parse as semverParse } from "@std/semver";
 import { sandboxCommand } from "./sandbox/mod.ts";
 import { deployCommand } from "./deploy/mod.ts";
 import { actionHandler, getApp, getOrg } from "./config.ts";
+import { error, ExitCode } from "./util.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -30,10 +31,45 @@ export type GlobalContext = {
   nonInteractive?: true;
 };
 
-if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
-  await sandboxCommand.parse(Deno.args);
-} else {
-  await deployCommand.command("sandbox", sandboxCommand).parse(Deno.args);
+// `.noExit()` makes Cliffy throw parse errors instead of exiting, so they can be
+// routed through the CLI error contract (see `handleCliError`). It also stops
+// `--help`/`--version` from exiting: Cliffy prints them and `parse()` returns, so
+// the process still exits 0. `.reset()` first repoints the builder back to the
+// root command (mounting/defining subcommands leaves it selecting a child), so
+// `.noExit()` applies to the command we actually parse.
+try {
+  if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
+    await sandboxCommand.reset().noExit().parse(Deno.args);
+  } else {
+    await deployCommand.command("sandbox", sandboxCommand).reset().noExit()
+      .parse(Deno.args);
+  }
+} catch (e) {
+  handleCliError(e);
+}
+
+/**
+ * Map an error thrown out of Cliffy's `parse()` onto the CLI error contract.
+ * `ValidationError` (unknown/invalid/conflicting flag, missing value) is a usage
+ * error and must exit with `ExitCode.USAGE` (2); anything else is generic.
+ */
+function handleCliError(e: unknown): never {
+  const context: GlobalContext = {
+    debug: Deno.args.includes("--debug"),
+    endpoint: "",
+    json: Deno.args.includes("--json") || Deno.args.includes("-j")
+      ? true
+      : undefined,
+  };
+
+  if (e instanceof ValidationError) {
+    error(context, e.message, {
+      code: ExitCode.USAGE,
+      errorCode: "VALIDATION_ERROR",
+    });
+  }
+
+  error(context, e instanceof Error ? e.message : String(e));
 }
 
 export function createSwitchCommand(
