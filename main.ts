@@ -3,7 +3,7 @@ import { greaterOrEqual, parse as semverParse } from "@std/semver";
 import { sandboxCommand } from "./sandbox/mod.ts";
 import { deployCommand } from "./deploy/mod.ts";
 import { actionHandler, getApp, getOrg } from "./config.ts";
-import { error, ExitCode } from "./util.ts";
+import { error, ExitCode, writeJsonResult } from "./util.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -88,10 +88,14 @@ export function createSwitchCommand(
         app = out.app;
       }
 
-      console.log(
-        `Switched to organization '${org}'${
-          app ? ` and application '${app}'` : ""
-        }.`,
-      );
+      if (options.json) {
+        writeJsonResult({ org, app: app ?? null });
+      } else {
+        console.error(
+          `Switched to organization '${org}'${
+            app ? ` and application '${app}'` : ""
+          }.`,
+        );
+      }
     }));
 }
