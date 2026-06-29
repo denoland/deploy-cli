@@ -1,7 +1,24 @@
 import { red, stripAnsiCode } from "@std/fmt/colors";
+import { dirname } from "@std/path";
 import { Temporal } from "temporal-polyfill";
 
 import type { GlobalContext } from "./main.ts";
+
+/**
+ * Normalize a deploy root argument to a directory. A positional `[root-path]`
+ * may point at a file (e.g. an entrypoint like `main.ts`); the deploy root is
+ * then its containing directory, so the upload manifest and framework
+ * detection operate on the project rather than the single file. A path that
+ * does not resolve to a file (a directory, or a missing path) is returned
+ * unchanged so downstream resolution surfaces the original behavior/error.
+ */
+export function deployRootDir(path: string): string {
+  try {
+    return Deno.statSync(path).isFile ? dirname(path) : path;
+  } catch {
+    return path;
+  }
+}
 
 /**
  * Exit codes returned by the CLI. Agents pattern-match on these before parsing
