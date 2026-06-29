@@ -30,7 +30,7 @@ const orgsListCommand = new Command<GlobalContext>()
     }
 
     if (orgs.length === 0) {
-      console.log("No organizations accessible with this token.");
+      console.error("No organizations accessible with this token.");
       return;
     }
 
