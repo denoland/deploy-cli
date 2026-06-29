@@ -15,6 +15,14 @@ export type DatabaseContext = GlobalContext & {
   org?: string;
 };
 
+/**
+ * Build the Deno KV connect URL for a per-environment database id, suitable for
+ * `Deno.openKv("https://api.deno.com/v2/databases/<id>/connect")`.
+ */
+function kvConnectUrl(databaseId: string): string {
+  return `https://api.deno.com/v2/databases/${databaseId}/connect`;
+}
+
 const databasesProvisionCommand = new Command<DatabaseContext>()
   .description("Provision a database")
   .example("Provision a Deno KV database", "provision my-db --kind denokv")
@@ -332,7 +340,12 @@ const databasesListCommand = new Command<DatabaseContext>()
       {
         slug: string;
         created_at: Date;
-        databases: Array<{ name: string; status: string; created_at: Date }>;
+        databases: Array<{
+          name: string;
+          status: string;
+          created_at: Date;
+          metadata?: { td_id?: string };
+        }>;
         assignments: Array<{ app_slug: string }>;
       } & ConnectionInfo
     >;
@@ -344,11 +357,17 @@ const databasesListCommand = new Command<DatabaseContext>()
         createdAt: database.created_at,
         assignments: database.assignments.map((a) => a.app_slug),
         connection: database.safeConnectionConfig,
-        databases: database.databases.map((db) => ({
-          name: db.name,
-          status: db.status,
-          createdAt: db.created_at,
-        })),
+        databases: database.databases.map((db) => {
+          const databaseId = db.metadata?.td_id;
+          return {
+            name: db.name,
+            status: db.status,
+            createdAt: db.created_at,
+            ...(databaseId
+              ? { databaseId, connectUrl: kvConnectUrl(databaseId) }
+              : {}),
+          };
+        }),
       })));
       return;
     }
@@ -371,7 +390,7 @@ const databasesListCommand = new Command<DatabaseContext>()
       },
       (database) => {
         return {
-          headers: ["NAME", "STATUS", "CREATED"],
+          headers: ["NAME", "STATUS", "CREATED", "DATABASE ID"],
           rows: database.databases.map((database) => {
             return [
               database.name,
@@ -379,6 +398,7 @@ const databasesListCommand = new Command<DatabaseContext>()
               renderTemporalTimestamp(
                 database.created_at.toISOString(),
               ),
+              database.metadata?.td_id ?? "",
             ];
           }),
         };
