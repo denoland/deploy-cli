@@ -77,11 +77,11 @@ const setupGCPCommand = new Command<GlobalContext>()
   )
   .option(
     "--enable-apis",
-    "Auto-enable required APIs that are missing, without prompting (required in --non-interactive mode if any are missing)",
+    "Authorize enabling required APIs that are missing (in --non-interactive mode also requires --apply; nothing is enabled without it)",
   )
   .option(
     "--apply",
-    "Authorize creating/modifying the cloud resources without a confirmation prompt (required in --non-interactive mode)",
+    "Authorize creating/modifying cloud resources, including enabling required APIs, without a confirmation prompt (required in --non-interactive mode)",
   )
   .arguments("[contexts:string]")
   .action(actionHandler(async (config, options, contexts) => {

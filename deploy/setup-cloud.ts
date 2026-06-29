@@ -53,6 +53,34 @@ export function applyGate(
 }
 
 /**
+ * Decide how the GCP API-enablement step (a real cloud mutation) should be
+ * gated. Enabling APIs is the *first* mutation in `setup-gcp`, so it must sit
+ * behind the master `--apply` gate as well as the API-specific `--enable-apis`
+ * opt-in — otherwise `--enable-apis` alone would enable APIs and then the later
+ * apply gate would refuse, leaving a surprise partial mutation. The master
+ * `--apply` check is ordered *first* so a refusal happens before anything is
+ * enabled. Kept pure for unit testing (no gcloud).
+ *
+ * - `"enable"`            — proceed (both opt-ins present, or interactive
+ *                           `--enable-apis`).
+ * - `"refuse-apply"`      — non-interactive without `--apply`; abort before
+ *                           mutating anything.
+ * - `"refuse-enable-apis"`— non-interactive, `--apply` present but no
+ *                           `--enable-apis`; abort.
+ * - `"prompt"`            — interactive without `--enable-apis`; ask the human.
+ */
+export function gcpApiEnableDecision(
+  opts: { nonInteractive: boolean; apply: boolean; enableApis: boolean },
+): "enable" | "refuse-apply" | "refuse-enable-apis" | "prompt" {
+  if (opts.nonInteractive) {
+    if (!opts.apply) return "refuse-apply";
+    if (!opts.enableApis) return "refuse-enable-apis";
+    return "enable";
+  }
+  return opts.enableApis ? "enable" : "prompt";
+}
+
+/**
  * Gate the "create/modify these resources" step. Never mutates cloud infra in
  * non-interactive mode unless the caller passed `--apply`; otherwise prompts the
  * human. Exits through {@link error} (structured envelope + stable ExitCode) on
@@ -651,15 +679,30 @@ export async function setupGcp(
     }
     console.error("");
 
-    // Enabling APIs mutates the project, so gate it like any other apply step:
-    // `--enable-apis` is the explicit non-interactive opt-in, otherwise prompt.
+    // Enabling APIs is the first cloud mutation in this wizard, so it sits
+    // behind the master `--apply` gate (checked first) *and* the API-specific
+    // `--enable-apis` opt-in. In non-interactive mode without `--apply` we
+    // refuse here, before enabling anything — no partial mutation.
     switch (
-      applyGate({
+      gcpApiEnableDecision({
         nonInteractive: isNonInteractive(context),
-        optIn: opts.enableApis ?? false,
+        apply: opts.apply ?? false,
+        enableApis: opts.enableApis ?? false,
       })
     ) {
-      case "refuse":
+      case "refuse-apply":
+        error(
+          context,
+          "Refusing to enable required GCP APIs without confirmation in non-interactive mode.",
+          {
+            code: ExitCode.USAGE,
+            errorCode: "CONFIRMATION_REQUIRED",
+            hint:
+              "Re-run with --apply (and --enable-apis) to authorize enabling the missing APIs.",
+          },
+        );
+        break;
+      case "refuse-enable-apis":
         error(
           context,
           `Required GCP APIs are not enabled: ${missingApis.join(", ")}.`,
@@ -667,7 +710,7 @@ export async function setupGcp(
             code: ExitCode.USAGE,
             errorCode: "APIS_NOT_ENABLED",
             hint:
-              "Pass --enable-apis to enable the missing APIs non-interactively.",
+              "Pass --enable-apis (together with --apply) to enable the missing APIs non-interactively.",
           },
         );
         break;
@@ -680,12 +723,12 @@ export async function setupGcp(
               code: ExitCode.USAGE,
               errorCode: "CANCELLED",
               hint:
-                "Re-run and accept enabling the APIs, or pass --enable-apis.",
+                "Re-run and accept enabling the APIs, or pass --enable-apis with --apply.",
             },
           );
         }
         break;
-      case "apply":
+      case "enable":
         break;
     }
 
