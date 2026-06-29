@@ -12,7 +12,10 @@ import { join } from "@std/path";
 import { Spinner } from "@std/cli/unstable-spinner";
 
 import {
+  error,
+  ExitCode,
   formatDuration,
+  isNonInteractive,
   parseSize,
   renderTemporalTimestamp,
   tablePrinter,
@@ -91,6 +94,26 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     config.noCreate();
     const org = await getOrg(options, config, options.org);
 
+    // A "session" timeout (the default) keeps the sandbox alive only for as long
+    // as this process — the *primary* client — stays connected, blocking on
+    // SIGINT. That is an inherently interactive construct: in non-interactive /
+    // CI mode the process must return promptly, and doing so would immediately
+    // destroy a session-scoped sandbox. Reject it up front (before creating an
+    // orphan) and steer the caller to an explicit, self-sufficient timeout.
+    const nonInteractive = isNonInteractive(options);
+    if (nonInteractive && options.timeout === "session") {
+      error(
+        options,
+        "Cannot create a sandbox with the default 'session' timeout in non-interactive mode: a session-scoped sandbox is destroyed as soon as this command exits.",
+        {
+          code: ExitCode.USAGE,
+          errorCode: "NON_INTERACTIVE_REQUIRED",
+          hint:
+            "Pass an explicit --timeout (e.g. --timeout 15m) so the sandbox outlives this command, then manage it with `sandbox kill`.",
+        },
+      );
+    }
+
     const quiet = options.timeout === "session";
     const token = await getAuth(options, quiet);
 
@@ -167,36 +190,45 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     await config.save();
 
     const stopMessage = "Stopping the sandbox...";
+
+    // Status chrome belongs on stderr so `--json` stdout stays a single payload.
+    const installKeepAlive = () => {
+      console.error("\nCtrl+C to stop the sandbox.");
+      Deno.addSignalListener("SIGINT", async () => {
+        console.error("\n" + stopMessage);
+        await sandbox.close();
+        Deno.exit();
+      });
+    };
+
+    const emitResult = () => {
+      if (options.json) {
+        writeJsonResult({ id: sandbox.id, org, timeout: options.timeout });
+      } else {
+        console.log(sandbox.id);
+      }
+    };
+
     if (options.ssh) {
       const success = await sshIntoSandbox(sandbox);
       if (success) {
         // Closes the sandbox only when ssh session was established and finished successfully
-        console.log("Disconnecting from the sandbox...");
+        console.error("Disconnecting from the sandbox...");
         await sandbox.close();
+      } else if (nonInteractive) {
+        // No TTY to attach an ssh session to: return the sandbox info and let
+        // its (explicit) timeout govern its lifetime instead of blocking.
+        emitResult();
+        Deno.exit();
       } else {
         // Otherwise, keep the sandbox running and wait for Ctrl+C
-        console.log("\nCtrl+C to stop the sandbox.");
-        Deno.addSignalListener("SIGINT", async () => {
-          console.log("\n" + stopMessage);
-          await sandbox.close();
-          Deno.exit();
-        });
+        installKeepAlive();
       }
     } else if (options.timeout === "session") {
-      // Otherwise, keep the sandbox running and wait for Ctrl+C
-      console.log("\nCtrl+C to stop the sandbox.");
-      Deno.addSignalListener("SIGINT", async () => {
-        console.log("\n" + stopMessage);
-        await sandbox.close();
-        Deno.exit();
-      });
+      // Interactive only — non-interactive session timeouts are rejected above.
+      installKeepAlive();
     } else {
-      if (options.json) {
-        writeJsonResult({ id: sandbox.id });
-      } else {
-        console.log(sandbox.id);
-      }
-
+      emitResult();
       Deno.exit();
     }
   }));
