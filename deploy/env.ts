@@ -2,6 +2,7 @@ import { Command } from "@cliffy/command";
 import { parse as dotEnvParse } from "@std/dotenv";
 import {
   error,
+  ExitCode,
   isNonInteractive,
   tablePrinter,
   writeJsonResult,
@@ -51,9 +52,13 @@ function shapeEnvVar(envVar: EnvVar, contexts: Context[]) {
 /**
  * Re-read a single env var (and the org contexts) from the backend and shape it
  * for `--json` output. Used by the mutating commands to report the persisted
- * state of the variable they just changed.
+ * state of the variable they just changed. If the variable can't be read back
+ * (read-after-write miss, key-normalization difference), this exits via
+ * {@link error} with a structured `NOT_FOUND` envelope rather than returning a
+ * value — so callers always emit the var object, never a bare `null`.
  */
 async function fetchShapedEnvVar(
+  context: GlobalContext,
   trpcClient: ReturnType<typeof createTrpcClient>,
   org: string,
   app: string,
@@ -68,7 +73,17 @@ async function fetchShapedEnvVar(
     { org },
   ) as Context[];
   const envVar = envVars.find((envVar) => envVar.key === key);
-  return envVar ? shapeEnvVar(envVar, contexts) : null;
+  if (!envVar) {
+    error(
+      context,
+      `Environment variable '${key}' could not be read back from the backend after the operation.`,
+      {
+        code: ExitCode.NOT_FOUND,
+        errorCode: "ENV_VAR_NOT_FOUND",
+      },
+    );
+  }
+  return shapeEnvVar(envVar, contexts);
 }
 
 const envListCommand = new Command<EnvCommandContext>()
@@ -163,7 +178,9 @@ const envAddCommand = new Command<EnvCommandContext>()
     });
 
     if (options.json) {
-      writeJsonResult(await fetchShapedEnvVar(trpcClient, org, app, variable));
+      writeJsonResult(
+        await fetchShapedEnvVar(options, trpcClient, org, app, variable),
+      );
       return;
     }
 
@@ -210,7 +227,9 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
     });
 
     if (options.json) {
-      writeJsonResult(await fetchShapedEnvVar(trpcClient, org, app, variable));
+      writeJsonResult(
+        await fetchShapedEnvVar(options, trpcClient, org, app, variable),
+      );
       return;
     }
 
@@ -273,7 +292,9 @@ You can define no contexts, which is the equivalent to "All"`,
     });
 
     if (options.json) {
-      writeJsonResult(await fetchShapedEnvVar(trpcClient, org, app, variable));
+      writeJsonResult(
+        await fetchShapedEnvVar(options, trpcClient, org, app, variable),
+      );
       return;
     }
 
