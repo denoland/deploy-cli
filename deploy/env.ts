@@ -29,6 +29,48 @@ type EnvCommandContext = GlobalContext & {
   app?: string;
 };
 
+/**
+ * Shape a backend env var into the public `--json` representation, masking the
+ * value of secrets and resolving context ids to their human names. Shared by
+ * `list` and the mutating commands so their JSON output stays identical.
+ */
+function shapeEnvVar(envVar: EnvVar, contexts: Context[]) {
+  return {
+    id: envVar.id,
+    key: envVar.key,
+    value: envVar.is_secret ? null : envVar.value,
+    isSecret: envVar.is_secret,
+    contexts: envVar.context_ids
+      ? envVar.context_ids.map((id) =>
+        contexts.find((c) => c.id === id)?.name ?? id
+      )
+      : null,
+  };
+}
+
+/**
+ * Re-read a single env var (and the org contexts) from the backend and shape it
+ * for `--json` output. Used by the mutating commands to report the persisted
+ * state of the variable they just changed.
+ */
+async function fetchShapedEnvVar(
+  trpcClient: ReturnType<typeof createTrpcClient>,
+  org: string,
+  app: string,
+  key: string,
+) {
+  const envVars = await trpcClient.query("envVarsContexts.list", {
+    org,
+    app,
+  }) as EnvVar[];
+  const contexts = await trpcClient.query(
+    "envVarsContexts.listContexts",
+    { org },
+  ) as Context[];
+  const envVar = envVars.find((envVar) => envVar.key === key);
+  return envVar ? shapeEnvVar(envVar, contexts) : null;
+}
+
 const envListCommand = new Command<EnvCommandContext>()
   .description("List all environment variables in an application")
   .action(actionHandler(async (config, options) => {
@@ -48,17 +90,7 @@ const envListCommand = new Command<EnvCommandContext>()
     ) as Context[];
 
     if (options.json) {
-      writeJsonResult(envVars.map((envVar) => ({
-        id: envVar.id,
-        key: envVar.key,
-        value: envVar.is_secret ? null : envVar.value,
-        isSecret: envVar.is_secret,
-        contexts: envVar.context_ids
-          ? envVar.context_ids.map((id) =>
-            contexts.find((c) => c.id === id)?.name ?? id
-          )
-          : null,
-      })));
+      writeJsonResult(envVars.map((envVar) => shapeEnvVar(envVar, contexts)));
       return;
     }
 
@@ -130,7 +162,12 @@ const envAddCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(
+    if (options.json) {
+      writeJsonResult(await fetchShapedEnvVar(trpcClient, org, app, variable));
+      return;
+    }
+
+    console.error(
       `${
         green("✔")
       } Environment variable '${variable}' has been successfully set.`,
@@ -172,7 +209,12 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(
+    if (options.json) {
+      writeJsonResult(await fetchShapedEnvVar(trpcClient, org, app, variable));
+      return;
+    }
+
+    console.error(
       `${
         green("✔")
       } The value of environment variable '${variable}' has been successfully updated.`,
@@ -230,7 +272,12 @@ You can define no contexts, which is the equivalent to "All"`,
       remove: [],
     });
 
-    console.log(
+    if (options.json) {
+      writeJsonResult(await fetchShapedEnvVar(trpcClient, org, app, variable));
+      return;
+    }
+
+    console.error(
       `${
         green("✔")
       } The contexts of environment variable '${variable}' have been successfully updated.`,
@@ -266,7 +313,12 @@ const envDeleteCommand = new Command<EnvCommandContext>()
       remove: [envVar.id],
     });
 
-    console.log(
+    if (options.json) {
+      writeJsonResult({ id: envVar.id, key: variable, deleted: true });
+      return;
+    }
+
+    console.error(
       `${
         green("✔")
       } Environment variable '${variable}' has been successfully deleted.`,
@@ -357,6 +409,8 @@ const envLoadCommand = new Command<EnvCommandContext>()
       }
     }
 
+    const existingKeys = updateEnvVars.map((envVar) => envVar.key);
+
     if (updateEnvVars.length > 0) {
       if (options.skipExisting) {
         updateEnvVars = [];
@@ -368,11 +422,11 @@ const envLoadCommand = new Command<EnvCommandContext>()
           "Existing env vars found and prompting is disabled.\nUse --replace to overwrite or --skip-existing to skip.",
         );
       } else {
-        console.log("The following env vars are already defined:");
+        console.error("The following env vars are already defined:");
         for (const updateEnvVar of updateEnvVars) {
-          console.log(` - ${updateEnvVar.key}`);
+          console.error(` - ${updateEnvVar.key}`);
         }
-        console.log();
+        console.error();
         outer: while (true) {
           const res = prompt(
             "Would you like to replace these with your .env file? [y = Yes, n = No, s = Ignore/Skip]",
@@ -394,7 +448,7 @@ const envLoadCommand = new Command<EnvCommandContext>()
             }
           }
         }
-        console.log();
+        console.error();
       }
     }
 
@@ -405,7 +459,16 @@ const envLoadCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(
+    const added = addEnvVars.map((envVar) => envVar.key);
+    const updated = updateEnvVars.map((envVar) => envVar.key);
+    const skipped = existingKeys.filter((key) => !updated.includes(key));
+
+    if (options.json) {
+      writeJsonResult({ file, added, updated, skipped });
+      return;
+    }
+
+    console.error(
       `${green("✔")} .env file '${file}' has been successfully loaded.`,
     );
   }));
