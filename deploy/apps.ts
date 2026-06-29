@@ -27,6 +27,7 @@ const appsListCommand = new Command<GlobalContext>()
     const trpcClient = createTrpcClient(options);
 
     const res = await trpcClient.query("apps.listByPage", {
+      org,
       cursor: options.cursor,
       limit: options.limit ?? 20,
     }) as { items: AppItem[]; nextCursor: string | null };
