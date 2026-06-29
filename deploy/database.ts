@@ -80,11 +80,15 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
         },
     });
 
-    console.log(
-      `${
-        green("✔")
-      } Successfully provisioned ${options.kind} database '${name}'.`,
-    );
+    if (options.json) {
+      writeJsonResult({ name, engine: options.kind, org });
+    } else {
+      console.error(
+        `${
+          green("✔")
+        } Successfully provisioned ${options.kind} database '${name}'.`,
+      );
+    }
   }));
 
 const databasesLinkCommand = new Command<DatabaseContext>()
@@ -172,7 +176,11 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         engine,
         connection_config: connectionConfig,
       });
-      console.log(`${green("✔")} Connection test successful.`);
+      if (options.json) {
+        writeJsonResult({ name, engine, dryRun: true, ok: true });
+      } else {
+        console.error(`${green("✔")} Connection test successful.`);
+      }
     } else {
       await trpcClient.mutation("databases.createInstance", {
         org: org,
@@ -180,7 +188,11 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         engine,
         connectionConfig,
       });
-      console.log(`${green("✔")} Successfully linked database '${name}'.`);
+      if (options.json) {
+        writeJsonResult({ name, engine, org });
+      } else {
+        console.error(`${green("✔")} Successfully linked database '${name}'.`);
+      }
     }
   }));
 
@@ -201,9 +213,15 @@ const databasesAssignCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    console.log(
-      `${green("✔")} Successfully assigned database '${name}' to app '${app}'.`,
-    );
+    if (options.json) {
+      writeJsonResult({ database: name, app, org });
+    } else {
+      console.error(
+        `${
+          green("✔")
+        } Successfully assigned database '${name}' to app '${app}'.`,
+      );
+    }
   }));
 
 const databasesDetachCommand = new Command<DatabaseContext>()
@@ -223,11 +241,15 @@ const databasesDetachCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    console.log(
-      `${
-        green("✔")
-      } Successfully detached database '${name}' from app '${app}'.`,
-    );
+    if (options.json) {
+      writeJsonResult({ database: name, app, org });
+    } else {
+      console.error(
+        `${
+          green("✔")
+        } Successfully detached database '${name}' from app '${app}'.`,
+      );
+    }
   }));
 
 const databasesQueryCommand = new Command<DatabaseContext>()
@@ -420,7 +442,11 @@ const databasesDeleteCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    console.log(`${green("✔")} Successfully deleted database '${name}'.`);
+    if (options.json) {
+      writeJsonResult({ name, org });
+    } else {
+      console.error(`${green("✔")} Successfully deleted database '${name}'.`);
+    }
   }));
 
 export const databasesCommand = new Command<GlobalContext>()
