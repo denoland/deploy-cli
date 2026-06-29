@@ -136,7 +136,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     if (
       (options.timeout === "session" || options.ssh) && !options.json
     ) {
-      console.log(`${green("✔")} Created sandbox with id '${sandbox.id}'`);
+      console.error(`${green("✔")} Created sandbox with id '${sandbox.id}'`);
     }
 
     if (options.copy) {
@@ -158,12 +158,8 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 
     if (options.exposeHttp) {
       const url = await sandbox.exposeHttp({ port: options.exposeHttp });
-      // In JSON mode this is progress, not the final result; keep stdout clean.
-      if (options.json) {
-        console.error(`Exposed port ${options.exposeHttp} to ${url}`);
-      } else {
-        console.log(`Exposed port ${options.exposeHttp} to ${url}`);
-      }
+      // Progress/status, not the command's data payload — keep stdout clean.
+      console.error(`Exposed port ${options.exposeHttp} to ${url}`);
     }
 
     const args = this.getLiteralArgs().length > 0
@@ -316,7 +312,7 @@ export const sandboxKillCommand = new Command<SandboxContext>()
     if (options.json) {
       writeJsonResult({ id: sandboxId, killed: res.success });
     } else if (res.success) {
-      console.log(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
+      console.error(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
     }
   }));
 
@@ -576,7 +572,7 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
     if (options.json) {
       writeJsonResult({ id: sandboxId, app, deployed: true });
     } else {
-      console.log(
+      console.error(
         `${
           green("✔")
         } Successfully deployed sandbox '${sandboxId}' to app '${app}'.`,
@@ -634,7 +630,7 @@ async function sshIntoSandbox(sandbox: Sandbox): Promise<boolean> {
     stderr: "null",
   }).output();
   if (which.success) {
-    console.log(`ssh ${connectInfo}`);
+    console.error(`ssh ${connectInfo}`);
     const command = new Deno.Command("ssh", {
       args: [connectInfo],
       stdin: "inherit",
@@ -646,7 +642,7 @@ async function sshIntoSandbox(sandbox: Sandbox): Promise<boolean> {
     await sandbox.close();
     return true;
   } else {
-    console.log(
+    console.error(
       `Started ssh session. You can now connect to ${magenta(connectInfo)}
 
 Example:

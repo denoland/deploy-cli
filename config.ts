@@ -58,7 +58,7 @@ export async function getOrg(
       }
 
       org = selectedOrg.value.slug;
-      console.log(`Selected organization '${selectedOrg.value.name}'`);
+      console.error(`Selected organization '${selectedOrg.value.name}'`);
     }
   }
 
@@ -144,7 +144,7 @@ export async function getApp(
       created = true;
     } else {
       app = selectedApp.value.slug;
-      console.log(`Selected application '${selectedApp.value.slug}'`);
+      console.error(`Selected application '${selectedApp.value.slug}'`);
     }
   }
 
@@ -314,7 +314,7 @@ async function writeConfig(
   );
 
   if (!configContent.config) {
-    console.log(
+    console.error(
       `Created configuration file at '${join(Deno.cwd(), "deno.jsonc")}'`,
     );
   }

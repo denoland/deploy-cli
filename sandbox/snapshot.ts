@@ -102,7 +102,9 @@ export const snapshotsDeleteCommand = new Command<SandboxContext>()
     if (options.json) {
       writeJsonResult({ id: idOrSlug, deleted: true });
     } else {
-      console.log(`${green("✔")} Successfully deleted snapshot '${idOrSlug}'.`);
+      console.error(
+        `${green("✔")} Successfully deleted snapshot '${idOrSlug}'.`,
+      );
     }
   }));
 
