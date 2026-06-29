@@ -162,35 +162,40 @@ export async function publish(
     }
 
     const useProgress = shouldUseSpinner(context);
-    const progress = new ProgressBar({
-      max: missingHashes.length,
-      emptyChar: " ",
-      fillChar: green("█"),
-      formatter(formatter) {
-        const minutes = (formatter.time / 1000 / 60 | 0).toString().padStart(
-          2,
-          "0",
-        );
-        const seconds = (formatter.time / 1000 % 60 | 0).toString().padStart(
-          2,
-          "0",
-        );
+    // Only instantiate the bar when it will actually be drawn; otherwise its
+    // internal render timer keeps the event loop alive and the process hangs
+    // after we're done (e.g. under --json / --no-wait).
+    const progress = useProgress
+      ? new ProgressBar({
+        max: missingHashes.length,
+        emptyChar: " ",
+        fillChar: green("█"),
+        formatter(formatter) {
+          const minutes = (formatter.time / 1000 / 60 | 0).toString().padStart(
+            2,
+            "0",
+          );
+          const seconds = (formatter.time / 1000 % 60 | 0).toString().padStart(
+            2,
+            "0",
+          );
 
-        const length = formatter.max.toString().length;
-        return `[${yellow(minutes)}:${
-          yellow(seconds)
-        }] ${formatter.progressBar} ${
-          yellow(formatter.value.toString().padStart(length, " "))
-        }/${yellow(formatter.max.toString())} files uploaded.`;
-      },
-    });
+          const length = formatter.max.toString().length;
+          return `[${yellow(minutes)}:${
+            yellow(seconds)
+          }] ${formatter.progressBar} ${
+            yellow(formatter.value.toString().padStart(length, " "))
+          }/${yellow(formatter.max.toString())} files uploaded.`;
+        },
+      })
+      : undefined;
 
     let tarball = body
       .pipeThrough(
         new TransformStream({
           transform({ internalPath, data, hash }, controller) {
             if (missingHashes.includes(hash)) {
-              if (useProgress) progress.value += 1;
+              if (progress) progress.value += 1;
 
               controller.enqueue(
                 {
@@ -239,7 +244,7 @@ export async function publish(
       },
     );
 
-    if (useProgress) await progress.stop();
+    if (progress) await progress.stop();
 
     log();
 
@@ -257,6 +262,17 @@ export async function publish(
 
   if (wait) {
     await waitForRevision(context, org, app, revisionId, revision);
+  } else if (context.json) {
+    // Without --wait the build hasn't finished, so the production URL isn't
+    // known yet; still emit the revision id so agents can poll/track it.
+    writeJsonResult({
+      org,
+      app,
+      revisionId,
+      url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
+      status: "pending",
+      productionUrl: null,
+    });
   } else {
     log(
       "To see the deployment, go to the revision page and wait for the build to complete.",
@@ -347,7 +363,16 @@ export async function waitForRevision(
     org,
     app,
     revision: revisionId,
-  }) as Array<{ partition_config_name: string; domains: string[] }>;
+  }) as Array<
+    { partition_config_name: string; context_name: string; domains: string[] }
+  >;
+
+  const productionTimeline =
+    timelines.find((t) => t.context_name === "Production") ??
+      timelines.find((t) => t.partition_config_name === "Production");
+  const productionUrl = productionTimeline?.domains[0]
+    ? `https://${productionTimeline.domains[0]}`
+    : null;
 
   if (context.json) {
     writeJsonResult({
@@ -356,6 +381,7 @@ export async function waitForRevision(
       revisionId,
       url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
       status: revision?.status ?? "ready",
+      productionUrl,
       timelines: timelines.map((t) => ({
         partition: t.partition_config_name,
         domains: t.domains.map((d) => `https://${d}`),
