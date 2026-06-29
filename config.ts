@@ -199,7 +199,11 @@ export function actionHandler<
           }
           this.configSaved = true;
 
-          if (this.doNotCreate && !config) {
+          // `config` is always a truthy wrapper object; `config.config` is the
+          // existing config file (if any). When a command opted out of file
+          // creation, skip writing only when there is no file to update — i.e.
+          // never create a new deno.jsonc as a side effect.
+          if (this.doNotCreate && !config.config) {
             return Promise.resolve();
           }
 
