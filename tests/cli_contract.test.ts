@@ -43,6 +43,16 @@ Deno.test("unknown flag with --json emits a USAGE envelope on stderr, clean stdo
   );
 });
 
+Deno.test("combined short flag -jy is detected as JSON mode for the error envelope", async () => {
+  // `-jy` bundles `-j` (json) and `-y` (non-interactive); a bad flag must still
+  // surface the structured envelope on stderr, not the human-readable error.
+  const res = await runCli(["-jy", "--does-not-exist"]);
+  assertEquals(res.code, 2, `stderr: ${res.stderr}`);
+  assertEquals(res.stdout.trim(), "", `stdout should be empty: ${res.stdout}`);
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "VALIDATION_ERROR");
+});
+
 Deno.test("--help exits 0", async () => {
   const res = await runCli(["--help"]);
   assertEquals(res.code, 0, `stderr: ${res.stderr}`);

@@ -57,9 +57,7 @@ function handleCliError(e: unknown): never {
   const context: GlobalContext = {
     debug: Deno.args.includes("--debug"),
     endpoint: "",
-    json: Deno.args.includes("--json") || Deno.args.includes("-j")
-      ? true
-      : undefined,
+    json: Deno.args.some(isJsonModeArg) ? true : undefined,
   };
 
   if (e instanceof ValidationError) {
@@ -70,6 +68,16 @@ function handleCliError(e: unknown): never {
   }
 
   error(context, e instanceof Error ? e.message : String(e));
+}
+
+/**
+ * Best-effort `--json` detection without a parsed context, used by
+ * `handleCliError` to pick the error output format when `parse()` itself throws.
+ * Matches `--json`, `--json=...`, `-j`, and combined short flags like `-jy`.
+ */
+function isJsonModeArg(arg: string): boolean {
+  return arg === "-j" || arg === "--json" || arg.startsWith("--json=") ||
+    /^-[a-z]*j[a-z]*$/.test(arg);
 }
 
 export function createSwitchCommand(
