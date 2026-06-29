@@ -1,6 +1,6 @@
 import { Command } from "@cliffy/command";
 import { createTrpcClient } from "../auth.ts";
-import { actionHandler, getOrg } from "../config.ts";
+import { actionHandler, getApp, getOrg } from "../config.ts";
 import type { GlobalContext } from "../main.ts";
 import {
   renderTemporalTimestamp,
@@ -14,6 +14,21 @@ interface AppItem {
   created_at: Date;
   updated_at: Date;
   layers: Array<{ slug: string }>;
+}
+
+interface AppDetail {
+  id: string;
+  slug: string;
+  created_at: Date;
+  updated_at: Date;
+  build_config: { frameworkPreset?: string | null } | null;
+}
+
+interface TimelineEntry {
+  partition_config_name: string;
+  context_name: string;
+  active_revision_id: string | null;
+  domains: string[];
 }
 
 const appsListCommand = new Command<GlobalContext>()
@@ -68,10 +83,95 @@ const appsListCommand = new Command<GlobalContext>()
     }
   }));
 
+/** Pick the timeline that serves the app's production context. */
+function findProductionTimeline(
+  timelines: TimelineEntry[],
+): TimelineEntry | undefined {
+  return timelines.find((t) => t.context_name === "Production") ??
+    timelines.find((t) => t.partition_config_name === "Production");
+}
+
+const appsGetCommand = new Command<GlobalContext>()
+  .description("Show an application, including its production URL and domains")
+  .option("--org <name:string>", "The name of the organization")
+  .option("--app <name:string>", "The name of the application")
+  .action(actionHandler(async (config, options) => {
+    config.noCreate();
+    const org = await getOrg(options, config, options.org);
+    const { app } = await getApp(options, config, false, org, options.app);
+    const trpcClient = createTrpcClient(options);
+
+    const detail = await trpcClient.query("apps.get", {
+      org,
+      app,
+    }) as AppDetail;
+
+    // Domains live on revision timelines, not on the app record. Querying the
+    // timelines of any revision returns the app-wide partition state, so the
+    // latest revision is enough to read the current production domains.
+    const revisions = await trpcClient.query("revisions.listByPage", {
+      org,
+      app,
+      limit: 1,
+    }) as { items: Array<{ id: string }> };
+
+    let timelines: TimelineEntry[] = [];
+    const latestRevision = revisions.items[0]?.id;
+    if (latestRevision) {
+      timelines = await trpcClient.query("revisions.listTimelines", {
+        org,
+        app,
+        revision: latestRevision,
+      }) as TimelineEntry[];
+    }
+
+    const production = findProductionTimeline(timelines);
+    const domains = (production?.domains ?? []).map((d) => `https://${d}`);
+    const productionUrl = domains[0] ?? null;
+
+    if (options.json) {
+      writeJsonResult({
+        id: detail.id,
+        slug: detail.slug,
+        org,
+        productionUrl,
+        domains,
+        productionRevisionId: production?.active_revision_id ?? null,
+        frameworkPreset: detail.build_config?.frameworkPreset ?? null,
+        createdAt: detail.created_at,
+        updatedAt: detail.updated_at,
+        timelines: timelines.map((t) => ({
+          partition: t.partition_config_name,
+          context: t.context_name,
+          activeRevisionId: t.active_revision_id,
+          domains: t.domains.map((d) => `https://${d}`),
+        })),
+      });
+      return;
+    }
+
+    console.log(`App:            ${detail.slug}`);
+    console.log(`Production URL: ${productionUrl ?? "—"}`);
+
+    if (timelines.length > 0) {
+      console.log();
+      tablePrinter(
+        ["PARTITION", "CONTEXT", "DOMAINS"],
+        timelines,
+        (t) => [
+          t.partition_config_name,
+          t.context_name,
+          t.domains.map((d) => `https://${d}`).join(", ") || "—",
+        ],
+      );
+    }
+  }));
+
 export const appsCommand = new Command<GlobalContext>()
   .description("Manage applications")
   .action(() => {
     appsCommand.showHelp();
   })
   .command("list", appsListCommand)
-  .alias("ls");
+  .alias("ls")
+  .command("get", appsGetCommand);
