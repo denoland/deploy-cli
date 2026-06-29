@@ -81,7 +81,7 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
     });
 
     if (options.json) {
-      writeJsonResult({ name, engine: options.kind, org });
+      writeJsonResult({ database: name, engine: options.kind, org });
     } else {
       console.error(
         `${
@@ -177,7 +177,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         connection_config: connectionConfig,
       });
       if (options.json) {
-        writeJsonResult({ name, engine, dryRun: true, ok: true });
+        writeJsonResult({ database: name, engine, dryRun: true, ok: true });
       } else {
         console.error(`${green("✔")} Connection test successful.`);
       }
@@ -189,7 +189,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         connectionConfig,
       });
       if (options.json) {
-        writeJsonResult({ name, engine, org });
+        writeJsonResult({ database: name, engine, org });
       } else {
         console.error(`${green("✔")} Successfully linked database '${name}'.`);
       }
@@ -443,7 +443,7 @@ const databasesDeleteCommand = new Command<DatabaseContext>()
     });
 
     if (options.json) {
-      writeJsonResult({ name, org });
+      writeJsonResult({ database: name, org });
     } else {
       console.error(`${green("✔")} Successfully deleted database '${name}'.`);
     }
