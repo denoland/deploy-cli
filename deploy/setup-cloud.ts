@@ -3,13 +3,19 @@ import { promptMultipleSelect } from "@std/cli/unstable-prompt-multiple-select";
 import { gray, green, yellow } from "@std/fmt/colors";
 import { createTrpcClient } from "../auth.ts";
 import type { GlobalContext } from "../main.ts";
-import { error, ExitCode, isNonInteractive } from "../util.ts";
+import { error, ExitCode, isNonInteractive, writeJsonResult } from "../util.ts";
 
 export interface SetupAwsOptions {
   /** AWS IAM policy ARNs to attach. When set, the interactive multi-select is skipped. */
   policies?: string[];
   /** Use this IAM role name instead of generating a random-suffixed one. Enables idempotent re-runs. */
   roleName?: string;
+  /**
+   * Authorize the planned cloud mutations without an interactive prompt. Required
+   * to apply changes in non-interactive mode; in interactive mode it skips the
+   * confirmation prompt.
+   */
+  apply?: boolean;
 }
 
 export interface SetupGcpOptions {
@@ -19,20 +25,75 @@ export interface SetupGcpOptions {
   serviceAccountName?: string;
   /** Auto-accept the API-enable prompt for any missing required APIs. */
   enableApis?: boolean;
+  /**
+   * Authorize the planned cloud mutations without an interactive prompt. Required
+   * to apply changes in non-interactive mode; in interactive mode it skips the
+   * confirmation prompt.
+   */
+  apply?: boolean;
 }
 
 /**
- * Apply-confirmation helper. In non-interactive mode (`--yes`/`--non-interactive`
- * or no TTY) we proceed automatically; otherwise we still prompt the human.
+ * Decide how an infra-mutating step should be gated, given whether we're in
+ * non-interactive mode and whether the caller passed an explicit opt-in flag
+ * (`--apply` / `--enable-apis`). Kept pure so the safety contract is unit
+ * testable without touching the cloud CLIs.
+ *
+ * - `"apply"`   — opt-in flag present; proceed without prompting.
+ * - `"refuse"`  — non-interactive and no opt-in; the caller must abort with a
+ *                 USAGE error rather than silently mutating cloud infra in CI.
+ * - `"prompt"`  — interactive; ask the human for confirmation.
  */
-function confirmApply(context: GlobalContext, message: string): boolean {
-  if (isNonInteractive(context)) return true;
-  return confirm(message);
+export function applyGate(
+  opts: { nonInteractive: boolean; optIn: boolean },
+): "apply" | "refuse" | "prompt" {
+  if (opts.optIn) return "apply";
+  if (opts.nonInteractive) return "refuse";
+  return "prompt";
+}
+
+/**
+ * Gate the "create/modify these resources" step. Never mutates cloud infra in
+ * non-interactive mode unless the caller passed `--apply`; otherwise prompts the
+ * human. Exits through {@link error} (structured envelope + stable ExitCode) on
+ * refusal or cancellation. Returns normally only when it's safe to proceed.
+ */
+function confirmApply(context: GlobalContext, apply: boolean): void {
+  switch (
+    applyGate({ nonInteractive: isNonInteractive(context), optIn: apply })
+  ) {
+    case "apply":
+      return;
+    case "refuse":
+      error(
+        context,
+        "Refusing to create or modify cloud infrastructure without confirmation in non-interactive mode.",
+        {
+          code: ExitCode.USAGE,
+          errorCode: "CONFIRMATION_REQUIRED",
+          hint:
+            "Re-run with --apply to authorize creating/modifying these cloud resources.",
+        },
+      );
+      break;
+    case "prompt":
+      if (!confirm("Do you want to apply these changes?")) {
+        error(context, "Setup cancelled. No changes were applied.", {
+          code: ExitCode.USAGE,
+          errorCode: "CANCELLED",
+          hint: "Re-run and confirm, or pass --apply to skip the prompt.",
+        });
+      }
+      return;
+  }
 }
 
 const AWS_OIDC_AUDIENCE = "sts.amazonaws.com";
 
-async function runAwsCommand<T>(args: string[]): Promise<T> {
+async function runAwsCommand<T>(
+  context: GlobalContext,
+  args: string[],
+): Promise<T> {
   try {
     const output = await new Deno.Command("aws", {
       args: [...args, "--output=json"],
@@ -40,37 +101,48 @@ async function runAwsCommand<T>(args: string[]): Promise<T> {
       stderr: "inherit",
       stdin: "inherit",
     }).output();
-    if (!output.success) Deno.exit(output.code);
+    if (!output.success) {
+      error(
+        context,
+        `The AWS CLI command \`aws ${
+          args.join(" ")
+        }\` failed (exit ${output.code}).`,
+        {
+          code: ExitCode.GENERIC,
+          errorCode: "AWS_CLI_FAILED",
+          hint:
+            "Check the AWS CLI output above; verify your credentials and permissions.",
+        },
+      );
+    }
     if (output.stdout.length === 0) return {} as T;
     const decoder = new TextDecoder();
     const json = decoder.decode(output.stdout);
     try {
       return JSON.parse(json) as T;
     } catch (_) {
-      console.error(
-        "%cError%c Failed to parse JSON output from AWS CLI command:",
-        "color: red;",
-        "color: reset;",
-        json,
-      );
-      Deno.exit(1);
+      error(context, "Failed to parse JSON output from the AWS CLI command.", {
+        code: ExitCode.GENERIC,
+        errorCode: "AWS_CLI_OUTPUT_PARSE_ERROR",
+      });
     }
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
-      console.error(
-        "%cError%c AWS CLI is not installed or not found in PATH.\n\n" +
-          "Please install the AWS CLI before running this command:\n" +
-          "  • Visit: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html\n" +
-          "color: red; font-weight: bold;",
-        "color: reset;",
-      );
-      Deno.exit(1);
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      error(context, "AWS CLI is not installed or not found in PATH.", {
+        code: ExitCode.USAGE,
+        errorCode: "AWS_CLI_NOT_FOUND",
+        hint:
+          "Install the AWS CLI first: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html",
+      });
     }
-    throw error;
+    throw err;
   }
 }
 
-async function runGcloudCommand<T>(args: string[]): Promise<T> {
+async function runGcloudCommand<T>(
+  context: GlobalContext,
+  args: string[],
+): Promise<T> {
   try {
     const output = await new Deno.Command("gcloud", {
       args: [...args, "--format=json"],
@@ -78,33 +150,45 @@ async function runGcloudCommand<T>(args: string[]): Promise<T> {
       stderr: "inherit",
       stdin: "inherit",
     }).output();
-    if (!output.success) Deno.exit(output.code);
+    if (!output.success) {
+      error(
+        context,
+        `The gcloud CLI command \`gcloud ${
+          args.join(" ")
+        }\` failed (exit ${output.code}).`,
+        {
+          code: ExitCode.GENERIC,
+          errorCode: "GCLOUD_CLI_FAILED",
+          hint:
+            "Check the gcloud CLI output above; verify your credentials and permissions.",
+        },
+      );
+    }
     if (output.stdout.length === 0) return {} as T;
     const decoder = new TextDecoder();
     const json = decoder.decode(output.stdout);
     try {
       return JSON.parse(json) as T;
     } catch (_) {
-      console.error(
-        "%cError%c Failed to parse JSON output from gcloud CLI command:",
-        "color: red;",
-        "color: reset;",
-        json,
+      error(
+        context,
+        "Failed to parse JSON output from the gcloud CLI command.",
+        {
+          code: ExitCode.GENERIC,
+          errorCode: "GCLOUD_CLI_OUTPUT_PARSE_ERROR",
+        },
       );
-      Deno.exit(1);
     }
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
-      console.error(
-        "%cError%c gcloud CLI is not installed or not found in PATH.\n\n" +
-          "Please install the gcloud CLI before running this command:\n" +
-          "  • Visit: https://cloud.google.com/sdk/docs/install\n",
-        "color: red; font-weight: bold;",
-        "color: reset;",
-      );
-      Deno.exit(1);
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      error(context, "gcloud CLI is not installed or not found in PATH.", {
+        code: ExitCode.USAGE,
+        errorCode: "GCLOUD_CLI_NOT_FOUND",
+        hint:
+          "Install the gcloud CLI first: https://cloud.google.com/sdk/docs/install",
+      });
     }
-    throw error;
+    throw err;
   }
 }
 
@@ -127,8 +211,9 @@ interface GcpService {
   };
 }
 
+/** Write progress/status chrome to stderr, keeping stdout free for the result. */
 function log(string: string) {
-  Deno.stdout.writeSync(new TextEncoder().encode(string));
+  Deno.stderr.writeSync(new TextEncoder().encode(string));
 }
 
 export async function setupAws(
@@ -138,17 +223,20 @@ export async function setupAws(
   contexts: string[],
   opts: SetupAwsOptions = {},
 ) {
-  // Print out "AWS Setup Wizard for Deno Deploy" in an orange box
-  console.log(
-    "%c                                    %c\n%c  AWS Setup Wizard for Deno Deploy  %c\n%c                                    %c",
-    "background-color: orange; color: black; font-weight: bold;",
-    "background-color: reset; color: reset; font-weight: normal;",
-    "background-color: orange; color: black; font-weight: bold;",
-    "background-color: reset; color: reset; font-weight: normal;",
-    "background-color: orange; color: black; font-weight: bold;",
-    "background-color: reset; color: reset; font-weight: normal;",
-  );
-  console.log();
+  // Print out "AWS Setup Wizard for Deno Deploy" in an orange box (to stderr;
+  // suppressed in JSON mode so stdout stays a clean machine channel).
+  if (!context.json) {
+    console.error(
+      "%c                                    %c\n%c  AWS Setup Wizard for Deno Deploy  %c\n%c                                    %c",
+      "background-color: orange; color: black; font-weight: bold;",
+      "background-color: reset; color: reset; font-weight: normal;",
+      "background-color: orange; color: black; font-weight: bold;",
+      "background-color: reset; color: reset; font-weight: normal;",
+      "background-color: orange; color: black; font-weight: bold;",
+      "background-color: reset; color: reset; font-weight: normal;",
+    );
+    console.error();
+  }
 
   const trpcClient = createTrpcClient(context);
   const { oidcHostname } = await trpcClient.query("cloudConnections.config", {
@@ -158,7 +246,7 @@ export async function setupAws(
 
   // Check if AWS CLI is installed and that the user is authenticated
   log(gray("   Checking AWS account configuration..."));
-  const awsInfo = await runAwsCommand<AwsInfo>([
+  const awsInfo = await runAwsCommand<AwsInfo>(context, [
     "sts",
     "get-caller-identity",
   ]);
@@ -172,7 +260,7 @@ export async function setupAws(
   log(gray("  Checking OIDC provider configuration..."));
   const providers = await runAwsCommand<
     { OpenIDConnectProviderList: Array<{ Arn: string }> }
-  >(["iam", "list-open-id-connect-providers"]);
+  >(context, ["iam", "list-open-id-connect-providers"]);
   let providerArn = providers.OpenIDConnectProviderList
     .find((p) => p.Arn.includes(oidcHostname))?.Arn;
   let providerHasClientId = false;
@@ -181,7 +269,7 @@ export async function setupAws(
     const providerDetails = await runAwsCommand<{
       ClientIDList: string[];
       Url: string;
-    }>([
+    }>(context, [
       "iam",
       "get-open-id-connect-provider",
       "--open-id-connect-provider-arn",
@@ -192,7 +280,7 @@ export async function setupAws(
     );
   }
 
-  console.log("\r                                          ");
+  console.error("\r                                          ");
 
   log(
     gray(
@@ -218,7 +306,7 @@ export async function setupAws(
     log(gray("  Loading IAM policies..."));
     const allPolicies = await runAwsCommand<{
       Policies: Array<{ PolicyName: string; Arn: string }>;
-    }>(["iam", "list-policies"]);
+    }>(context, ["iam", "list-policies"]);
     log("\r");
 
     const choices = allPolicies.Policies.map((policy) => ({
@@ -237,8 +325,10 @@ export async function setupAws(
       );
 
       if (result === null) {
-        console.log("%c   Exiting setup.", "color: yellow;");
-        Deno.exit(1);
+        error(context, "Setup cancelled. No changes were applied.", {
+          code: ExitCode.USAGE,
+          errorCode: "CANCELLED",
+        });
       }
 
       if (result.length === 0) {
@@ -248,7 +338,7 @@ export async function setupAws(
         if (!confirmNoPolicies) {
           continue;
         }
-        console.log(
+        console.error(
           "%c  No policies selected. You can attach policies later through the AWS Console.",
           "color: yellow;",
         );
@@ -265,85 +355,87 @@ export async function setupAws(
       .substring(2, 8)
   }`;
 
-  console.log(
-    "\n%cThe following resources will be created or modified:\n",
-    "color: gray;",
-  );
-
-  if (!providerArn) {
-    console.log(
-      `   %c+ create%c an OIDC provider for %chttps://${oidcHostname}`,
-      "color: green;",
+  if (!context.json) {
+    console.error(
+      "\n%cThe following resources will be created or modified:\n",
       "color: gray;",
-      "color: blue;",
     );
-  } else if (!providerHasClientId) {
-    console.log(
-      `   %c+ add%c the ${AWS_OIDC_AUDIENCE} client ID to the existing OIDC provider %c${providerArn}`,
-      "color: green;",
-      "color: gray;",
-      "color: blue;",
-    );
-  } else {
-    console.log(
-      `   %c~ no modification to the existing OIDC provider %c${providerArn}`,
-      "color: gray;",
-      "color: blue;",
-    );
-  }
 
-  console.log(
-    `   %c+ create%c a new IAM role %c${roleName}%c in your AWS account`,
-    "color: green;",
-    "color: gray;",
-    "color: blue;",
-    "color: gray;",
-  );
+    if (!providerArn) {
+      console.error(
+        `   %c+ create%c an OIDC provider for %chttps://${oidcHostname}`,
+        "color: green;",
+        "color: gray;",
+        "color: blue;",
+      );
+    } else if (!providerHasClientId) {
+      console.error(
+        `   %c+ add%c the ${AWS_OIDC_AUDIENCE} client ID to the existing OIDC provider %c${providerArn}`,
+        "color: green;",
+        "color: gray;",
+        "color: blue;",
+      );
+    } else {
+      console.error(
+        `   %c~ no modification to the existing OIDC provider %c${providerArn}`,
+        "color: gray;",
+        "color: blue;",
+      );
+    }
 
-  console.log(
-    `   %c+ allow%c the role to be assumed by your Deno Deploy project %c${org}/${app}%c in ${
-      contexts.length === 0 ? "%call%c " : "%c%c"
-    }context${contexts.length === 1 ? "" : "s"} %c${
-      new Intl.ListFormat("en-US").format(contexts)
-    }%c`,
-    "color: green;",
-    "color: gray;",
-    "color: blue;",
-    "color: gray;",
-    "color: blue;",
-    "color: gray;",
-    "color: blue;",
-    "color: gray;",
-  );
-  for (const policy of policies) {
-    console.log(
-      `   %c+ attach%c the policy %c${policy}%c to the new role`,
+    console.error(
+      `   %c+ create%c a new IAM role %c${roleName}%c in your AWS account`,
       "color: green;",
       "color: gray;",
       "color: blue;",
       "color: gray;",
     );
+
+    console.error(
+      `   %c+ allow%c the role to be assumed by your Deno Deploy project %c${org}/${app}%c in ${
+        contexts.length === 0 ? "%call%c " : "%c%c"
+      }context${contexts.length === 1 ? "" : "s"} %c${
+        new Intl.ListFormat("en-US").format(contexts)
+      }%c`,
+      "color: green;",
+      "color: gray;",
+      "color: blue;",
+      "color: gray;",
+      "color: blue;",
+      "color: gray;",
+      "color: blue;",
+      "color: gray;",
+    );
+    for (const policy of policies) {
+      console.error(
+        `   %c+ attach%c the policy %c${policy.value}%c to the new role`,
+        "color: green;",
+        "color: gray;",
+        "color: blue;",
+        "color: gray;",
+      );
+    }
+
+    console.error("");
   }
 
-  console.log("");
-
-  if (!confirmApply(context, "Do you want to apply these changes?")) {
-    console.log("%c  Exiting setup.", "color: yellow;");
-    Deno.exit(1);
-  }
+  confirmApply(context, opts.apply ?? false);
 
   if (!providerArn) {
     // If not, create it
     log(gray("  Creating the OIDC provider..."));
-    providerArn = await runAwsCommand<{ OpenIDConnectProviderArn: string }>([
-      "iam",
-      "create-open-id-connect-provider",
-      "--url",
-      `https://${oidcHostname}`,
-      "--client-id-list",
-      "sts.amazonaws.com",
-    ]).then((res) => res.OpenIDConnectProviderArn);
-    console.log(
+    providerArn = await runAwsCommand<{ OpenIDConnectProviderArn: string }>(
+      context,
+      [
+        "iam",
+        "create-open-id-connect-provider",
+        "--url",
+        `https://${oidcHostname}`,
+        "--client-id-list",
+        "sts.amazonaws.com",
+      ],
+    ).then((res) => res.OpenIDConnectProviderArn);
+    console.error(
       `\r%c✔ Created%c OIDC provider for %chttps://${oidcHostname}%c with ARN: %c${providerArn}%c`,
       "color: green;",
       "color: reset;",
@@ -357,7 +449,7 @@ export async function setupAws(
     log(
       gray(`  Adding ${AWS_OIDC_AUDIENCE} client ID to the OIDC provider...`),
     );
-    await runAwsCommand([
+    await runAwsCommand(context, [
       "iam",
       "add-client-id-to-open-id-connect-provider",
       "--open-id-connect-provider-arn",
@@ -365,7 +457,7 @@ export async function setupAws(
       "--client-id",
       AWS_OIDC_AUDIENCE,
     ]);
-    console.log(
+    console.error(
       `\r%c✔ Added%c ${AWS_OIDC_AUDIENCE} client ID to the existing OIDC provider %c${providerArn}%c`,
       "color: green;",
       "color: reset;",
@@ -400,7 +492,7 @@ export async function setupAws(
       },
     }];
   log(gray("  Creating the IAM role..."));
-  const { Role } = await runAwsCommand<{ Role: { Arn: string } }>([
+  const { Role } = await runAwsCommand<{ Role: { Arn: string } }>(context, [
     "iam",
     "create-role",
     "--role-name",
@@ -415,7 +507,7 @@ export async function setupAws(
   ]);
   log(gray("\r  Attaching policies to the role..."));
   for (const policy of policies) {
-    await runAwsCommand([
+    await runAwsCommand(context, [
       "iam",
       "attach-role-policy",
       "--role-name",
@@ -424,7 +516,22 @@ export async function setupAws(
       policy.value,
     ]);
   }
-  console.log(
+
+  if (context.json) {
+    writeJsonResult({
+      provider: "aws",
+      org,
+      app,
+      contexts,
+      oidcProviderArn: providerArn,
+      roleName,
+      roleArn: Role.Arn,
+      policies: policies.map((p) => p.value),
+    });
+    return;
+  }
+
+  console.error(
     `\r%c✔ Created%c IAM role %c${roleName}%c:`,
     "color: green;",
     "color: reset;",
@@ -432,10 +539,10 @@ export async function setupAws(
     "color: reset;",
   );
 
-  console.log("");
-  console.log(`     %c${Role.Arn}%c`, "color: blue;", "color: reset;");
-  console.log("");
-  console.log(
+  console.error("");
+  console.error(`     %c${Role.Arn}%c`, "color: blue;", "color: reset;");
+  console.error("");
+  console.error(
     gray(
       "  Copy the role ARN above and paste it into the AWS Role ARN field during AWS integration setup in Deno Deploy.",
     ),
@@ -449,17 +556,20 @@ export async function setupGcp(
   contexts: string[],
   opts: SetupGcpOptions = {},
 ) {
-  // Print out "GCP Setup Wizard for Deno Deploy" in a blue box
-  console.log(
-    "%c                                    %c\n%c  GCP Setup Wizard for Deno Deploy  %c\n%c                                    %c",
-    "background-color: blue; color: white; font-weight: bold;",
-    "background-color: reset; color: reset; font-weight: normal;",
-    "background-color: blue; color: white; font-weight: bold;",
-    "background-color: reset; color: reset; font-weight: normal;",
-    "background-color: blue; color: white; font-weight: bold;",
-    "background-color: reset; color: reset; font-weight: normal;",
-  );
-  console.log();
+  // Print out "GCP Setup Wizard for Deno Deploy" in a blue box (to stderr;
+  // suppressed in JSON mode so stdout stays a clean machine channel).
+  if (!context.json) {
+    console.error(
+      "%c                                    %c\n%c  GCP Setup Wizard for Deno Deploy  %c\n%c                                    %c",
+      "background-color: blue; color: white; font-weight: bold;",
+      "background-color: reset; color: reset; font-weight: normal;",
+      "background-color: blue; color: white; font-weight: bold;",
+      "background-color: reset; color: reset; font-weight: normal;",
+      "background-color: blue; color: white; font-weight: bold;",
+      "background-color: reset; color: reset; font-weight: normal;",
+    );
+    console.error();
+  }
 
   const trpcClient = createTrpcClient(context);
   const { oidcHostname } = await trpcClient.query("cloudConnections.config", {
@@ -471,33 +581,31 @@ export async function setupGcp(
   log(gray("   Checking GCP account configuration..."));
   const accountList = await runGcloudCommand<
     Array<{ account: string; status: string }>
-  >(["auth", "list", "--filter=status:ACTIVE"]);
+  >(context, ["auth", "list", "--filter=status:ACTIVE"]);
   if (!accountList || accountList.length === 0) {
-    console.error(
-      "%cError%c No active GCP account found. Please run 'gcloud auth login' first.",
-      "color: red; font-weight: bold;",
-      "color: reset;",
-    );
-    Deno.exit(1);
+    error(context, "No active GCP account found.", {
+      code: ExitCode.USAGE,
+      errorCode: "GCP_NOT_AUTHENTICATED",
+      hint: "Run 'gcloud auth login' first.",
+    });
   }
   const accountInfo = accountList[0];
 
-  const projectId = await runGcloudCommand<string>([
+  const projectId = await runGcloudCommand<string>(context, [
     "config",
     "get-value",
     "project",
   ]);
   if (!projectId) {
-    console.error(
-      "%cError%c No GCP project set. Please run 'gcloud config set project PROJECT_ID' first.",
-      "color: red; font-weight: bold;",
-      "color: reset;",
-    );
-    Deno.exit(1);
+    error(context, "No GCP project is set.", {
+      code: ExitCode.USAGE,
+      errorCode: "GCP_NO_PROJECT",
+      hint: "Run 'gcloud config set project PROJECT_ID' first.",
+    });
   }
 
   // Get project details including project number
-  const projectInfo = await runGcloudCommand<GcpProjectInfo>([
+  const projectInfo = await runGcloudCommand<GcpProjectInfo>(context, [
     "projects",
     "describe",
     projectId,
@@ -521,6 +629,7 @@ export async function setupGcp(
   const services = await runGcloudCommand<
     Array<GcpService>
   >(
+    context,
     [
       "services",
       "list",
@@ -534,38 +643,64 @@ export async function setupGcp(
   }
 
   if (missingApis.length > 0) {
-    console.log(`\r${yellow("⚠ Missing APIs")} detected    `);
-    console.log("");
-    console.log("The following APIs need to be enabled:");
+    console.error(`\r${yellow("⚠ Missing APIs")} detected    `);
+    console.error("");
+    console.error("The following APIs need to be enabled:");
     for (const api of missingApis) {
-      console.log(`   • ${api}`);
+      console.error(`   • ${api}`);
     }
-    console.log("");
+    console.error("");
 
-    const enableApis = opts.enableApis ||
-      isNonInteractive(context) ||
-      confirm("Do you want to enable these APIs now?");
-
-    if (!enableApis) {
-      console.log(
-        "%c  APIs are required for GCP integration. Exiting setup.",
-        "color: yellow;",
-      );
-      Deno.exit(1);
+    // Enabling APIs mutates the project, so gate it like any other apply step:
+    // `--enable-apis` is the explicit non-interactive opt-in, otherwise prompt.
+    switch (
+      applyGate({
+        nonInteractive: isNonInteractive(context),
+        optIn: opts.enableApis ?? false,
+      })
+    ) {
+      case "refuse":
+        error(
+          context,
+          `Required GCP APIs are not enabled: ${missingApis.join(", ")}.`,
+          {
+            code: ExitCode.USAGE,
+            errorCode: "APIS_NOT_ENABLED",
+            hint:
+              "Pass --enable-apis to enable the missing APIs non-interactively.",
+          },
+        );
+        break;
+      case "prompt":
+        if (!confirm("Do you want to enable these APIs now?")) {
+          error(
+            context,
+            "Required GCP APIs are not enabled. Setup cancelled.",
+            {
+              code: ExitCode.USAGE,
+              errorCode: "CANCELLED",
+              hint:
+                "Re-run and accept enabling the APIs, or pass --enable-apis.",
+            },
+          );
+        }
+        break;
+      case "apply":
+        break;
     }
 
     log(gray("  Enabling required APIs..."));
     for (const api of missingApis) {
-      await runGcloudCommand([
+      await runGcloudCommand(context, [
         "services",
         "enable",
         api,
         "--no-user-output-enabled",
       ]);
     }
-    console.log(`\r${green("✔ Enabled")} required APIs             `);
+    console.error(`\r${green("✔ Enabled")} required APIs             `);
   } else {
-    console.log(`\r${green("✔ APIs")} are enabled            `);
+    console.error(`\r${green("✔ APIs")} are enabled            `);
   }
 
   const gcpWorkloadIdentityId = oidcHostname.replace(/\./g, "-");
@@ -573,6 +708,7 @@ export async function setupGcp(
   // Check if the Workload Identity Pool already exists
   log(gray("  Checking workload identity pool..."));
   const pools = await runGcloudCommand<{ name: string; displayName: string }[]>(
+    context,
     [
       "iam",
       "workload-identity-pools",
@@ -592,6 +728,7 @@ export async function setupGcp(
       name: string;
       displayName: string;
     }[]>(
+      context,
       [
         "iam",
         "workload-identity-pools",
@@ -605,7 +742,7 @@ export async function setupGcp(
       provider.name.endsWith(`/${gcpWorkloadIdentityId}`)
     );
   }
-  console.log("\r                                         ");
+  console.error("\r                                         ");
 
   log(
     gray(
@@ -630,7 +767,7 @@ export async function setupGcp(
     log(gray("  Loading IAM roles..."));
     const roles = await runGcloudCommand<
       Array<{ name: string; title: string }>
-    >(["iam", "roles", "list", "--filter=stage:GA"]);
+    >(context, ["iam", "roles", "list", "--filter=stage:GA"]);
     log("\r");
 
     const roleChoices = roles.map((role) => ({
@@ -649,8 +786,10 @@ export async function setupGcp(
       );
 
       if (result === null) {
-        console.log("%c   Exiting setup.", "color: yellow;");
-        Deno.exit(1);
+        error(context, "Setup cancelled. No changes were applied.", {
+          code: ExitCode.USAGE,
+          errorCode: "CANCELLED",
+        });
       }
 
       if (result.length === 0) {
@@ -660,7 +799,7 @@ export async function setupGcp(
         if (!confirmNoRoles) {
           continue;
         }
-        console.log(
+        console.error(
           "%c  No roles selected. You can grant roles later through the GCP Console.",
           "color: yellow;",
         );
@@ -689,86 +828,85 @@ export async function setupGcp(
   const serviceAccountEmail =
     `${serviceAccountName}@${projectId}.iam.gserviceaccount.com`;
 
-  console.log(
-    "\n%cThe following resources will be created:\n",
-    "color: gray;",
-  );
+  if (!context.json) {
+    console.error(
+      "\n%cThe following resources will be created:\n",
+      "color: gray;",
+    );
 
-  if (!workloadIdentityPoolExists) {
-    console.log(
-      `   %c+ create%c workload identity pool %c${gcpWorkloadIdentityId}`,
+    if (!workloadIdentityPoolExists) {
+      console.error(
+        `   %c+ create%c workload identity pool %c${gcpWorkloadIdentityId}`,
+        "color: green;",
+        "color: gray;",
+        "color: blue;",
+      );
+    } else {
+      console.error(
+        `   %c~ no modification to the existing workload identity pool %c${gcpWorkloadIdentityId}`,
+        "color: gray;",
+        "color: blue;",
+      );
+    }
+
+    if (!workloadIdentityProviderExists) {
+      console.error(
+        `   %c+ create%c workload identity provider %c${gcpWorkloadIdentityId}%c for %chttps://${oidcHostname}`,
+        "color: green;",
+        "color: gray;",
+        "color: blue;",
+        "color: gray;",
+        "color: blue;",
+      );
+    } else {
+      console.error(
+        `   %c~ no modification to the existing workload identity provider %c${gcpWorkloadIdentityId}`,
+        "color: gray;",
+        "color: blue;",
+      );
+    }
+    console.error(
+      `   %c+ create%c service account %c${serviceAccountEmail}`,
       "color: green;",
       "color: gray;",
       "color: blue;",
     );
-  } else {
-    console.log(
-      `   %c~ no modification to the existing workload identity pool %c${gcpWorkloadIdentityId}`,
-      "color: gray;",
-      "color: blue;",
-    );
-  }
 
-  if (!workloadIdentityProviderExists) {
-    console.log(
-      `   %c+ create%c workload identity provider %c${gcpWorkloadIdentityId}%c for %chttps://${oidcHostname}`,
+    console.error(
+      `   %c+ allow%c workload identity for Deno Deploy project %c${org}/${app}%c in ${
+        contexts.length === 0 ? "%call%c " : "%c%c"
+      }context${contexts.length === 1 ? "" : "s"} %c${
+        new Intl.ListFormat("en-US").format(contexts)
+      }%c`,
       "color: green;",
       "color: gray;",
       "color: blue;",
       "color: gray;",
       "color: blue;",
-    );
-  } else {
-    console.log(
-      `   %c~ no modification to the existing workload identity provider %c${gcpWorkloadIdentityId}`,
-      "color: gray;",
-      "color: blue;",
-    );
-  }
-  console.log(
-    `   %c+ create%c service account %c${serviceAccountEmail}`,
-    "color: green;",
-    "color: gray;",
-    "color: blue;",
-  );
-
-  console.log(
-    `   %c+ allow%c workload identity for Deno Deploy project %c${org}/${app}%c in ${
-      contexts.length === 0 ? "%call%c " : "%c%c"
-    }context${contexts.length === 1 ? "" : "s"} %c${
-      new Intl.ListFormat("en-US").format(contexts)
-    }%c`,
-    "color: green;",
-    "color: gray;",
-    "color: blue;",
-    "color: gray;",
-    "color: blue;",
-    "color: gray;",
-    "color: blue;",
-    "color: gray;",
-  );
-
-  for (const role of selectedRoles) {
-    const roleName = role.value.split("/").pop();
-    console.log(
-      `   %c+ grant%c role %c${roleName}%c to the service account`,
-      "color: green;",
       "color: gray;",
       "color: blue;",
       "color: gray;",
     );
+
+    for (const role of selectedRoles) {
+      const roleName = role.value.split("/").pop();
+      console.error(
+        `   %c+ grant%c role %c${roleName}%c to the service account`,
+        "color: green;",
+        "color: gray;",
+        "color: blue;",
+        "color: gray;",
+      );
+    }
+
+    console.error("");
   }
 
-  console.log("");
-
-  if (!confirmApply(context, "Do you want to apply these changes?")) {
-    console.log("%c  Exiting setup.", "color: yellow;");
-    Deno.exit(1);
-  }
+  confirmApply(context, opts.apply ?? false);
 
   if (!workloadIdentityPoolExists) {
     log(gray("  Creating workload identity pool..."));
-    await runGcloudCommand([
+    await runGcloudCommand(context, [
       "iam",
       "workload-identity-pools",
       "create",
@@ -778,7 +916,7 @@ export async function setupGcp(
       "--description=Workload Identity Pool for Deno Deploy integration",
       "--no-user-output-enabled",
     ]);
-    console.log(
+    console.error(
       `\r${
         green("✔ Created")
       } workload identity pool %c${gcpWorkloadIdentityId}`,
@@ -788,7 +926,7 @@ export async function setupGcp(
 
   if (!workloadIdentityProviderExists) {
     log(gray("  Creating workload identity provider..."));
-    await runGcloudCommand([
+    await runGcloudCommand(context, [
       "iam",
       "workload-identity-pools",
       "providers",
@@ -800,7 +938,7 @@ export async function setupGcp(
       '--attribute-mapping=google.subject=assertion.sub,attribute.org_id=assertion.org_id,attribute.org_slug=assertion.org_slug,attribute.app_id=assertion.app_id,attribute.app_slug=assertion.app_slug,attribute.full_slug=assertion.org_slug+"/"+assertion.app_slug,attribute.context_id=assertion.context_id,attribute.context_name=assertion.context_name',
       "--no-user-output-enabled",
     ]);
-    console.log(
+    console.error(
       `\r${
         green("✔ Created")
       } workload identity provider %c${gcpWorkloadIdentityId}`,
@@ -810,7 +948,7 @@ export async function setupGcp(
 
   // Create service account
   log(gray("  Creating service account..."));
-  await runGcloudCommand([
+  await runGcloudCommand(context, [
     "iam",
     "service-accounts",
     "create",
@@ -820,7 +958,7 @@ export async function setupGcp(
     `Service account for Deno Deploy project ${org}/${app}`,
     "--no-user-output-enabled",
   ]);
-  console.log(
+  console.error(
     `\r${green("✔ Created")} service account %c${serviceAccountEmail}`,
     "color: blue;",
   );
@@ -833,7 +971,7 @@ export async function setupGcp(
     ).join(",")
     : `principal://iam.googleapis.com/projects/${projectInfo.projectNumber}/locations/global/workloadIdentityPools/${gcpWorkloadIdentityId}/attribute.full_slug/${org}/${app}`;
 
-  await runGcloudCommand([
+  await runGcloudCommand(context, [
     "iam",
     "service-accounts",
     "add-iam-policy-binding",
@@ -846,52 +984,68 @@ export async function setupGcp(
   // Grant selected roles to service account
   log(gray("\r  Granting roles to service account...    "));
   for (const role of selectedRoles) {
-    await runGcloudCommand([
+    await runGcloudCommand(context, [
       "projects",
       "add-iam-policy-binding",
       projectId,
       "--member=serviceAccount:" + serviceAccountEmail,
-      "--role=" + role,
+      "--role=" + role.value,
       "--no-user-output-enabled",
     ]);
   }
 
-  console.log(
+  console.error(
     `\r${green("✔ Configured")} workload identity and granted roles`,
   );
 
   const workloadProviderId =
     `projects/${projectInfo.projectNumber}/locations/global/workloadIdentityPools/${gcpWorkloadIdentityId}/providers/${gcpWorkloadIdentityId}`;
 
-  console.log("");
-  console.log(
+  if (context.json) {
+    writeJsonResult({
+      provider: "gcp",
+      org,
+      app,
+      contexts,
+      projectId,
+      serviceAccountEmail,
+      workloadIdentityPoolId: gcpWorkloadIdentityId,
+      workloadProviderId,
+      roles: selectedRoles.map((r) => r.value),
+      enabledApis: missingApis,
+    });
+    return;
+  }
+
+  console.error("");
+  console.error(
     "%cGCP Configuration Complete!%c",
     "color: green; font-weight: bold;",
     "color: reset;",
   );
-  console.log("");
-  console.log("Copy these values for Deno Deploy GCP integration setup:");
-  console.log("");
-  console.log(
+  console.error("");
+  console.error("Copy these values for Deno Deploy GCP integration setup:");
+  console.error("");
+  console.error(
     `%cGCP_WORKLOAD_PROVIDER_ID:%c`,
     "color: blue; font-weight: bold;",
     "color: reset;",
   );
-  console.log(
+  console.error(
     `     %c${workloadProviderId}%c`,
     "color: blue;",
     "color: reset;",
   );
-  console.log("");
-  console.log(
+  console.error("");
+  console.error(
     `%cGCP_SERVICE_ACCOUNT_EMAIL:%c`,
     "color: blue; font-weight: bold;",
     "color: reset;",
   );
-  console.log(
+  console.error(
     `     %c${serviceAccountEmail}%c`,
     "color: blue;",
     "color: reset;",
   );
-  console.log("");
+  console.error("");
 }
