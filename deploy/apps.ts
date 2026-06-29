@@ -63,7 +63,7 @@ const appsListCommand = new Command<GlobalContext>()
     }
 
     if (res.items.length === 0) {
-      console.log("No applications in this organization.");
+      console.error("No applications in this organization.");
       return;
     }
 
@@ -79,7 +79,9 @@ const appsListCommand = new Command<GlobalContext>()
     );
 
     if (res.nextCursor) {
-      console.log(`\nMore results available; pass --cursor ${res.nextCursor}`);
+      console.error(
+        `\nMore results available; pass --cursor ${res.nextCursor}`,
+      );
     }
   }));
 

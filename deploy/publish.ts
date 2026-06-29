@@ -33,8 +33,10 @@ export async function publish(
   const quiet = context.quiet || context.json;
   const log: typeof console.log = quiet
     ? () => {}
+    // Status/progress chrome goes to stderr; stdout is reserved for the
+    // (--json) result payload.
     // deno-lint-ignore no-explicit-any
-    : console.log.bind(console) as any;
+    : console.error.bind(console) as any;
 
   function startSpinner(message: string): Spinner {
     const spinner = new Spinner({ message, color: "yellow" });
@@ -55,7 +57,7 @@ export async function publish(
           );
 
           if (context.debug) {
-            console.log(`reading ${JSON.stringify(relativePath)}`);
+            console.error(`reading ${JSON.stringify(relativePath)}`);
           }
 
           const data = await Deno.readFile(path);
@@ -86,7 +88,7 @@ export async function publish(
   }
 
   if (context.debug) {
-    console.log("Manifest", manifest);
+    console.error("Manifest", manifest);
   }
 
   const trpcClient = createTrpcClient(context);
@@ -158,7 +160,7 @@ export async function publish(
     }
 
     if (context.debug) {
-      console.log("Missing hashes", missingHashes);
+      console.error("Missing hashes", missingHashes);
     }
 
     const useProgress = shouldUseSpinner(context);
@@ -208,7 +210,7 @@ export async function publish(
             }
 
             if (context.debug) {
-              console.log(
+              console.error(
                 `uploading ${JSON.stringify(internalPath)}`,
               );
             }
@@ -225,7 +227,7 @@ export async function publish(
         suffix: "debug.tar.gz",
       });
       await Deno.writeFile(path, tb2);
-      console.log(`Created debug tarball at '${path}'`);
+      console.error(`Created debug tarball at '${path}'`);
     }
 
     const resp = await authedFetch(
@@ -290,8 +292,10 @@ export async function waitForRevision(
   const quiet = context.quiet || context.json;
   const log: typeof console.log = quiet
     ? () => {}
+    // Status/progress chrome goes to stderr; stdout is reserved for the
+    // (--json) result payload.
     // deno-lint-ignore no-explicit-any
-    : console.log.bind(console) as any;
+    : console.error.bind(console) as any;
   const trpcClient = createTrpcClient(context);
 
   log(
@@ -351,7 +355,7 @@ export async function waitForRevision(
           `View ${context.endpoint}/${org}/${app}/builds/${revisionId} for details.`,
       });
     }
-    console.log(
+    console.error(
       `\n${red("✗")} The revision ${
         revision.status === "cancelled" ? "was " : ""
       }${revision.status}.\n  Please view the revision in the dashboard for more information.`,
@@ -390,10 +394,10 @@ export async function waitForRevision(
     return;
   }
 
-  console.log(`\n${green("✔")} Successfully deployed your application!`);
+  console.error(`\n${green("✔")} Successfully deployed your application!`);
 
   for (const timeline of timelines) {
-    console.log(
+    console.error(
       `${timeline.partition_config_name} url:${
         timeline.domains.map((domain) => `\n  https://${domain}`)
       }`,
