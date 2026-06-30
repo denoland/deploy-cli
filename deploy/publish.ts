@@ -4,7 +4,12 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
 import { authedFetch, createTrpcClient } from "../auth.ts";
-import { error, shouldUseSpinner, writeJsonResult } from "../util.ts";
+import {
+  error,
+  selectProductionUrl,
+  shouldUseSpinner,
+  writeJsonResult,
+} from "../util.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
 
@@ -371,12 +376,7 @@ export async function waitForRevision(
     { partition_config_name: string; context_name: string; domains: string[] }
   >;
 
-  const productionTimeline =
-    timelines.find((t) => t.context_name === "Production") ??
-      timelines.find((t) => t.partition_config_name === "Production");
-  const productionUrl = productionTimeline?.domains[0]
-    ? `https://${productionTimeline.domains[0]}`
-    : null;
+  const { productionUrl } = selectProductionUrl(timelines);
 
   if (context.json) {
     writeJsonResult({

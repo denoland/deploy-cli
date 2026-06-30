@@ -4,6 +4,7 @@ import { actionHandler, getApp, getOrg } from "../config.ts";
 import type { GlobalContext } from "../main.ts";
 import {
   renderTemporalTimestamp,
+  selectProductionUrl,
   tablePrinter,
   writeJsonResult,
 } from "../util.ts";
@@ -85,14 +86,6 @@ const appsListCommand = new Command<GlobalContext>()
     }
   }));
 
-/** Pick the timeline that serves the app's production context. */
-function findProductionTimeline(
-  timelines: TimelineEntry[],
-): TimelineEntry | undefined {
-  return timelines.find((t) => t.context_name === "Production") ??
-    timelines.find((t) => t.partition_config_name === "Production");
-}
-
 const appsGetCommand = new Command<GlobalContext>()
   .description("Show an application, including its production URL and domains")
   .option("--org <name:string>", "The name of the organization")
@@ -127,9 +120,8 @@ const appsGetCommand = new Command<GlobalContext>()
       }) as TimelineEntry[];
     }
 
-    const production = findProductionTimeline(timelines);
-    const domains = (production?.domains ?? []).map((d) => `https://${d}`);
-    const productionUrl = domains[0] ?? null;
+    const { timeline: production, domains, productionUrl } =
+      selectProductionUrl(timelines);
 
     if (options.json) {
       writeJsonResult({

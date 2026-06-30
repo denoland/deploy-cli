@@ -136,6 +136,31 @@ function exitCodeToName(code: ExitCode): string {
   }
 }
 
+/** Minimal shape of a revision timeline needed to locate production. */
+export interface ProductionTimelineLike {
+  partition_config_name: string;
+  context_name: string;
+  domains: string[];
+}
+
+/**
+ * Select the timeline that serves the app's production context and derive its
+ * public URL/domains. Centralized so the deploy flow and `apps get` can't drift
+ * on how "production" is identified or how domains are https-prefixed.
+ */
+export function selectProductionUrl<T extends ProductionTimelineLike>(
+  timelines: T[],
+): {
+  timeline: T | undefined;
+  domains: string[];
+  productionUrl: string | null;
+} {
+  const timeline = timelines.find((t) => t.context_name === "Production") ??
+    timelines.find((t) => t.partition_config_name === "Production");
+  const domains = (timeline?.domains ?? []).map((d) => `https://${d}`);
+  return { timeline, domains, productionUrl: domains[0] ?? null };
+}
+
 export function renderTemporalTimestamp(timestamp: string, hideDate = false) {
   function pad(n: number, width: number): string {
     return n.toString().padStart(width, "0");
