@@ -248,8 +248,7 @@ async function readConfig(
   allowNodeModules: boolean,
   debug: boolean,
 ): Promise<Config> {
-  // Distinguish an explicit `--config <file>` (parsed as a config file) from a
-  // positional `[root-path]` that may itself be a file (a deploy target).
+  // Only `--config <file>` is parsed as a config file; a positional root is not.
   const fromConfig = Boolean(maybeConfigPath);
   const config = resolve_config(
     resolve(maybeConfigPath || rootPath),

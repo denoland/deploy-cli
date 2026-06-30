@@ -62,11 +62,8 @@ fn inner_resolve_config(
   debug_log(debug, &format!("resolved absolute root_path={:?}", root_path));
 
   let path_is_file = real_sys.fs_is_file(&root_path).unwrap_or(false);
-  // Only an explicit `--config <file>` is parsed as a config file, so
-  // non-standard filenames like deno-staging.json work via ConfigFile
-  // discovery. A positional `[root-path]` that happens to be a file (e.g.
-  // `main.ts`) is a deploy target, not a config file: config is discovered
-  // from its parent directory and the file is included in the manifest.
+  // Only `--config <file>` is parsed as a config file; a positional file root
+  // is a deploy target whose config is discovered from its parent directory.
   let is_config_file = from_config && path_is_file;
   debug_log(
     debug,
@@ -75,8 +72,6 @@ fn inner_resolve_config(
       path_is_file, is_config_file
     ),
   );
-  // For an explicit config file or a positional file root, discovery and file
-  // collection operate on the containing directory.
   let dir_path = if path_is_file {
     root_path.parent().unwrap().to_path_buf()
   } else {
