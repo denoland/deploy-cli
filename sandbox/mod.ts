@@ -197,25 +197,41 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       });
     };
 
-    const emitResult = () => {
+    const emitResult = (extra?: Record<string, unknown>) => {
       if (options.json) {
-        writeJsonResult({ id: sandbox.id, org, timeout: options.timeout });
+        writeJsonResult({
+          id: sandbox.id,
+          org,
+          timeout: options.timeout,
+          ...extra,
+        });
       } else {
         console.log(sandbox.id);
       }
     };
 
     if (options.ssh) {
+      if (nonInteractive) {
+        // Never open an interactive ssh session in non-interactive mode:
+        // `ssh` with inherited (non-TTY) stdin blocks until EOF, the very hang
+        // this command must avoid. Expose ssh, hand the caller the connection
+        // details, and return — the sandbox lives for its (explicit) timeout.
+        const ssh = await sandbox.exposeSsh();
+        if (!options.json) {
+          console.error(
+            `Connect with: ssh ${magenta(`${ssh.username}@${ssh.hostname}`)}`,
+          );
+        }
+        emitResult({
+          ssh: { hostname: ssh.hostname, username: ssh.username },
+        });
+        Deno.exit();
+      }
       const success = await sshIntoSandbox(sandbox);
       if (success) {
         // Closes the sandbox only when ssh session was established and finished successfully
         console.error("Disconnecting from the sandbox...");
         await sandbox.close();
-      } else if (nonInteractive) {
-        // No TTY to attach an ssh session to: return the sandbox info and let
-        // its (explicit) timeout govern its lifetime instead of blocking.
-        emitResult();
-        Deno.exit();
       } else {
         // Otherwise, keep the sandbox running and wait for Ctrl+C
         installKeepAlive();
