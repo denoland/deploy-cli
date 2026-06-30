@@ -96,19 +96,18 @@ const appsGetCommand = new Command<GlobalContext>()
     const { app } = await getApp(options, config, false, org, options.app);
     const trpcClient = createTrpcClient(options);
 
-    const detail = await trpcClient.query("apps.get", {
-      org,
-      app,
-    }) as AppDetail;
-
     // Domains live on revision timelines, not on the app record. Querying the
     // timelines of any revision returns the app-wide partition state, so the
-    // latest revision is enough to read the current production domains.
-    const revisions = await trpcClient.query("revisions.listByPage", {
-      org,
-      app,
-      limit: 1,
-    }) as { items: Array<{ id: string }> };
+    // latest revision is enough to read the current production domains. Both
+    // queries only depend on org/app, so run them concurrently.
+    const [detail, revisions] = await Promise.all([
+      trpcClient.query("apps.get", { org, app }) as Promise<AppDetail>,
+      trpcClient.query("revisions.listByPage", {
+        org,
+        app,
+        limit: 1,
+      }) as Promise<{ items: Array<{ id: string }> }>,
+    ]);
 
     let timelines: TimelineEntry[] = [];
     const latestRevision = revisions.items[0]?.id;
