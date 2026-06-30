@@ -25,7 +25,7 @@ async function env(
 
 Deno.test({
   name:
-    "env add/update-value/delete --json emit exactly one JSON object on stdout",
+    "env add/update-value/update-contexts/delete --json emit exactly one JSON object on stdout (exit 0)",
   ignore: !live,
   fn: async () => {
     // Run from a throwaway cwd: resolving --org/--app persists a `deploy`
@@ -58,13 +58,30 @@ Deno.test({
       assertEquals(parsed.value, "v1");
       assertEquals(parsed.isSecret, false);
       assertEquals(parsed.contexts, null);
+      // The id is derived from the mutation response, not a read-back.
+      assertEquals(typeof parsed.id, "string");
 
-      // update-value: the result reflects the new value on clean stdout.
+      // update-value: result is derived from in-hand data with the new value;
+      // a successful write must report the var object on stdout, never fail.
       res = await env(cwd, "update-value", key, "v2", ...target);
       assertEquals(res.code, 0, `update-value failed; stderr: ${res.stderr}`);
+      assertEquals(res.stdout.trim().split("\n").length, 1);
       parsed = JSON.parse(res.stdout.trim());
       assertEquals(parsed.key, key);
       assertEquals(parsed.value, "v2");
+
+      // update-contexts (no contexts = "All"): result reflects contexts: null,
+      // again derived from in-hand data with exit 0.
+      res = await env(cwd, "update-contexts", key, ...target);
+      assertEquals(
+        res.code,
+        0,
+        `update-contexts failed; stderr: ${res.stderr}`,
+      );
+      assertEquals(res.stdout.trim().split("\n").length, 1);
+      parsed = JSON.parse(res.stdout.trim());
+      assertEquals(parsed.key, key);
+      assertEquals(parsed.contexts, null);
 
       // delete: result is an operation summary; the var is gone afterwards.
       res = await env(cwd, "delete", key, ...target);

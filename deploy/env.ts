@@ -2,7 +2,6 @@ import { Command } from "@cliffy/command";
 import { parse as dotEnvParse } from "@std/dotenv";
 import {
   error,
-  ExitCode,
   isNonInteractive,
   tablePrinter,
   writeJsonResult,
@@ -17,7 +16,7 @@ interface EnvVar {
   key: string;
   value: string;
   is_secret: boolean;
-  context_ids: string[];
+  context_ids: string[] | null;
 }
 
 interface Context {
@@ -33,9 +32,14 @@ type EnvCommandContext = GlobalContext & {
 /**
  * Shape a backend env var into the public `--json` representation, masking the
  * value of secrets and resolving context ids to their human names. Shared by
- * `list` and the mutating commands so their JSON output stays identical.
+ * `list` and the mutating commands so their JSON output stays identical. `id`
+ * is allowed to be null for the `add` best-effort case where the backend
+ * returned no server-assigned id.
  */
-function shapeEnvVar(envVar: EnvVar, contexts: Context[]) {
+function shapeEnvVar(
+  envVar: Omit<EnvVar, "id"> & { id: string | null },
+  contexts: Context[],
+) {
   return {
     id: envVar.id,
     key: envVar.key,
@@ -47,43 +51,6 @@ function shapeEnvVar(envVar: EnvVar, contexts: Context[]) {
       )
       : null,
   };
-}
-
-/**
- * Re-read a single env var (and the org contexts) from the backend and shape it
- * for `--json` output. Used by the mutating commands to report the persisted
- * state of the variable they just changed. If the variable can't be read back
- * (read-after-write miss, key-normalization difference), this exits via
- * {@link error} with a structured `NOT_FOUND` envelope rather than returning a
- * value — so callers always emit the var object, never a bare `null`.
- */
-async function fetchShapedEnvVar(
-  context: GlobalContext,
-  trpcClient: ReturnType<typeof createTrpcClient>,
-  org: string,
-  app: string,
-  key: string,
-) {
-  const envVars = await trpcClient.query("envVarsContexts.list", {
-    org,
-    app,
-  }) as EnvVar[];
-  const contexts = await trpcClient.query(
-    "envVarsContexts.listContexts",
-    { org },
-  ) as Context[];
-  const envVar = envVars.find((envVar) => envVar.key === key);
-  if (!envVar) {
-    error(
-      context,
-      `Environment variable '${key}' could not be read back from the backend after the operation.`,
-      {
-        code: ExitCode.NOT_FOUND,
-        errorCode: "ENV_VAR_NOT_FOUND",
-      },
-    );
-  }
-  return shapeEnvVar(envVar, contexts);
 }
 
 const envListCommand = new Command<EnvCommandContext>()
@@ -110,7 +77,7 @@ const envListCommand = new Command<EnvCommandContext>()
     }
 
     if (envVars.length === 0) {
-      console.log(
+      console.error(
         "There are no environment variables set on this application.",
       );
       return;
@@ -162,7 +129,7 @@ const envAddCommand = new Command<EnvCommandContext>()
       app,
     }) as { id: string };
 
-    await trpcClient.mutation("envVarsContexts.updateEnvVars", {
+    const created = await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [
         {
@@ -175,12 +142,20 @@ const envAddCommand = new Command<EnvCommandContext>()
       ],
       update: [],
       remove: [],
-    });
+    }) as string[];
 
     if (options.json) {
-      writeJsonResult(
-        await fetchShapedEnvVar(options, trpcClient, org, app, variable),
-      );
+      // The mutation returns the server-assigned id(s) of the added record(s);
+      // everything else is the input we just sent, so the result is derived
+      // without a read-back. `id` is best-effort (null if the backend returns
+      // nothing) — a successful create is never reported as a failure.
+      writeJsonResult(shapeEnvVar({
+        id: created?.[0] ?? null,
+        key: variable,
+        value,
+        is_secret: options.secret,
+        context_ids: null,
+      }, []));
       return;
     }
 
@@ -216,6 +191,13 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
       );
     }
 
+    const contexts = options.json
+      ? await trpcClient.query(
+        "envVarsContexts.listContexts",
+        { org },
+      ) as Context[]
+      : [];
+
     await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [],
@@ -227,9 +209,9 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
     });
 
     if (options.json) {
-      writeJsonResult(
-        await fetchShapedEnvVar(options, trpcClient, org, app, variable),
-      );
+      // Derive the result from the in-hand record with the new value applied —
+      // no read-back, so no read-after-write race.
+      writeJsonResult(shapeEnvVar({ ...envVar, value }, contexts));
       return;
     }
 
@@ -281,19 +263,23 @@ You can define no contexts, which is the equivalent to "All"`,
       contextIds.push(context.id);
     }
 
+    const newContextIds = newContexts.length === 0 ? null : contextIds;
+
     await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [],
       update: [{
         id: envVar.id,
-        context_ids: newContexts.length === 0 ? null : contextIds,
+        context_ids: newContextIds,
       }],
       remove: [],
     });
 
     if (options.json) {
+      // Derive the result from the in-hand record and the contexts already
+      // fetched above, with the new context_ids applied — no read-back.
       writeJsonResult(
-        await fetchShapedEnvVar(options, trpcClient, org, app, variable),
+        shapeEnvVar({ ...envVar, context_ids: newContextIds }, contexts),
       );
       return;
     }
@@ -480,6 +466,10 @@ const envLoadCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
+    // `added`/`updated`/`skipped` are derived from the request payload: the
+    // batch mutation response only returns server-assigned ids for newly added
+    // records (no keys, no per-update/skipped detail), so the request is the
+    // best available source of truth for the summary.
     const added = addEnvVars.map((envVar) => envVar.key);
     const updated = updateEnvVars.map((envVar) => envVar.key);
     const skipped = existingKeys.filter((key) => !updated.includes(key));
