@@ -94,12 +94,8 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     config.noCreate();
     const org = await getOrg(options, config, options.org);
 
-    // A "session" timeout (the default) keeps the sandbox alive only for as long
-    // as this process — the *primary* client — stays connected, blocking on
-    // SIGINT. That is an inherently interactive construct: in non-interactive /
-    // CI mode the process must return promptly, and doing so would immediately
-    // destroy a session-scoped sandbox. Reject it up front (before creating an
-    // orphan) and steer the caller to an explicit, self-sufficient timeout.
+    // A "session" sandbox is destroyed when this process exits, so it can't
+    // outlive a non-interactive run; require an explicit timeout instead.
     const nonInteractive = isNonInteractive(options);
     if (nonInteractive && options.timeout === "session") {
       error(
@@ -158,7 +154,6 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 
     if (options.exposeHttp) {
       const url = await sandbox.exposeHttp({ port: options.exposeHttp });
-      // Progress/status, not the command's data payload — keep stdout clean.
       console.error(`Exposed port ${options.exposeHttp} to ${url}`);
     }
 
@@ -187,7 +182,6 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 
     const stopMessage = "Stopping the sandbox...";
 
-    // Status chrome belongs on stderr so `--json` stdout stays a single payload.
     const installKeepAlive = () => {
       console.error("\nCtrl+C to stop the sandbox.");
       Deno.addSignalListener("SIGINT", async () => {
@@ -212,10 +206,8 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 
     if (options.ssh) {
       if (nonInteractive) {
-        // Never open an interactive ssh session in non-interactive mode:
-        // `ssh` with inherited (non-TTY) stdin blocks until EOF, the very hang
-        // this command must avoid. Expose ssh, hand the caller the connection
-        // details, and return — the sandbox lives for its (explicit) timeout.
+        // Interactive ssh would block on inherited non-TTY stdin; expose ssh
+        // and return its connection details instead.
         const ssh = await sandbox.exposeSsh();
         if (!options.json) {
           console.error(
@@ -237,7 +229,6 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
         installKeepAlive();
       }
     } else if (options.timeout === "session") {
-      // Interactive only — non-interactive session timeouts are rejected above.
       installKeepAlive();
     } else {
       emitResult();

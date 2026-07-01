@@ -198,10 +198,7 @@ Deno.test("sandbox --help advertises --json and --non-interactive", async () => 
 });
 
 Deno.test("sandbox create --json --non-interactive with default session timeout fails fast (no hang)", async () => {
-  // Regression for the create hang: the default `timeout=session` installs an
-  // interactive SIGINT keep-alive. In non-interactive mode that blocked forever
-  // instead of emitting JSON or exiting. It must now refuse up front with a
-  // USAGE envelope (exit 2) and a clean stdout, before any backend round-trip.
+  // Regression: default session timeout must refuse fast, not hang.
   const res = await sandboxRaw(
     "--json",
     "--non-interactive",
