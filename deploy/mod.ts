@@ -142,9 +142,7 @@ const logsCommand = new Command<GlobalContext>()
     "logs --app my-app --once --json --non-interactive",
   )
   .action(actionHandler(async (config, options) => {
-    // `logs` is read-only: like the other inspection commands it must not
-    // create a deno.jsonc as a side effect (which would also print a non-JSON
-    // "Created configuration file" line on stdout, breaking --json output).
+    // Read-only: don't create a deno.jsonc (its stdout notice breaks --json).
     config.noCreate();
     const org = await getOrg(options, config, options.org);
     const { app } = await getApp(options, config, false, org, options.app);
@@ -167,11 +165,8 @@ const logsCommand = new Command<GlobalContext>()
     const seenIds = new Set();
     let onceConnected = false;
 
-    // In --once mode we drain the backfill window and exit at the live boundary
-    // instead of tailing forever. Default that window to the last hour when no
-    // explicit --start is given, so the bounded capture actually has logs to
-    // drain — a bare `new Date()` would request an empty window. An explicit
-    // --start always wins.
+    // --once without --start defaults to the last hour (a `new Date()` start
+    // would request an empty window with nothing to drain).
     const ONCE_LOOKBACK_MS = 60 * 60 * 1000;
     const startDate = options.start
       ? new Date(options.start)
@@ -193,10 +188,7 @@ const logsCommand = new Command<GlobalContext>()
         onData: (data: unknown) => {
           const typedData = data as "streaming" | null | LogEntry[];
           if (typedData === "streaming") {
-            // Backfill complete: the server is about to switch to live tailing.
-            // In --once mode this boundary is our cue to stop — all currently
-            // available logs have already been flushed synchronously above, so
-            // close the subscription and exit cleanly.
+            // End of backfill: in --once mode, stop before live tailing.
             if (options.once) {
               sub.unsubscribe();
               Deno.exit(ExitCode.OK);
@@ -259,8 +251,7 @@ const logsCommand = new Command<GlobalContext>()
         },
         onStopped: () => {
           sub.unsubscribe();
-          // A server-completed stream (e.g. a bounded --start/--end window)
-          // in --once mode is a clean, deterministic end-of-capture.
+          // Server-completed stream (e.g. a bounded --start/--end window).
           if (options.once) {
             Deno.exit(ExitCode.OK);
           }
