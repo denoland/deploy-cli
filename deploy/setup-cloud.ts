@@ -33,17 +33,8 @@ export interface SetupGcpOptions {
   apply?: boolean;
 }
 
-/**
- * Decide how an infra-mutating step should be gated, given whether we're in
- * non-interactive mode and whether the caller passed an explicit opt-in flag
- * (`--apply` / `--enable-apis`). Kept pure so the safety contract is unit
- * testable without touching the cloud CLIs.
- *
- * - `"apply"`   — opt-in flag present; proceed without prompting.
- * - `"refuse"`  — non-interactive and no opt-in; the caller must abort with a
- *                 USAGE error rather than silently mutating cloud infra in CI.
- * - `"prompt"`  — interactive; ask the human for confirmation.
- */
+// Gate an infra-mutating step: opt-in flag -> apply; non-interactive without it
+// -> refuse; interactive -> prompt.
 export function applyGate(
   opts: { nonInteractive: boolean; optIn: boolean },
 ): "apply" | "refuse" | "prompt" {
@@ -52,23 +43,8 @@ export function applyGate(
   return "prompt";
 }
 
-/**
- * Decide how the GCP API-enablement step (a real cloud mutation) should be
- * gated. Enabling APIs is the *first* mutation in `setup-gcp`, so it must sit
- * behind the master `--apply` gate as well as the API-specific `--enable-apis`
- * opt-in — otherwise `--enable-apis` alone would enable APIs and then the later
- * apply gate would refuse, leaving a surprise partial mutation. The master
- * `--apply` check is ordered *first* so a refusal happens before anything is
- * enabled. Kept pure for unit testing (no gcloud).
- *
- * - `"enable"`            — proceed (both opt-ins present, or interactive
- *                           `--enable-apis`).
- * - `"refuse-apply"`      — non-interactive without `--apply`; abort before
- *                           mutating anything.
- * - `"refuse-enable-apis"`— non-interactive, `--apply` present but no
- *                           `--enable-apis`; abort.
- * - `"prompt"`            — interactive without `--enable-apis`; ask the human.
- */
+// Gate GCP API enablement. `--apply` is checked before `--enable-apis` so a
+// non-interactive run without `--apply` refuses before any API is enabled.
 export function gcpApiEnableDecision(
   opts: { nonInteractive: boolean; apply: boolean; enableApis: boolean },
 ): "enable" | "refuse-apply" | "refuse-enable-apis" | "prompt" {
@@ -80,12 +56,7 @@ export function gcpApiEnableDecision(
   return opts.enableApis ? "enable" : "prompt";
 }
 
-/**
- * Gate the "create/modify these resources" step. Never mutates cloud infra in
- * non-interactive mode unless the caller passed `--apply`; otherwise prompts the
- * human. Exits through {@link error} (structured envelope + stable ExitCode) on
- * refusal or cancellation. Returns normally only when it's safe to proceed.
- */
+// Gate the create/modify step; exits via error() on refusal or cancellation.
 function confirmApply(context: GlobalContext, apply: boolean): void {
   switch (
     applyGate({ nonInteractive: isNonInteractive(context), optIn: apply })
@@ -239,7 +210,7 @@ interface GcpService {
   };
 }
 
-/** Write progress/status chrome to stderr, keeping stdout free for the result. */
+// Progress/status chrome goes to stderr; stdout is reserved for the result.
 function log(string: string) {
   Deno.stderr.writeSync(new TextEncoder().encode(string));
 }
@@ -251,8 +222,7 @@ export async function setupAws(
   contexts: string[],
   opts: SetupAwsOptions = {},
 ) {
-  // Print out "AWS Setup Wizard for Deno Deploy" in an orange box (to stderr;
-  // suppressed in JSON mode so stdout stays a clean machine channel).
+  // Banner to stderr; suppressed in JSON mode.
   if (!context.json) {
     console.error(
       "%c                                    %c\n%c  AWS Setup Wizard for Deno Deploy  %c\n%c                                    %c",
@@ -584,8 +554,7 @@ export async function setupGcp(
   contexts: string[],
   opts: SetupGcpOptions = {},
 ) {
-  // Print out "GCP Setup Wizard for Deno Deploy" in a blue box (to stderr;
-  // suppressed in JSON mode so stdout stays a clean machine channel).
+  // Banner to stderr; suppressed in JSON mode.
   if (!context.json) {
     console.error(
       "%c                                    %c\n%c  GCP Setup Wizard for Deno Deploy  %c\n%c                                    %c",
@@ -679,10 +648,7 @@ export async function setupGcp(
     }
     console.error("");
 
-    // Enabling APIs is the first cloud mutation in this wizard, so it sits
-    // behind the master `--apply` gate (checked first) *and* the API-specific
-    // `--enable-apis` opt-in. In non-interactive mode without `--apply` we
-    // refuse here, before enabling anything — no partial mutation.
+    // Gate the first cloud mutation behind --apply before --enable-apis.
     switch (
       gcpApiEnableDecision({
         nonInteractive: isNonInteractive(context),

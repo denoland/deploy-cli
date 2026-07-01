@@ -1,10 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { applyGate, gcpApiEnableDecision } from "./setup-cloud.ts";
 
-// The apply gate is the safety contract for `setup-aws` / `setup-gcp`: it must
-// never resolve to "apply" in non-interactive mode unless the caller passed the
-// explicit opt-in flag (`--apply` / `--enable-apis`).
-
 Deno.test("applyGate: explicit opt-in always applies", () => {
   assertEquals(applyGate({ nonInteractive: true, optIn: true }), "apply");
   assertEquals(applyGate({ nonInteractive: false, optIn: true }), "apply");
@@ -17,11 +13,6 @@ Deno.test("applyGate: non-interactive without opt-in refuses (never auto-applies
 Deno.test("applyGate: interactive without opt-in prompts the human", () => {
   assertEquals(applyGate({ nonInteractive: false, optIn: false }), "prompt");
 });
-
-// Enabling GCP APIs is the first cloud mutation, so it must be gated by the
-// master `--apply` *before* the API-specific `--enable-apis`. Without `--apply`,
-// non-interactive runs must refuse before anything is enabled — no partial
-// mutation — regardless of whether `--enable-apis` was passed.
 
 Deno.test("gcpApiEnableDecision: non-interactive without --apply refuses before mutating, even with --enable-apis", () => {
   assertEquals(
