@@ -136,18 +136,13 @@ function exitCodeToName(code: ExitCode): string {
   }
 }
 
-/** Minimal shape of a revision timeline needed to locate production. */
 export interface ProductionTimelineLike {
   partition_config_name: string;
   context_name: string;
   domains: string[];
 }
 
-/**
- * Select the timeline that serves the app's production context and derive its
- * public URL/domains. Centralized so the deploy flow and `apps get` can't drift
- * on how "production" is identified or how domains are https-prefixed.
- */
+/** Select the production timeline and derive its https-prefixed domains + URL. */
 export function selectProductionUrl<T extends ProductionTimelineLike>(
   timelines: T[],
 ): {

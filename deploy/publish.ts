@@ -38,8 +38,6 @@ export async function publish(
   const quiet = context.quiet || context.json;
   const log: typeof console.log = quiet
     ? () => {}
-    // Status/progress chrome goes to stderr; stdout is reserved for the
-    // (--json) result payload.
     // deno-lint-ignore no-explicit-any
     : console.error.bind(console) as any;
 
@@ -169,9 +167,8 @@ export async function publish(
     }
 
     const useProgress = shouldUseSpinner(context);
-    // Only instantiate the bar when it will actually be drawn; otherwise its
-    // internal render timer keeps the event loop alive and the process hangs
-    // after we're done (e.g. under --json / --no-wait).
+    // Only instantiate when drawn; its render timer otherwise keeps the event
+    // loop alive and hangs the process.
     const progress = useProgress
       ? new ProgressBar({
         max: missingHashes.length,
@@ -270,8 +267,7 @@ export async function publish(
   if (wait) {
     await waitForRevision(context, org, app, revisionId, revision);
   } else if (context.json) {
-    // Without --wait the build hasn't finished, so the production URL isn't
-    // known yet; still emit the revision id so agents can poll/track it.
+    // Build isn't finished yet; emit the revision id so agents can track it.
     writeJsonResult({
       org,
       app,
@@ -297,8 +293,6 @@ export async function waitForRevision(
   const quiet = context.quiet || context.json;
   const log: typeof console.log = quiet
     ? () => {}
-    // Status/progress chrome goes to stderr; stdout is reserved for the
-    // (--json) result payload.
     // deno-lint-ignore no-explicit-any
     : console.error.bind(console) as any;
   const trpcClient = createTrpcClient(context);
