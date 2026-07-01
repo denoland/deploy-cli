@@ -29,13 +29,7 @@ type EnvCommandContext = GlobalContext & {
   app?: string;
 };
 
-/**
- * Shape a backend env var into the public `--json` representation, masking the
- * value of secrets and resolving context ids to their human names. Shared by
- * `list` and the mutating commands so their JSON output stays identical. `id`
- * is allowed to be null for the `add` best-effort case where the backend
- * returned no server-assigned id.
- */
+// Public `--json` shape for an env var (id may be null for the add best-effort case).
 function shapeEnvVar(
   envVar: Omit<EnvVar, "id"> & { id: string | null },
   contexts: Context[],
@@ -145,10 +139,7 @@ const envAddCommand = new Command<EnvCommandContext>()
     }) as string[];
 
     if (options.json) {
-      // The mutation returns the server-assigned id(s) of the added record(s);
-      // everything else is the input we just sent, so the result is derived
-      // without a read-back. `id` is best-effort (null if the backend returns
-      // nothing) — a successful create is never reported as a failure.
+      // id is best-effort: null if the mutation returns no server-assigned id.
       writeJsonResult(shapeEnvVar({
         id: created?.[0] ?? null,
         key: variable,
@@ -209,8 +200,6 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
     });
 
     if (options.json) {
-      // Derive the result from the in-hand record with the new value applied —
-      // no read-back, so no read-after-write race.
       writeJsonResult(shapeEnvVar({ ...envVar, value }, contexts));
       return;
     }
@@ -276,8 +265,6 @@ You can define no contexts, which is the equivalent to "All"`,
     });
 
     if (options.json) {
-      // Derive the result from the in-hand record and the contexts already
-      // fetched above, with the new context_ids applied — no read-back.
       writeJsonResult(
         shapeEnvVar({ ...envVar, context_ids: newContextIds }, contexts),
       );
@@ -466,10 +453,7 @@ const envLoadCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    // `added`/`updated`/`skipped` are derived from the request payload: the
-    // batch mutation response only returns server-assigned ids for newly added
-    // records (no keys, no per-update/skipped detail), so the request is the
-    // best available source of truth for the summary.
+    // Request-derived: the batch response returns only added-record ids, no keys.
     const added = addEnvVars.map((envVar) => envVar.key);
     const updated = updateEnvVars.map((envVar) => envVar.key);
     const skipped = existingKeys.filter((key) => !updated.includes(key));
