@@ -9,8 +9,7 @@ if (!Deno.env.get("DENO_DEPLOY_TOKEN")) {
 const deploy = async (...args: string[]) => {
   const escaped = args.map((a) => $.escapeArg(a)).join(" ");
   console.log(`deno deploy ${escaped}`);
-  // Status output (e.g. the build-config echo) goes to stderr per the CLI's
-  // stdout-discipline convention, so inspect the combined streams here.
+  // build-config echo is on stderr; inspect combined streams
   const result = await $.raw`deno deploy ${escaped}`
     .stderr("piped").stdout("piped");
   return (result.stdout + result.stderr).trim();
