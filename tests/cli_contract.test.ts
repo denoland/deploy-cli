@@ -1,10 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { fromFileUrl } from "@std/path";
 
-// These tests drive `main.ts` as a subprocess and assert the exit-code contract.
-// Unlike the other suites here, they don't touch the backend, so no token is
-// required: bad flags / `--help` / `--version` are resolved entirely by the
-// argument parser before any command action runs.
+// Token-free subprocess tests for the parse-time exit-code contract.
 
 const MAIN_TS = fromFileUrl(new URL("../main.ts", import.meta.url));
 
@@ -44,8 +41,6 @@ Deno.test("unknown flag with --json emits a USAGE envelope on stderr, clean stdo
 });
 
 Deno.test("combined short flag -jy is detected as JSON mode for the error envelope", async () => {
-  // `-jy` bundles `-j` (json) and `-y` (non-interactive); a bad flag must still
-  // surface the structured envelope on stderr, not the human-readable error.
   const res = await runCli(["-jy", "--does-not-exist"]);
   assertEquals(res.code, 2, `stderr: ${res.stderr}`);
   assertEquals(res.stdout.trim(), "", `stdout should be empty: ${res.stdout}`);

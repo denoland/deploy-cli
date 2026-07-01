@@ -31,12 +31,8 @@ export type GlobalContext = {
   nonInteractive?: true;
 };
 
-// `.noExit()` makes Cliffy throw parse errors instead of exiting, so they can be
-// routed through the CLI error contract (see `handleCliError`). It also stops
-// `--help`/`--version` from exiting: Cliffy prints them and `parse()` returns, so
-// the process still exits 0. `.reset()` first repoints the builder back to the
-// root command (mounting/defining subcommands leaves it selecting a child), so
-// `.noExit()` applies to the command we actually parse.
+// `.reset()` repoints the builder to the root command before `.noExit()`, which
+// makes Cliffy throw parse errors instead of exiting so `handleCliError` can map them.
 try {
   if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
     await sandboxCommand.reset().noExit().parse(Deno.args);
@@ -48,11 +44,7 @@ try {
   handleCliError(e);
 }
 
-/**
- * Map an error thrown out of Cliffy's `parse()` onto the CLI error contract.
- * `ValidationError` (unknown/invalid/conflicting flag, missing value) is a usage
- * error and must exit with `ExitCode.USAGE` (2); anything else is generic.
- */
+// Maps an error thrown out of `parse()` to the CLI error contract (ValidationError -> USAGE).
 function handleCliError(e: unknown): never {
   const context: GlobalContext = {
     debug: Deno.args.includes("--debug"),
@@ -70,11 +62,7 @@ function handleCliError(e: unknown): never {
   error(context, e instanceof Error ? e.message : String(e));
 }
 
-/**
- * Best-effort `--json` detection without a parsed context, used by
- * `handleCliError` to pick the error output format when `parse()` itself throws.
- * Matches `--json`, `--json=...`, `-j`, and combined short flags like `-jy`.
- */
+// Parse-free `--json` detection: matches `--json`, `--json=...`, `-j`, and bundles like `-jy`.
 function isJsonModeArg(arg: string): boolean {
   return arg === "-j" || arg === "--json" || arg.startsWith("--json=") ||
     /^-[a-z]*j[a-z]*$/.test(arg);

@@ -159,8 +159,6 @@ Deno.test("publish (default command) --json keeps stdout clean and emits an AUTH
 });
 
 Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", async () => {
-  // Cliffy `ValidationError`s are now routed through the CLI error contract, so
-  // a bad flag value exits with USAGE (2) and keeps stdout clean.
   const res = await deployRaw(
     "create",
     "--dry-run",
