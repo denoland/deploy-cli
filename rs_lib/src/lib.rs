@@ -5,6 +5,7 @@ use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 use serde::Serialize;
+use std::path::Path;
 use std::path::PathBuf;
 use sys_traits::FsMetadata;
 use url::Url;
@@ -178,9 +179,9 @@ fn collect_files(
   allow_node_modules: bool,
   debug: bool,
 ) -> Vec<String> {
-  let filter_root = root_path.clone();
+  let filter_root = ensure_rooted(&root_path);
   let mut collector = FileCollector::new(move |entry| {
-    let kept = entry.path.starts_with(&filter_root);
+    let kept = ensure_rooted(&entry.path).starts_with(&filter_root);
     debug_log(
       debug,
       &format!(
@@ -228,6 +229,27 @@ fn collect_files(
   );
 
   collected
+}
+
+/// Coerces a path into a single rooted (leading-slash) representation so it can
+/// be compared component-wise with `Path::starts_with`.
+///
+/// On the `wasm32` target `std::path` uses Unix semantics, so a Windows path
+/// can appear either rooted (`/C:/proj/...`, as produced by
+/// `resolve_absolute_path` via `wasm_string_to_path`) or unrooted
+/// (`C:/proj/...`, as produced when `deploy.include` patterns are resolved by
+/// `deno_config`). A rooted path and an unrooted path never satisfy
+/// `starts_with`, which made the collector filter drop every included file on
+/// Windows and yield an empty manifest. Normalizing both operands to the rooted
+/// form fixes the comparison while leaving already-rooted (Unix) paths
+/// unchanged.
+fn ensure_rooted(path: &Path) -> PathBuf {
+  let s = path.to_string_lossy().replace('\\', "/");
+  if s.starts_with('/') {
+    PathBuf::from(s)
+  } else {
+    PathBuf::from(format!("/{s}"))
+  }
 }
 
 fn resolve_absolute_path(path: String) -> Result<PathBuf, anyhow::Error> {
@@ -299,6 +321,45 @@ mod tests {
       "expected {} in deploy files; got {:?}",
       expected.display(),
       result.files,
+    );
+  }
+
+  // Regression test for denoland/deploy-cli#123: on the wasm32 target
+  // `resolve_absolute_path` yields a rooted drive path (`/C:/proj`) while
+  // `deploy.include` patterns resolve to an unrooted drive path (`C:/proj`).
+  // The collector filter compared them with `Path::starts_with`, which never
+  // matches across those two forms, so every included file was dropped and the
+  // upload manifest came back empty on Windows. `ensure_rooted` normalizes both
+  // operands.
+  #[test]
+  fn ensure_rooted_matches_rooted_and_unrooted_windows_paths() {
+    let root = super::ensure_rooted(Path::new("/C:/proj"));
+
+    let rooted = super::ensure_rooted(Path::new("/C:/proj/dist/index.html"));
+    assert!(
+      rooted.starts_with(&root),
+      "rooted entry {rooted:?} should be under root {root:?}",
+    );
+
+    let unrooted = super::ensure_rooted(Path::new("C:/proj/dist/index.html"));
+    assert!(
+      unrooted.starts_with(&root),
+      "unrooted entry {unrooted:?} should be under root {root:?}",
+    );
+
+    let backslashed =
+      super::ensure_rooted(Path::new(r"C:\proj\dist\index.html"));
+    assert!(
+      backslashed.starts_with(&root),
+      "backslashed entry {backslashed:?} should be under root {root:?}",
+    );
+
+    // A sibling directory sharing a name prefix must not be treated as nested,
+    // i.e. comparison stays component-wise rather than raw string prefix.
+    let sibling = super::ensure_rooted(Path::new("C:/proj-other/index.html"));
+    assert!(
+      !sibling.starts_with(&root),
+      "sibling {sibling:?} must not be under root {root:?}",
     );
   }
 }
