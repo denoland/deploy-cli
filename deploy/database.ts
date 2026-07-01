@@ -15,10 +15,6 @@ export type DatabaseContext = GlobalContext & {
   org?: string;
 };
 
-/**
- * Build the Deno KV connect URL for a per-environment database id, suitable for
- * `Deno.openKv("https://api.deno.com/v2/databases/<id>/connect")`.
- */
 function kvConnectUrl(databaseId: string): string {
   return `https://api.deno.com/v2/databases/${databaseId}/connect`;
 }
