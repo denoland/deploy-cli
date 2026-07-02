@@ -118,7 +118,7 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
     if (options.json) {
       writeJsonResult({ id: idOrSlug, deleted: true });
     } else {
-      console.log(`${green("✔")} Successfully deleted volume '${idOrSlug}'.`);
+      console.error(`${green("✔")} Successfully deleted volume '${idOrSlug}'.`);
     }
   }));
 

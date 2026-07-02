@@ -196,6 +196,30 @@ Deno.test("sandbox --help advertises --json and --non-interactive", async () => 
   assertStringIncludes(res.stdout, "--non-interactive");
 });
 
+Deno.test("sandbox create --json --non-interactive with default session timeout fails fast (no hang)", async () => {
+  // Regression: default session timeout must refuse fast, not hang.
+  const res = await sandboxRaw(
+    "--json",
+    "--non-interactive",
+    "--token",
+    "obviously-invalid-token",
+    "--endpoint",
+    "http://127.0.0.1:1",
+    "create",
+    "--org",
+    "test",
+  );
+  assertEquals(res.code, 2, `unexpected exit; stderr: ${res.stderr}`);
+  assertEquals(
+    res.stdout.trim(),
+    "",
+    `stdout should stay clean: ${res.stdout}`,
+  );
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "NON_INTERACTIVE_REQUIRED");
+  assertStringIncludes(envelope.error.hint, "--timeout");
+});
+
 Deno.test("sandbox list --json emits a structured error envelope, never a browser/hang", async () => {
   // Bad token + unreachable endpoint: the command must fail fast with a
   // machine-parseable envelope on stderr (and a clean stdout) rather than
