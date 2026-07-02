@@ -35,6 +35,9 @@ jobs:
       - name: check
         run: deno check
 
+      - name: rust tests
+        run: cargo test -p rs_lib
+
       - name: run tests
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
