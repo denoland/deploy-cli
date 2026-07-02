@@ -15,8 +15,16 @@ export type DatabaseContext = GlobalContext & {
   org?: string;
 };
 
-function kvConnectUrl(databaseId: string): string {
-  return `https://api.deno.com/v2/databases/${databaseId}/connect`;
+// KV connect is served from api.deno.com, which has no configurable
+// counterpart to --endpoint/DENO_DEPLOY_ENDPOINT; suppress the URL for
+// non-default endpoints so a staging database id is never pointed at prod.
+function kvConnectUrl(
+  endpoint: string,
+  databaseId: string,
+): string | undefined {
+  return endpoint === "https://console.deno.com"
+    ? `https://api.deno.com/v2/databases/${databaseId}/connect`
+    : undefined;
 }
 
 const databasesProvisionCommand = new Command<DatabaseContext>()
@@ -100,7 +108,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
   .option("--hostname <string>", "The hostname to use for the database")
   .option("--username <string>", "The username to use for the database")
   .option("--password <string>", "The password to use for the database")
-  .option("--port <number>", "The port to use for the database")
+  .option("--port <port:number>", "The port to use for the database")
   .option("--cert <string>", "The SSL certificate to use for the database")
   .option(
     "--dry-run",
@@ -116,13 +124,13 @@ const databasesLinkCommand = new Command<DatabaseContext>()
     const hasIndividualFlags = options.hostname || options.port !== undefined ||
       options.username || options.password;
     if (connectionString && hasIndividualFlags) {
-      throw new TypeError(
+      throw new ValidationError(
         "Provide either a connection string or the individual " +
           "--hostname/--port/--username/--password flags, not both.",
       );
     }
     if (!connectionString && !options.hostname) {
-      throw new TypeError(
+      throw new ValidationError(
         "A connection string or --hostname is required.",
       );
     }
@@ -142,7 +150,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         !connectionString.startsWith("postgres://") &&
         !connectionString.startsWith("postgresql://")
       ) {
-        throw new TypeError(
+        throw new ValidationError(
           "Invalid connection string, expected postgres:// or postgresql:// prefix.",
         );
       }
@@ -168,8 +176,8 @@ const databasesLinkCommand = new Command<DatabaseContext>()
 
     const connectionConfig = {
       hostname: hostname,
-      // The backend expects a number; `--port <number>` and the parsed
-      // connection-string port both arrive as strings, so coerce here.
+      // The backend expects a number; the parsed connection-string port
+      // arrives as a string, so coerce here.
       port: port != null ? Number(port) : null,
       username: username || null,
       password: password || null,
@@ -387,13 +395,15 @@ const databasesListCommand = new Command<DatabaseContext>()
         connection: database.safeConnectionConfig,
         databases: database.databases.map((db) => {
           const databaseId = db.metadata?.td_id;
+          const connectUrl = databaseId
+            ? kvConnectUrl(options.endpoint, databaseId)
+            : undefined;
           return {
             name: db.name,
             status: db.status,
             createdAt: db.created_at,
-            ...(databaseId
-              ? { databaseId, connectUrl: kvConnectUrl(databaseId) }
-              : {}),
+            ...(databaseId ? { databaseId } : {}),
+            ...(connectUrl ? { connectUrl } : {}),
           };
         }),
       })));
