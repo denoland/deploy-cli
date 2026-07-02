@@ -297,15 +297,25 @@ async function writeConfig(
 
   const content = configContent.config?.content ?? "{}\n";
 
-  const newConfig: Record<string, string> = { org };
-
-  if (app) {
-    newConfig.app = app;
-  }
-
   const config = parseJSONC(content);
   const deployObj = config.asObjectOrForce().getIfObjectOrForce("deploy");
-  deployObj.replaceWith(newConfig);
+
+  const upsertKey = (key: string, value: string) => {
+    const prop = deployObj.get(key);
+    if (prop) {
+      prop.setValue(value);
+    } else {
+      deployObj.append(key, value);
+    }
+  };
+
+  upsertKey("org", org);
+  if (app) {
+    upsertKey("app", app);
+  } else {
+    deployObj.get("app")?.remove();
+  }
+
   deployObj.ensureMultiline();
 
   await Deno.writeTextFile(
