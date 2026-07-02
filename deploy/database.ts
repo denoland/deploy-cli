@@ -15,6 +15,18 @@ export type DatabaseContext = GlobalContext & {
   org?: string;
 };
 
+// KV connect is served from api.deno.com, which has no configurable
+// counterpart to --endpoint/DENO_DEPLOY_ENDPOINT; suppress the URL for
+// non-default endpoints so a staging database id is never pointed at prod.
+function kvConnectUrl(
+  endpoint: string,
+  databaseId: string,
+): string | undefined {
+  return endpoint === "https://console.deno.com"
+    ? `https://api.deno.com/v2/databases/${databaseId}/connect`
+    : undefined;
+}
+
 const databasesProvisionCommand = new Command<DatabaseContext>()
   .description("Provision a database")
   .example("Provision a Deno KV database", "provision my-db --kind denokv")
@@ -72,11 +84,15 @@ const databasesProvisionCommand = new Command<DatabaseContext>()
         },
     });
 
-    console.log(
-      `${
-        green("✔")
-      } Successfully provisioned ${options.kind} database '${name}'.`,
-    );
+    if (options.json) {
+      writeJsonResult({ database: name, engine: options.kind, org });
+    } else {
+      console.error(
+        `${
+          green("✔")
+        } Successfully provisioned ${options.kind} database '${name}'.`,
+      );
+    }
   }));
 
 const databasesLinkCommand = new Command<DatabaseContext>()
@@ -92,7 +108,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
   .option("--hostname <string>", "The hostname to use for the database")
   .option("--username <string>", "The username to use for the database")
   .option("--password <string>", "The password to use for the database")
-  .option("--port <number>", "The port to use for the database")
+  .option("--port <port:number>", "The port to use for the database")
   .option("--cert <string>", "The SSL certificate to use for the database")
   .option(
     "--dry-run",
@@ -108,13 +124,13 @@ const databasesLinkCommand = new Command<DatabaseContext>()
     const hasIndividualFlags = options.hostname || options.port !== undefined ||
       options.username || options.password;
     if (connectionString && hasIndividualFlags) {
-      throw new TypeError(
+      throw new ValidationError(
         "Provide either a connection string or the individual " +
           "--hostname/--port/--username/--password flags, not both.",
       );
     }
     if (!connectionString && !options.hostname) {
-      throw new TypeError(
+      throw new ValidationError(
         "A connection string or --hostname is required.",
       );
     }
@@ -134,7 +150,7 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         !connectionString.startsWith("postgres://") &&
         !connectionString.startsWith("postgresql://")
       ) {
-        throw new TypeError(
+        throw new ValidationError(
           "Invalid connection string, expected postgres:// or postgresql:// prefix.",
         );
       }
@@ -160,8 +176,8 @@ const databasesLinkCommand = new Command<DatabaseContext>()
 
     const connectionConfig = {
       hostname: hostname,
-      // The backend expects a number; `--port <number>` and the parsed
-      // connection-string port both arrive as strings, so coerce here.
+      // The backend expects a number; the parsed connection-string port
+      // arrives as a string, so coerce here.
       port: port != null ? Number(port) : null,
       username: username || null,
       password: password || null,
@@ -174,7 +190,11 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         engine,
         connection_config: connectionConfig,
       });
-      console.log(`${green("✔")} Connection test successful.`);
+      if (options.json) {
+        writeJsonResult({ database: name, engine, dryRun: true, ok: true });
+      } else {
+        console.error(`${green("✔")} Connection test successful.`);
+      }
     } else {
       await trpcClient.mutation("databases.createInstance", {
         org: org,
@@ -182,7 +202,11 @@ const databasesLinkCommand = new Command<DatabaseContext>()
         engine,
         connection_config: connectionConfig,
       });
-      console.log(`${green("✔")} Successfully linked database '${name}'.`);
+      if (options.json) {
+        writeJsonResult({ database: name, engine, org });
+      } else {
+        console.error(`${green("✔")} Successfully linked database '${name}'.`);
+      }
     }
   }));
 
@@ -203,9 +227,15 @@ const databasesAssignCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    console.log(
-      `${green("✔")} Successfully assigned database '${name}' to app '${app}'.`,
-    );
+    if (options.json) {
+      writeJsonResult({ database: name, app, org });
+    } else {
+      console.error(
+        `${
+          green("✔")
+        } Successfully assigned database '${name}' to app '${app}'.`,
+      );
+    }
   }));
 
 const databasesDetachCommand = new Command<DatabaseContext>()
@@ -225,11 +255,15 @@ const databasesDetachCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    console.log(
-      `${
-        green("✔")
-      } Successfully detached database '${name}' from app '${app}'.`,
-    );
+    if (options.json) {
+      writeJsonResult({ database: name, app, org });
+    } else {
+      console.error(
+        `${
+          green("✔")
+        } Successfully detached database '${name}' from app '${app}'.`,
+      );
+    }
   }));
 
 const databasesQueryCommand = new Command<DatabaseContext>()
@@ -342,7 +376,12 @@ const databasesListCommand = new Command<DatabaseContext>()
       {
         slug: string;
         created_at: Date;
-        databases: Array<{ name: string; status: string; created_at: Date }>;
+        databases: Array<{
+          name: string;
+          status: string;
+          created_at: Date;
+          metadata?: { td_id?: string };
+        }>;
         assignments: Array<{ app_slug: string }>;
       } & ConnectionInfo
     >;
@@ -354,11 +393,19 @@ const databasesListCommand = new Command<DatabaseContext>()
         createdAt: database.created_at,
         assignments: database.assignments.map((a) => a.app_slug),
         connection: database.safeConnectionConfig,
-        databases: database.databases.map((db) => ({
-          name: db.name,
-          status: db.status,
-          createdAt: db.created_at,
-        })),
+        databases: database.databases.map((db) => {
+          const databaseId = db.metadata?.td_id;
+          const connectUrl = databaseId
+            ? kvConnectUrl(options.endpoint, databaseId)
+            : undefined;
+          return {
+            name: db.name,
+            status: db.status,
+            createdAt: db.created_at,
+            ...(databaseId ? { databaseId } : {}),
+            ...(connectUrl ? { connectUrl } : {}),
+          };
+        }),
       })));
       return;
     }
@@ -381,7 +428,7 @@ const databasesListCommand = new Command<DatabaseContext>()
       },
       (database) => {
         return {
-          headers: ["NAME", "STATUS", "CREATED"],
+          headers: ["NAME", "STATUS", "CREATED", "DATABASE ID"],
           rows: database.databases.map((database) => {
             return [
               database.name,
@@ -389,6 +436,7 @@ const databasesListCommand = new Command<DatabaseContext>()
               renderTemporalTimestamp(
                 database.created_at.toISOString(),
               ),
+              database.metadata?.td_id ?? "",
             ];
           }),
         };
@@ -410,7 +458,11 @@ const databasesDeleteCommand = new Command<DatabaseContext>()
       databaseInstance: name,
     });
 
-    console.log(`${green("✔")} Successfully deleted database '${name}'.`);
+    if (options.json) {
+      writeJsonResult({ database: name, org });
+    } else {
+      console.error(`${green("✔")} Successfully deleted database '${name}'.`);
+    }
   }));
 
 export const databasesCommand = new Command<GlobalContext>()
