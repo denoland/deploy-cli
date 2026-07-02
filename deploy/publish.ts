@@ -4,7 +4,12 @@ import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
 import { authedFetch, createTrpcClient } from "../auth.ts";
-import { error, shouldUseSpinner, writeJsonResult } from "../util.ts";
+import {
+  error,
+  selectProductionUrl,
+  shouldUseSpinner,
+  writeJsonResult,
+} from "../util.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
 
@@ -34,7 +39,7 @@ export async function publish(
   const log: typeof console.log = quiet
     ? () => {}
     // deno-lint-ignore no-explicit-any
-    : console.log.bind(console) as any;
+    : console.error.bind(console) as any;
 
   function startSpinner(message: string): Spinner {
     const spinner = new Spinner({ message, color: "yellow" });
@@ -55,7 +60,7 @@ export async function publish(
           );
 
           if (context.debug) {
-            console.log(`reading ${JSON.stringify(relativePath)}`);
+            console.error(`reading ${JSON.stringify(relativePath)}`);
           }
 
           const data = await Deno.readFile(path);
@@ -86,7 +91,7 @@ export async function publish(
   }
 
   if (context.debug) {
-    console.log("Manifest", manifest);
+    console.error("Manifest", manifest);
   }
 
   const trpcClient = createTrpcClient(context);
@@ -158,39 +163,43 @@ export async function publish(
     }
 
     if (context.debug) {
-      console.log("Missing hashes", missingHashes);
+      console.error("Missing hashes", missingHashes);
     }
 
     const useProgress = shouldUseSpinner(context);
-    const progress = new ProgressBar({
-      max: missingHashes.length,
-      emptyChar: " ",
-      fillChar: green("█"),
-      formatter(formatter) {
-        const minutes = (formatter.time / 1000 / 60 | 0).toString().padStart(
-          2,
-          "0",
-        );
-        const seconds = (formatter.time / 1000 % 60 | 0).toString().padStart(
-          2,
-          "0",
-        );
+    // Only instantiate when drawn; its render timer otherwise keeps the event
+    // loop alive and hangs the process.
+    const progress = useProgress
+      ? new ProgressBar({
+        max: missingHashes.length,
+        emptyChar: " ",
+        fillChar: green("█"),
+        formatter(formatter) {
+          const minutes = (formatter.time / 1000 / 60 | 0).toString().padStart(
+            2,
+            "0",
+          );
+          const seconds = (formatter.time / 1000 % 60 | 0).toString().padStart(
+            2,
+            "0",
+          );
 
-        const length = formatter.max.toString().length;
-        return `[${yellow(minutes)}:${
-          yellow(seconds)
-        }] ${formatter.progressBar} ${
-          yellow(formatter.value.toString().padStart(length, " "))
-        }/${yellow(formatter.max.toString())} files uploaded.`;
-      },
-    });
+          const length = formatter.max.toString().length;
+          return `[${yellow(minutes)}:${
+            yellow(seconds)
+          }] ${formatter.progressBar} ${
+            yellow(formatter.value.toString().padStart(length, " "))
+          }/${yellow(formatter.max.toString())} files uploaded.`;
+        },
+      })
+      : undefined;
 
     let tarball = body
       .pipeThrough(
         new TransformStream({
           transform({ internalPath, data, hash }, controller) {
             if (missingHashes.includes(hash)) {
-              if (useProgress) progress.value += 1;
+              if (progress) progress.value += 1;
 
               controller.enqueue(
                 {
@@ -203,7 +212,7 @@ export async function publish(
             }
 
             if (context.debug) {
-              console.log(
+              console.error(
                 `uploading ${JSON.stringify(internalPath)}`,
               );
             }
@@ -220,7 +229,7 @@ export async function publish(
         suffix: "debug.tar.gz",
       });
       await Deno.writeFile(path, tb2);
-      console.log(`Created debug tarball at '${path}'`);
+      console.error(`Created debug tarball at '${path}'`);
     }
 
     const resp = await authedFetch(
@@ -239,7 +248,7 @@ export async function publish(
       },
     );
 
-    if (useProgress) await progress.stop();
+    if (progress) await progress.stop();
 
     log();
 
@@ -257,6 +266,16 @@ export async function publish(
 
   if (wait) {
     await waitForRevision(context, org, app, revisionId, revision);
+  } else if (context.json) {
+    // Build isn't finished yet; emit the revision id so agents can track it.
+    writeJsonResult({
+      org,
+      app,
+      revisionId,
+      url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
+      status: "pending",
+      productionUrl: null,
+    });
   } else {
     log(
       "To see the deployment, go to the revision page and wait for the build to complete.",
@@ -275,7 +294,7 @@ export async function waitForRevision(
   const log: typeof console.log = quiet
     ? () => {}
     // deno-lint-ignore no-explicit-any
-    : console.log.bind(console) as any;
+    : console.error.bind(console) as any;
   const trpcClient = createTrpcClient(context);
 
   log(
@@ -335,7 +354,7 @@ export async function waitForRevision(
           `View ${context.endpoint}/${org}/${app}/builds/${revisionId} for details.`,
       });
     }
-    console.log(
+    console.error(
       `\n${red("✗")} The revision ${
         revision.status === "cancelled" ? "was " : ""
       }${revision.status}.\n  Please view the revision in the dashboard for more information.`,
@@ -347,7 +366,11 @@ export async function waitForRevision(
     org,
     app,
     revision: revisionId,
-  }) as Array<{ partition_config_name: string; domains: string[] }>;
+  }) as Array<
+    { partition_config_name: string; context_name: string; domains: string[] }
+  >;
+
+  const { productionUrl } = selectProductionUrl(timelines);
 
   if (context.json) {
     writeJsonResult({
@@ -356,6 +379,7 @@ export async function waitForRevision(
       revisionId,
       url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
       status: revision?.status ?? "ready",
+      productionUrl,
       timelines: timelines.map((t) => ({
         partition: t.partition_config_name,
         domains: t.domains.map((d) => `https://${d}`),
@@ -364,10 +388,10 @@ export async function waitForRevision(
     return;
   }
 
-  console.log(`\n${green("✔")} Successfully deployed your application!`);
+  console.error(`\n${green("✔")} Successfully deployed your application!`);
 
   for (const timeline of timelines) {
-    console.log(
+    console.error(
       `${timeline.partition_config_name} url:${
         timeline.domains.map((domain) => `\n  https://${domain}`)
       }`,

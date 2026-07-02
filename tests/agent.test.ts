@@ -159,8 +159,6 @@ Deno.test("publish (default command) --json keeps stdout clean and emits an AUTH
 });
 
 Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", async () => {
-  // Cliffy's ValidationError handler exits with code 1 by default;
-  // verify the agent can pattern-match on stderr text either way.
   const res = await deployRaw(
     "create",
     "--dry-run",
@@ -171,8 +169,9 @@ Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", asyn
     "--source",
     "invalid",
   );
-  assert(res.code !== 0);
-  assertStringIncludes(res.stderr + res.stdout, "Invalid source");
+  assertEquals(res.code, 2, `stderr: ${res.stderr}`);
+  assertEquals(res.stdout.trim(), "", `stdout should be empty: ${res.stdout}`);
+  assertStringIncludes(res.stderr, "Invalid source");
 });
 
 async function sandboxRaw(...args: string[]): Promise<
@@ -195,6 +194,30 @@ Deno.test("sandbox --help advertises --json and --non-interactive", async () => 
   assertEquals(res.code, 0, `stderr: ${res.stderr}`);
   assertStringIncludes(res.stdout, "--json");
   assertStringIncludes(res.stdout, "--non-interactive");
+});
+
+Deno.test("sandbox create --json --non-interactive with default session timeout fails fast (no hang)", async () => {
+  // Regression: default session timeout must refuse fast, not hang.
+  const res = await sandboxRaw(
+    "--json",
+    "--non-interactive",
+    "--token",
+    "obviously-invalid-token",
+    "--endpoint",
+    "http://127.0.0.1:1",
+    "create",
+    "--org",
+    "test",
+  );
+  assertEquals(res.code, 2, `unexpected exit; stderr: ${res.stderr}`);
+  assertEquals(
+    res.stdout.trim(),
+    "",
+    `stdout should stay clean: ${res.stdout}`,
+  );
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "NON_INTERACTIVE_REQUIRED");
+  assertStringIncludes(envelope.error.hint, "--timeout");
 });
 
 Deno.test("sandbox list --json emits a structured error envelope, never a browser/hang", async () => {

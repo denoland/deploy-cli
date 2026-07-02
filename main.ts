@@ -1,8 +1,9 @@
-import { Command } from "@cliffy/command";
+import { Command, ValidationError } from "@cliffy/command";
 import { greaterOrEqual, parse as semverParse } from "@std/semver";
 import { sandboxCommand } from "./sandbox/mod.ts";
 import { deployCommand } from "./deploy/mod.ts";
 import { actionHandler, getApp, getOrg } from "./config.ts";
+import { error, ExitCode, writeJsonResult } from "./util.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
 if (
@@ -30,10 +31,41 @@ export type GlobalContext = {
   nonInteractive?: true;
 };
 
-if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
-  await sandboxCommand.parse(Deno.args);
-} else {
-  await deployCommand.command("sandbox", sandboxCommand).parse(Deno.args);
+// `.reset()` repoints the builder to the root command before `.noExit()`, which
+// makes Cliffy throw parse errors instead of exiting so `handleCliError` can map them.
+try {
+  if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
+    await sandboxCommand.reset().noExit().parse(Deno.args);
+  } else {
+    await deployCommand.command("sandbox", sandboxCommand).reset().noExit()
+      .parse(Deno.args);
+  }
+} catch (e) {
+  handleCliError(e);
+}
+
+// Maps an error thrown out of `parse()` to the CLI error contract (ValidationError -> USAGE).
+function handleCliError(e: unknown): never {
+  const context: GlobalContext = {
+    debug: Deno.args.includes("--debug"),
+    endpoint: "",
+    json: Deno.args.some(isJsonModeArg) ? true : undefined,
+  };
+
+  if (e instanceof ValidationError) {
+    error(context, e.message, {
+      code: ExitCode.USAGE,
+      errorCode: "VALIDATION_ERROR",
+    });
+  }
+
+  error(context, e instanceof Error ? e.message : String(e));
+}
+
+// Parse-free `--json` detection: matches `--json`, `--json=...`, `-j`, and bundles like `-jy`.
+function isJsonModeArg(arg: string): boolean {
+  return arg === "-j" || arg === "--json" || arg.startsWith("--json=") ||
+    /^-[a-z]*j[a-z]*$/.test(arg);
 }
 
 export function createSwitchCommand(
@@ -52,10 +84,14 @@ export function createSwitchCommand(
         app = out.app;
       }
 
-      console.log(
-        `Switched to organization '${org}'${
-          app ? ` and application '${app}'` : ""
-        }.`,
-      );
+      if (options.json) {
+        writeJsonResult({ org, app: app ?? null });
+      } else {
+        console.error(
+          `Switched to organization '${org}'${
+            app ? ` and application '${app}'` : ""
+          }.`,
+        );
+      }
     }));
 }

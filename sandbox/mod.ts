@@ -12,7 +12,10 @@ import { join } from "@std/path";
 import { Spinner } from "@std/cli/unstable-spinner";
 
 import {
+  error,
+  ExitCode,
   formatDuration,
+  isNonInteractive,
   parseSize,
   renderTemporalTimestamp,
   tablePrinter,
@@ -91,6 +94,22 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     config.noCreate();
     const org = await getOrg(options, config, options.org);
 
+    // A "session" sandbox is destroyed when this process exits, so it can't
+    // outlive a non-interactive run; require an explicit timeout instead.
+    const nonInteractive = isNonInteractive(options);
+    if (nonInteractive && options.timeout === "session") {
+      error(
+        options,
+        "Cannot create a sandbox with the default 'session' timeout in non-interactive mode: a session-scoped sandbox is destroyed as soon as this command exits.",
+        {
+          code: ExitCode.USAGE,
+          errorCode: "NON_INTERACTIVE_REQUIRED",
+          hint:
+            "Pass an explicit --timeout (e.g. --timeout 15m) so the sandbox outlives this command, then manage it with `sandbox kill`.",
+        },
+      );
+    }
+
     const quiet = options.timeout === "session";
     const token = await getAuth(options, quiet);
 
@@ -113,7 +132,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     if (
       (options.timeout === "session" || options.ssh) && !options.json
     ) {
-      console.log(`${green("✔")} Created sandbox with id '${sandbox.id}'`);
+      console.error(`${green("✔")} Created sandbox with id '${sandbox.id}'`);
     }
 
     if (options.copy) {
@@ -135,12 +154,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
 
     if (options.exposeHttp) {
       const url = await sandbox.exposeHttp({ port: options.exposeHttp });
-      // In JSON mode this is progress, not the final result; keep stdout clean.
-      if (options.json) {
-        console.error(`Exposed port ${options.exposeHttp} to ${url}`);
-      } else {
-        console.log(`Exposed port ${options.exposeHttp} to ${url}`);
-      }
+      console.error(`Exposed port ${options.exposeHttp} to ${url}`);
     }
 
     const args = this.getLiteralArgs().length > 0
@@ -167,36 +181,57 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
     await config.save();
 
     const stopMessage = "Stopping the sandbox...";
-    if (options.ssh) {
-      const success = await sshIntoSandbox(sandbox);
-      if (success) {
-        // Closes the sandbox only when ssh session was established and finished successfully
-        console.log("Disconnecting from the sandbox...");
-        await sandbox.close();
-      } else {
-        // Otherwise, keep the sandbox running and wait for Ctrl+C
-        console.log("\nCtrl+C to stop the sandbox.");
-        Deno.addSignalListener("SIGINT", async () => {
-          console.log("\n" + stopMessage);
-          await sandbox.close();
-          Deno.exit();
-        });
-      }
-    } else if (options.timeout === "session") {
-      // Otherwise, keep the sandbox running and wait for Ctrl+C
-      console.log("\nCtrl+C to stop the sandbox.");
+
+    const installKeepAlive = () => {
+      console.error("\nCtrl+C to stop the sandbox.");
       Deno.addSignalListener("SIGINT", async () => {
-        console.log("\n" + stopMessage);
+        console.error("\n" + stopMessage);
         await sandbox.close();
         Deno.exit();
       });
-    } else {
+    };
+
+    const emitResult = (extra?: Record<string, unknown>) => {
       if (options.json) {
-        writeJsonResult({ id: sandbox.id });
+        writeJsonResult({
+          id: sandbox.id,
+          org,
+          timeout: options.timeout,
+          ...extra,
+        });
       } else {
         console.log(sandbox.id);
       }
+    };
 
+    if (options.ssh) {
+      if (nonInteractive) {
+        // Interactive ssh would block on inherited non-TTY stdin; expose ssh
+        // and return its connection details instead.
+        const ssh = await sandbox.exposeSsh();
+        if (!options.json) {
+          console.error(
+            `Connect with: ssh ${magenta(`${ssh.username}@${ssh.hostname}`)}`,
+          );
+        }
+        emitResult({
+          ssh: { hostname: ssh.hostname, username: ssh.username },
+        });
+        Deno.exit();
+      }
+      const success = await sshIntoSandbox(sandbox);
+      if (success) {
+        // Closes the sandbox only when ssh session was established and finished successfully
+        console.error("Disconnecting from the sandbox...");
+        await sandbox.close();
+      } else {
+        // Otherwise, keep the sandbox running and wait for Ctrl+C
+        installKeepAlive();
+      }
+    } else if (options.timeout === "session") {
+      installKeepAlive();
+    } else {
+      emitResult();
       Deno.exit();
     }
   }));
@@ -284,7 +319,7 @@ export const sandboxKillCommand = new Command<SandboxContext>()
     if (options.json) {
       writeJsonResult({ id: sandboxId, killed: res.success });
     } else if (res.success) {
-      console.log(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
+      console.error(`${green("✔")} Sandbox ${sandboxId} killed successfully.`);
     }
   }));
 
@@ -544,7 +579,7 @@ export const sandboxDeployCommand = new Command<SandboxContext>()
     if (options.json) {
       writeJsonResult({ id: sandboxId, app, deployed: true });
     } else {
-      console.log(
+      console.error(
         `${
           green("✔")
         } Successfully deployed sandbox '${sandboxId}' to app '${app}'.`,
@@ -602,7 +637,7 @@ async function sshIntoSandbox(sandbox: Sandbox): Promise<boolean> {
     stderr: "null",
   }).output();
   if (which.success) {
-    console.log(`ssh ${connectInfo}`);
+    console.error(`ssh ${connectInfo}`);
     const command = new Deno.Command("ssh", {
       args: [connectInfo],
       stdin: "inherit",
@@ -614,7 +649,7 @@ async function sshIntoSandbox(sandbox: Sandbox): Promise<boolean> {
     await sandbox.close();
     return true;
   } else {
-    console.log(
+    console.error(
       `Started ssh session. You can now connect to ${magenta(connectInfo)}
 
 Example:
