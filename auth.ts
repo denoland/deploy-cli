@@ -448,7 +448,7 @@ export const tokenStorage = {
     } catch {
       if (!cannotInteractWithKeychain) {
         cannotInteractWithKeychain = true;
-        console.log(KEYCHAIN_WARNING);
+        console.error(KEYCHAIN_WARNING);
       }
     }
   },

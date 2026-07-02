@@ -236,7 +236,7 @@ const logoutCommand = new Command()
   .description("Revoke the Deno Deploy token if one is present")
   .action(() => {
     tokenStorage.remove();
-    console.log(`${green("✔")} Successfully logged out`);
+    console.error(`${green("✔")} Successfully logged out`);
   });
 
 interface WhoamiOrg {
@@ -296,7 +296,7 @@ const whoamiCommand = new Command<GlobalContext>()
         ? `@${me.user.githubLogin}`
         : me.user.email ?? me.user.name ?? me.user.id)
       : `org-scoped token (${me.tokenType})`;
-    console.log(
+    console.error(
       `${
         green("✔")
       } Authenticated as ${who}. ${orgs.length} reachable organization${

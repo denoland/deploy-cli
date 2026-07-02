@@ -297,8 +297,8 @@ export const createCommand = new Command<GlobalContext>()
       const region = required(options.region, "region");
 
       if (!options.json) {
-        console.log("Using the following build configuration:");
-        console.log(renderBuildConfig(buildConfig satisfies BuildConfig));
+        console.error("Using the following build configuration:");
+        console.error(renderBuildConfig(buildConfig satisfies BuildConfig));
       }
 
       data = {
@@ -417,7 +417,7 @@ export async function createApp(
 
   const appUrl = `${context.endpoint}/${data.org}/${data.app}`;
   if (!context.json) {
-    console.log(`${green("✔")} Created app, view it at ${appUrl}`);
+    console.error(`${green("✔")} Created app, view it at ${appUrl}`);
   }
 
   // Local-source apps deploy via publish(), which emits its own JSON envelope
@@ -451,7 +451,7 @@ export async function createApp(
       source: "github",
     });
   } else {
-    console.log(
+    console.error(
       `You can view the revision here:\n  ${context.endpoint}/${data.org}/${data.app}/builds/${revisionId}\n`,
     );
   }
@@ -459,7 +459,7 @@ export async function createApp(
   if (wait) {
     await waitForRevision(context, data.org, data.app, revisionId);
   } else if (!context.json) {
-    console.log(
+    console.error(
       "To see the deployment, go to the revision page and wait for the build to complete.",
     );
   }
