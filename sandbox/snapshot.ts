@@ -1,7 +1,7 @@
 import { Command } from "@cliffy/command";
 import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
-import { Client } from "@deno/sandbox";
+import { sandboxApi } from "./api.ts";
 import { formatSize, tablePrinter, writeJsonResult } from "../util.ts";
 import { green } from "@std/fmt/colors";
 import { actionHandler, getOrg } from "../config.ts";
@@ -14,6 +14,8 @@ export const snapshotsCreateCommand = new Command<SandboxContext>()
       config.noCreate();
       const org = await getOrg(options, config, options.org);
       const token = await getAuth(options, true);
+
+      const { Client } = await sandboxApi();
 
       const client = new Client({
         apiEndpoint: options.endpoint,
@@ -39,6 +41,8 @@ export const snapshotsListCommand = new Command<SandboxContext>()
     config.noCreate();
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
+
+    const { Client } = await sandboxApi();
 
     const client = new Client({
       apiEndpoint: options.endpoint,
@@ -91,6 +95,8 @@ export const snapshotsDeleteCommand = new Command<SandboxContext>()
     config.noCreate();
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
+
+    const { Client } = await sandboxApi();
 
     const client = new Client({
       apiEndpoint: options.endpoint,

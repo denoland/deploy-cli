@@ -1,10 +1,6 @@
 import { Command, ValidationError } from "@cliffy/command";
-import {
-  type Region,
-  Sandbox,
-  type VolumeId,
-  type VolumeSlug,
-} from "@deno/sandbox";
+import type { Region, Sandbox, VolumeId, VolumeSlug } from "@deno/sandbox";
+import { sandboxApi } from "./api.ts";
 import { green, magenta, red, setColorEnabled, yellow } from "@std/fmt/colors";
 import { pooledMap } from "@std/async";
 import { expandGlob } from "@std/fs";
@@ -119,6 +115,7 @@ export const sandboxCreateCommand = new Command<SandboxContext>()
       memory = Math.floor(parseSize(options, options.memory));
     }
 
+    const { Sandbox } = await sandboxApi();
     const sandbox = await Sandbox.create({
       debug: options.debug,
       token,
@@ -613,6 +610,7 @@ async function connectToSandbox(
   const org = await getOrg(options, config, options.org);
   const token = await getAuth(options, true);
 
+  const { Sandbox } = await sandboxApi();
   return await Sandbox.connect({
     id: sandboxId,
     apiEndpoint: options.endpoint,

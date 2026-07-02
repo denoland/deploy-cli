@@ -1,7 +1,7 @@
 import { Command } from "@cliffy/command";
 import type { SandboxContext } from "./mod.ts";
 import { getAuth } from "../auth.ts";
-import { Client } from "@deno/sandbox";
+import { sandboxApi } from "./api.ts";
 import {
   formatSize,
   parseSize,
@@ -27,6 +27,8 @@ export const volumesCreateCommand = new Command<SandboxContext>()
 
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
+
+    const { Client } = await sandboxApi();
 
     const client = new Client({
       apiEndpoint: options.endpoint,
@@ -56,6 +58,8 @@ export const volumesListCommand = new Command<SandboxContext>()
 
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
+
+    const { Client } = await sandboxApi();
 
     const client = new Client({
       apiEndpoint: options.endpoint,
@@ -108,6 +112,8 @@ export const volumesDeleteCommand = new Command<SandboxContext>()
     const org = await getOrg(options, config, options.org);
     const token = await getAuth(options, true);
 
+    const { Client } = await sandboxApi();
+
     const client = new Client({
       apiEndpoint: options.endpoint,
       token,
@@ -131,6 +137,8 @@ export const volumesSnapshotCommand = new Command<SandboxContext>()
 
       const org = await getOrg(options, config, options.org);
       const token = await getAuth(options, true);
+
+      const { Client } = await sandboxApi();
 
       const client = new Client({
         apiEndpoint: options.endpoint,
