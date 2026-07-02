@@ -248,6 +248,15 @@ deploy your local directory to the specified application.`)
             options.wait ?? true,
           );
         }
+
+        // The deploy has finished successfully. Force a clean exit: the tRPC
+        // client used for the upload/`revisions.watchUntilReady` subscription
+        // keeps handles open (the EventSource polyfill's connection + reconnect
+        // timer, and the streaming upload request), so without this the process
+        // hangs indefinitely after printing "Successfully deployed" — turning a
+        // successful deploy into a job that runs until its CI timeout. Mirrors
+        // the explicit `Deno.exit(1)` on the failure path in publish.ts.
+        Deno.exit(0);
       },
       (rootPath) => rootPath,
     ),
