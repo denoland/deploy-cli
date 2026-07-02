@@ -16,7 +16,7 @@ interface EnvVar {
   key: string;
   value: string;
   is_secret: boolean;
-  context_ids: string[];
+  context_ids: string[] | null;
 }
 
 interface Context {
@@ -28,6 +28,24 @@ type EnvCommandContext = GlobalContext & {
   org?: string;
   app?: string;
 };
+
+// Public `--json` shape for an env var (id may be null for the add best-effort case).
+function shapeEnvVar(
+  envVar: Omit<EnvVar, "id"> & { id: string | null },
+  contexts: Context[],
+) {
+  return {
+    id: envVar.id,
+    key: envVar.key,
+    value: envVar.is_secret ? null : envVar.value,
+    isSecret: envVar.is_secret,
+    contexts: envVar.context_ids
+      ? envVar.context_ids.map((id) =>
+        contexts.find((c) => c.id === id)?.name ?? id
+      )
+      : null,
+  };
+}
 
 const envListCommand = new Command<EnvCommandContext>()
   .description("List all environment variables in an application")
@@ -48,22 +66,12 @@ const envListCommand = new Command<EnvCommandContext>()
     ) as Context[];
 
     if (options.json) {
-      writeJsonResult(envVars.map((envVar) => ({
-        id: envVar.id,
-        key: envVar.key,
-        value: envVar.is_secret ? null : envVar.value,
-        isSecret: envVar.is_secret,
-        contexts: envVar.context_ids
-          ? envVar.context_ids.map((id) =>
-            contexts.find((c) => c.id === id)?.name ?? id
-          )
-          : null,
-      })));
+      writeJsonResult(envVars.map((envVar) => shapeEnvVar(envVar, contexts)));
       return;
     }
 
     if (envVars.length === 0) {
-      console.log(
+      console.error(
         "There are no environment variables set on this application.",
       );
       return;
@@ -115,7 +123,7 @@ const envAddCommand = new Command<EnvCommandContext>()
       app,
     }) as { id: string };
 
-    await trpcClient.mutation("envVarsContexts.updateEnvVars", {
+    const created = await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [
         {
@@ -128,9 +136,24 @@ const envAddCommand = new Command<EnvCommandContext>()
       ],
       update: [],
       remove: [],
-    });
+    }) as unknown;
 
-    console.log(
+    if (options.json) {
+      // id is best-effort: null unless the mutation returns an array of
+      // server-assigned ids (the shape is not part of the CLI's contract).
+      writeJsonResult(shapeEnvVar({
+        id: Array.isArray(created) && typeof created[0] === "string"
+          ? created[0]
+          : null,
+        key: variable,
+        value,
+        is_secret: options.secret,
+        context_ids: null,
+      }, []));
+      return;
+    }
+
+    console.error(
       `${
         green("✔")
       } Environment variable '${variable}' has been successfully set.`,
@@ -162,6 +185,13 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
       );
     }
 
+    const contexts = options.json
+      ? await trpcClient.query(
+        "envVarsContexts.listContexts",
+        { org },
+      ) as Context[]
+      : [];
+
     await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [],
@@ -172,7 +202,12 @@ const envUpdateValueCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(
+    if (options.json) {
+      writeJsonResult(shapeEnvVar({ ...envVar, value }, contexts));
+      return;
+    }
+
+    console.error(
       `${
         green("✔")
       } The value of environment variable '${variable}' has been successfully updated.`,
@@ -220,17 +255,26 @@ You can define no contexts, which is the equivalent to "All"`,
       contextIds.push(context.id);
     }
 
+    const newContextIds = newContexts.length === 0 ? null : contextIds;
+
     await trpcClient.mutation("envVarsContexts.updateEnvVars", {
       org,
       add: [],
       update: [{
         id: envVar.id,
-        context_ids: newContexts.length === 0 ? null : contextIds,
+        context_ids: newContextIds,
       }],
       remove: [],
     });
 
-    console.log(
+    if (options.json) {
+      writeJsonResult(
+        shapeEnvVar({ ...envVar, context_ids: newContextIds }, contexts),
+      );
+      return;
+    }
+
+    console.error(
       `${
         green("✔")
       } The contexts of environment variable '${variable}' have been successfully updated.`,
@@ -266,7 +310,12 @@ const envDeleteCommand = new Command<EnvCommandContext>()
       remove: [envVar.id],
     });
 
-    console.log(
+    if (options.json) {
+      writeJsonResult({ id: envVar.id, key: variable, deleted: true });
+      return;
+    }
+
+    console.error(
       `${
         green("✔")
       } Environment variable '${variable}' has been successfully deleted.`,
@@ -357,6 +406,8 @@ const envLoadCommand = new Command<EnvCommandContext>()
       }
     }
 
+    const existingKeys = updateEnvVars.map((envVar) => envVar.key);
+
     if (updateEnvVars.length > 0) {
       if (options.skipExisting) {
         updateEnvVars = [];
@@ -368,11 +419,11 @@ const envLoadCommand = new Command<EnvCommandContext>()
           "Existing env vars found and prompting is disabled.\nUse --replace to overwrite or --skip-existing to skip.",
         );
       } else {
-        console.log("The following env vars are already defined:");
+        console.error("The following env vars are already defined:");
         for (const updateEnvVar of updateEnvVars) {
-          console.log(` - ${updateEnvVar.key}`);
+          console.error(` - ${updateEnvVar.key}`);
         }
-        console.log();
+        console.error();
         outer: while (true) {
           const res = prompt(
             "Would you like to replace these with your .env file? [y = Yes, n = No, s = Ignore/Skip]",
@@ -394,7 +445,7 @@ const envLoadCommand = new Command<EnvCommandContext>()
             }
           }
         }
-        console.log();
+        console.error();
       }
     }
 
@@ -405,7 +456,17 @@ const envLoadCommand = new Command<EnvCommandContext>()
       remove: [],
     });
 
-    console.log(
+    // Request-derived: the batch response returns only added-record ids, no keys.
+    const added = addEnvVars.map((envVar) => envVar.key);
+    const updated = updateEnvVars.map((envVar) => envVar.key);
+    const skipped = existingKeys.filter((key) => !updated.includes(key));
+
+    if (options.json) {
+      writeJsonResult({ file, added, updated, skipped });
+      return;
+    }
+
+    console.error(
       `${green("✔")} .env file '${file}' has been successfully loaded.`,
     );
   }));
