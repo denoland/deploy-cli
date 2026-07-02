@@ -112,7 +112,9 @@ export function error(
   } else {
     console.error();
     console.error(`${red("✗")} An error occurred:`);
-    console.error(`  ${message.replaceAll("\n", "\n  ")}`);
+    console.error(
+      `  ${String(message ?? "Unknown error").replaceAll("\n", "\n  ")}`,
+    );
     if (opts.hint) {
       console.error(`  hint: ${opts.hint.replaceAll("\n", "\n        ")}`);
     }

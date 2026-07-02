@@ -159,8 +159,6 @@ Deno.test("publish (default command) --json keeps stdout clean and emits an AUTH
 });
 
 Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", async () => {
-  // Cliffy's ValidationError handler exits with code 1 by default;
-  // verify the agent can pattern-match on stderr text either way.
   const res = await deployRaw(
     "create",
     "--dry-run",
@@ -171,8 +169,9 @@ Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", asyn
     "--source",
     "invalid",
   );
-  assert(res.code !== 0);
-  assertStringIncludes(res.stderr + res.stdout, "Invalid source");
+  assertEquals(res.code, 2, `stderr: ${res.stderr}`);
+  assertEquals(res.stdout.trim(), "", `stdout should be empty: ${res.stdout}`);
+  assertStringIncludes(res.stderr, "Invalid source");
 });
 
 async function sandboxRaw(...args: string[]): Promise<
