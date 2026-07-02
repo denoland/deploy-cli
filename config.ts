@@ -58,7 +58,7 @@ export async function getOrg(
       }
 
       org = selectedOrg.value.slug;
-      console.log(`Selected organization '${selectedOrg.value.name}'`);
+      console.error(`Selected organization '${selectedOrg.value.name}'`);
     }
   }
 
@@ -144,7 +144,7 @@ export async function getApp(
       created = true;
     } else {
       app = selectedApp.value.slug;
-      console.log(`Selected application '${selectedApp.value.slug}'`);
+      console.error(`Selected application '${selectedApp.value.slug}'`);
     }
   }
 
@@ -199,7 +199,9 @@ export function actionHandler<
           }
           this.configSaved = true;
 
-          if (this.doNotCreate && !config) {
+          // Skip writing only with no existing file to update (`config` is the
+          // always-truthy wrapper; `config.config` is the file, if any).
+          if (this.doNotCreate && !config.config) {
             return Promise.resolve();
           }
 
@@ -248,8 +250,11 @@ async function readConfig(
   allowNodeModules: boolean,
   debug: boolean,
 ): Promise<Config> {
+  // Only `--config <file>` is parsed as a config file; a positional root is not.
+  const fromConfig = Boolean(maybeConfigPath);
   const config = resolve_config(
     resolve(maybeConfigPath || rootPath),
+    fromConfig,
     ignorePaths,
     allowNodeModules,
     debug,
@@ -297,15 +302,25 @@ async function writeConfig(
 
   const content = configContent.config?.content ?? "{}\n";
 
-  const newConfig: Record<string, string> = { org };
-
-  if (app) {
-    newConfig.app = app;
-  }
-
   const config = parseJSONC(content);
   const deployObj = config.asObjectOrForce().getIfObjectOrForce("deploy");
-  deployObj.replaceWith(newConfig);
+
+  const upsertKey = (key: string, value: string) => {
+    const prop = deployObj.get(key);
+    if (prop) {
+      prop.setValue(value);
+    } else {
+      deployObj.append(key, value);
+    }
+  };
+
+  upsertKey("org", org);
+  if (app) {
+    upsertKey("app", app);
+  } else {
+    deployObj.get("app")?.remove();
+  }
+
   deployObj.ensureMultiline();
 
   await Deno.writeTextFile(
@@ -314,7 +329,7 @@ async function writeConfig(
   );
 
   if (!configContent.config) {
-    console.log(
+    console.error(
       `Created configuration file at '${join(Deno.cwd(), "deno.jsonc")}'`,
     );
   }

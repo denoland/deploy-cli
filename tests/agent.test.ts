@@ -133,9 +133,32 @@ Deno.test("whoami --json with bad token emits AUTH envelope (exit 3, no browser)
   assertEquals(envelope.error.code, "AUTH_INVALID_TOKEN");
 });
 
+Deno.test("publish (default command) --json keeps stdout clean and emits an AUTH envelope on stderr", async () => {
+  // The root command is the publish flow. With --org/--app supplied, org/app
+  // resolve without a network round-trip, so publish() runs and fails on its
+  // first backend call against the unreachable endpoint. The temp token makes
+  // that a deterministic AUTH_INVALID_TOKEN. Asserts --json stdout discipline:
+  // nothing on stdout, the structured error on stderr.
+  const res = await deployRaw(
+    "--json",
+    "--non-interactive",
+    "--token",
+    "obviously-invalid-token",
+    "--endpoint",
+    "http://127.0.0.1:1",
+    "--org",
+    "test",
+    "--app",
+    "test-app",
+    ".",
+  );
+  assertEquals(res.code, 3, `unexpected exit; stderr: ${res.stderr}`);
+  assertEquals(res.stdout.trim(), "", `stdout should be empty: ${res.stdout}`);
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "AUTH_INVALID_TOKEN");
+});
+
 Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", async () => {
-  // Cliffy's ValidationError handler exits with code 1 by default;
-  // verify the agent can pattern-match on stderr text either way.
   const res = await deployRaw(
     "create",
     "--dry-run",
@@ -146,6 +169,83 @@ Deno.test("non-zero exit code matches taxonomy for invalid flag (USAGE=2)", asyn
     "--source",
     "invalid",
   );
-  assert(res.code !== 0);
-  assertStringIncludes(res.stderr + res.stdout, "Invalid source");
+  assertEquals(res.code, 2, `stderr: ${res.stderr}`);
+  assertEquals(res.stdout.trim(), "", `stdout should be empty: ${res.stdout}`);
+  assertStringIncludes(res.stderr, "Invalid source");
+});
+
+async function sandboxRaw(...args: string[]): Promise<
+  { code: number; stdout: string; stderr: string }
+> {
+  const escaped = args.map((a) => $.escapeArg(a)).join(" ");
+  const result = await $.raw`deno sandbox ${escaped}`.noThrow()
+    .stdout("piped").stderr("piped");
+  return {
+    code: result.code,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+Deno.test("sandbox --help advertises --json and --non-interactive", async () => {
+  // The standalone `deno sandbox` root must expose the same agent flags as
+  // `deno deploy`, otherwise agents can't drive it non-interactively.
+  const res = await sandboxRaw("--help");
+  assertEquals(res.code, 0, `stderr: ${res.stderr}`);
+  assertStringIncludes(res.stdout, "--json");
+  assertStringIncludes(res.stdout, "--non-interactive");
+});
+
+Deno.test("sandbox create --json --non-interactive with default session timeout fails fast (no hang)", async () => {
+  // Regression: default session timeout must refuse fast, not hang.
+  const res = await sandboxRaw(
+    "--json",
+    "--non-interactive",
+    "--token",
+    "obviously-invalid-token",
+    "--endpoint",
+    "http://127.0.0.1:1",
+    "create",
+    "--org",
+    "test",
+  );
+  assertEquals(res.code, 2, `unexpected exit; stderr: ${res.stderr}`);
+  assertEquals(
+    res.stdout.trim(),
+    "",
+    `stdout should stay clean: ${res.stdout}`,
+  );
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "NON_INTERACTIVE_REQUIRED");
+  assertStringIncludes(envelope.error.hint, "--timeout");
+});
+
+Deno.test("sandbox list --json emits a structured error envelope, never a browser/hang", async () => {
+  // Bad token + unreachable endpoint: the command must fail fast with a
+  // machine-parseable envelope on stderr (and a clean stdout) rather than
+  // attempting the OAuth browser flow or blocking on a prompt.
+  const res = await sandboxRaw(
+    "--json",
+    "--token",
+    "obviously-invalid-token",
+    "--endpoint",
+    "http://127.0.0.1:1",
+    "list",
+    "--org",
+    "test",
+  );
+  assert(res.code !== 0, `expected non-zero exit; stderr: ${res.stderr}`);
+  // The structured envelope is the last line of stderr (tRPC/network preamble
+  // may precede it). Exact code is auth-vs-network dependent on the endpoint;
+  // assert the agent-facing contract: a single error object with a string code.
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assert(
+    typeof envelope.error?.code === "string",
+    `expected an error envelope; got: ${JSON.stringify(envelope)}`,
+  );
+  assertEquals(
+    res.stdout.trim(),
+    "",
+    `stdout should stay clean: ${res.stdout}`,
+  );
 });

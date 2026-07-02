@@ -1,7 +1,17 @@
 import { red, stripAnsiCode } from "@std/fmt/colors";
+import { dirname } from "@std/path";
 import { Temporal } from "temporal-polyfill";
 
 import type { GlobalContext } from "./main.ts";
+
+/** Resolve a deploy root to a directory: a file argument maps to its parent. */
+export function deployRootDir(path: string): string {
+  try {
+    return Deno.statSync(path).isFile ? dirname(path) : path;
+  } catch {
+    return path;
+  }
+}
 
 /**
  * Exit codes returned by the CLI. Agents pattern-match on these before parsing
@@ -102,7 +112,9 @@ export function error(
   } else {
     console.error();
     console.error(`${red("✗")} An error occurred:`);
-    console.error(`  ${message.replaceAll("\n", "\n  ")}`);
+    console.error(
+      `  ${String(message ?? "Unknown error").replaceAll("\n", "\n  ")}`,
+    );
     if (opts.hint) {
       console.error(`  hint: ${opts.hint.replaceAll("\n", "\n        ")}`);
     }
@@ -134,6 +146,26 @@ function exitCodeToName(code: ExitCode): string {
     default:
       return "GENERIC";
   }
+}
+
+export interface ProductionTimelineLike {
+  partition_config_name: string;
+  context_name: string;
+  domains: string[];
+}
+
+/** Select the production timeline and derive its https-prefixed domains + URL. */
+export function selectProductionUrl<T extends ProductionTimelineLike>(
+  timelines: T[],
+): {
+  timeline: T | undefined;
+  domains: string[];
+  productionUrl: string | null;
+} {
+  const timeline = timelines.find((t) => t.context_name === "Production") ??
+    timelines.find((t) => t.partition_config_name === "Production");
+  const domains = (timeline?.domains ?? []).map((d) => `https://${d}`);
+  return { timeline, domains, productionUrl: domains[0] ?? null };
 }
 
 export function renderTemporalTimestamp(timestamp: string, hideDate = false) {

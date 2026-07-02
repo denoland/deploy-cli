@@ -355,7 +355,7 @@ export async function authedFetch(
     `token=${auth}; deno_auth_ghid=force`,
   );
 
-  const url = new URL(endpoint, context.endpoint);
+  const url = new URL(`${context.endpoint}/${endpoint}`);
 
   let fallbackBody: ReadableStream | undefined;
   if (init.body instanceof ReadableStream) {
@@ -448,7 +448,7 @@ export const tokenStorage = {
     } catch {
       if (!cannotInteractWithKeychain) {
         cannotInteractWithKeychain = true;
-        console.log(KEYCHAIN_WARNING);
+        console.error(KEYCHAIN_WARNING);
       }
     }
   },

@@ -1,7 +1,9 @@
 import { Command, ValidationError } from "@cliffy/command";
 import { green, red, setColorEnabled, yellow } from "@std/fmt/colors";
 import {
+  deployRootDir,
   error,
+  ExitCode,
   renderTemporalTimestamp,
   tablePrinter,
   writeJsonResult,
@@ -124,6 +126,10 @@ const logsCommand = new Command<GlobalContext>()
   .option("--end <date:string>", "The ending timestamp of the logs", {
     depends: ["start"],
   })
+  .option(
+    "--once",
+    "Capture currently-available (backfilled) logs, then exit instead of tailing live. Bounded, non-interactive capture for CI/agents; defaults to the last hour, widen with --start.",
+  )
   .example(
     "Stream live logs",
     "logs --app my-app",
@@ -132,7 +138,13 @@ const logsCommand = new Command<GlobalContext>()
     "View logs from a specific time",
     "logs --app my-app --start '2025-01-01T00:00:00Z'",
   )
+  .example(
+    "Capture current logs then exit (CI/agents)",
+    "logs --app my-app --once --json --non-interactive",
+  )
   .action(actionHandler(async (config, options) => {
+    // Read-only: don't create a deno.jsonc (its stdout notice breaks --json).
+    config.noCreate();
     const org = await getOrg(options, config, options.org);
     const { app } = await getApp(options, config, false, org, options.app);
 
@@ -154,14 +166,22 @@ const logsCommand = new Command<GlobalContext>()
     const seenIds = new Set();
     let onceConnected = false;
 
+    // --once without --start defaults to the last hour (a `new Date()` start
+    // would request an empty window with nothing to drain).
+    const ONCE_LOOKBACK_MS = 60 * 60 * 1000;
+    const startDate = options.start
+      ? new Date(options.start)
+      : options.once
+      ? new Date(Date.now() - ONCE_LOOKBACK_MS)
+      : new Date();
+
     const encoder = new TextEncoder();
     const sub = trpcClient.subscription(
       "apps.logs",
       {
         org,
         app,
-        start: (options.start ? new Date(options.start) : new Date())
-          .toISOString(),
+        start: startDate.toISOString(),
         end: options.end ? new Date(options.end).toISOString() : undefined,
         filter: {},
       },
@@ -169,6 +189,11 @@ const logsCommand = new Command<GlobalContext>()
         onData: (data: unknown) => {
           const typedData = data as "streaming" | null | LogEntry[];
           if (typedData === "streaming") {
+            // End of backfill: in --once mode, stop before live tailing.
+            if (options.once) {
+              sub.unsubscribe();
+              Deno.exit(ExitCode.OK);
+            }
             if (!onceConnected && !options.quiet && !options.json) {
               console.log("connected, streaming logs...");
             }
@@ -227,6 +252,10 @@ const logsCommand = new Command<GlobalContext>()
         },
         onStopped: () => {
           sub.unsubscribe();
+          // Server-completed stream (e.g. a bounded --start/--end window).
+          if (options.once) {
+            Deno.exit(ExitCode.OK);
+          }
         },
       },
     );
@@ -236,7 +265,7 @@ const logoutCommand = new Command()
   .description("Revoke the Deno Deploy token if one is present")
   .action(() => {
     tokenStorage.remove();
-    console.log(`${green("✔")} Successfully logged out`);
+    console.error(`${green("✔")} Successfully logged out`);
   });
 
 interface WhoamiOrg {
@@ -296,7 +325,7 @@ const whoamiCommand = new Command<GlobalContext>()
         ? `@${me.user.githubLogin}`
         : me.user.email ?? me.user.name ?? me.user.id)
       : `org-scoped token (${me.tokenType})`;
-    console.log(
+    console.error(
       `${
         green("✔")
       } Authenticated as ${who}. ${orgs.length} reachable organization${
@@ -402,7 +431,9 @@ for the full reference.`)
   })
   .action(
     actionHandler(
-      async (config, options, rootPath = Deno.cwd()) => {
+      async (config, options, rawRootPath = Deno.cwd()) => {
+        // A positional file argument (e.g. `main.ts`) deploys its directory.
+        const rootPath = deployRootDir(rawRootPath);
         const org = await getOrg(options, config, options.org);
         const { app, created } = await getApp(
           options,
@@ -424,6 +455,19 @@ for the full reference.`)
             options.wait ?? true,
           );
         }
+
+        // Persist resolved org/app now; actionHandler's post-action save()
+        // would otherwise be skipped by the forced exit below.
+        await config.save();
+
+        // The deploy has finished successfully. Force a clean exit: the tRPC
+        // client used for the upload/`revisions.watchUntilReady` subscription
+        // keeps handles open (the EventSource polyfill's connection + reconnect
+        // timer, and the streaming upload request), so without this the process
+        // hangs indefinitely after printing "Successfully deployed" — turning a
+        // successful deploy into a job that runs until its CI timeout. Mirrors
+        // the explicit `Deno.exit(1)` on the failure path in publish.ts.
+        Deno.exit(0);
       },
       (rootPath) => rootPath,
     ),
