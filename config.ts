@@ -199,7 +199,9 @@ export function actionHandler<
           }
           this.configSaved = true;
 
-          if (this.doNotCreate && !config) {
+          // Skip writing only with no existing file to update (`config` is the
+          // always-truthy wrapper; `config.config` is the file, if any).
+          if (this.doNotCreate && !config.config) {
             return Promise.resolve();
           }
 
