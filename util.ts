@@ -148,6 +148,26 @@ function exitCodeToName(code: ExitCode): string {
   }
 }
 
+export interface ProductionTimelineLike {
+  partition_config_name: string;
+  context_name: string;
+  domains: string[];
+}
+
+/** Select the production timeline and derive its https-prefixed domains + URL. */
+export function selectProductionUrl<T extends ProductionTimelineLike>(
+  timelines: T[],
+): {
+  timeline: T | undefined;
+  domains: string[];
+  productionUrl: string | null;
+} {
+  const timeline = timelines.find((t) => t.context_name === "Production") ??
+    timelines.find((t) => t.partition_config_name === "Production");
+  const domains = (timeline?.domains ?? []).map((d) => `https://${d}`);
+  return { timeline, domains, productionUrl: domains[0] ?? null };
+}
+
 export function renderTemporalTimestamp(timestamp: string, hideDate = false) {
   function pad(n: number, width: number): string {
     return n.toString().padStart(width, "0");
