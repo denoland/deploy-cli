@@ -62,8 +62,12 @@ Errors in `--json` mode are emitted as a single object on **stderr**:
 }
 ```
 
-`code` is the symbolic name of the exit code (see below); `hint` and `traceId`
-may be absent.
+`code` is a stable error identifier when one is known (e.g.
+`AUTH_INVALID_TOKEN`, `NON_INTERACTIVE_REQUIRED`, `VALIDATION_ERROR`,
+`SLUG_ALREADY_IN_USE`), falling back to the symbolic name of the exit code (see
+below); `hint` and `traceId` may be absent. Invalid or unknown flags also
+produce this envelope (with exit code `2`), so a bad invocation never emits
+free-form text on a `--json` run.
 
 ## Exit codes
 
@@ -93,6 +97,7 @@ These work on every subcommand:
 | `--config <path>`       | Path to the config file                              |
 | `--ignore <path>`       | Ignore particular source files (repeatable)          |
 | `--debug`               | Enable debug output and stack traces                 |
+| `--endpoint <url>`      | API endpoint (hidden from `--help`; no trailing `/`) |
 
 ## Subcommand flags
 
@@ -128,26 +133,52 @@ to run non-interactively.
 
 ### `env`
 
+All mutations emit a single JSON result object on stdout under `--json`.
+
 - `env list` — list env vars
 - `env add <variable> <value> [--secret]`
 - `env update-value <variable> <value>`
 - `env update-contexts <variable> [new-contexts...]`
 - `env delete <variable>`
-- `env load <file>`
+- `env load <file> [--non-secrets] [--replace | --skip-existing]` —
+  `--replace`/`--skip-existing` decide what happens to already-defined keys
+  without prompting (required knowledge for non-interactive runs); the `--json`
+  result reports `added`/`updated`/`skipped` keys
 
 ### `database`
 
-- `database provision <name> [--kind <kind>]`
-- `database link <name> [connectionString] [--hostname --username --password --port --cert]`
+All mutations emit a single JSON result object on stdout under `--json`.
+
+- `database provision <name> --kind <denokv|prisma> [--region <region>]`
+- `database link <name> <connectionString>` or
+  `database link <name> --hostname <host> [--username --password --port --cert]`
+  (the two forms are mutually exclusive; add `--dry-run` to test only)
 - `database assign <name> [--app <name>]`
 - `database detach <name> [--app <name>]`
-- `database list [search]`
+- `database list [search]` — for Deno KV databases the `--json` output includes
+  `databaseId` and a `connectUrl` usable with `Deno.openKv()`
 - `database query <name> <database> [query...]`
 - `database delete <name>`
+
+### `logs`
+
+- `logs --once` — drain the currently available (backfilled) logs, then exit 0
+  instead of tailing live; defaults to the last hour, widen with
+  `--start <iso-date>` (and optionally bound with `--end`). With `--json`,
+  output is NDJSON: one log record per line on stdout.
+
+### `sandbox`
+
+- `sandbox create` in non-interactive mode requires an explicit
+  `--timeout <duration>` (e.g. `--timeout 15m`): the default `session` timeout
+  destroys the sandbox when the command exits. The `--json` result is
+  `{id, org, timeout}`; clean up with `sandbox kill <id>`.
 
 ### Read-only listings (all support `--json`)
 
 - `apps list [--org <name>] [--limit <n>] [--cursor <c>]`
+- `apps get [--org <name>] [--app <name>]` — includes `productionUrl`,
+  `domains`, and revision timelines
 - `orgs list`
 - `deployments list [--org <name>] [--app <name>] [--limit <n>] [--cursor <c>]`
 - `whoami`
@@ -177,9 +208,13 @@ deno deploy create ./site \
 
 ```sh
 url=$(deno deploy --non-interactive --json --org my-org --app my-site --prod \
-  | jq -r '.url')
+  | jq -r '.productionUrl')
 echo "deployed to $url"
 ```
+
+(`.url` is the console build page for the revision; `.productionUrl` is the
+served application URL. With `--no-wait` the build is still pending, so only
+`revisionId` and `url` are available.)
 
 **4. Set environment variables**
 
@@ -194,9 +229,13 @@ deno deploy env list --json --org my-org --app my-site
 deno deploy deployments list --json --org my-org --app my-site --limit 5
 ```
 
-## Idempotency
+## Re-running commands
 
-Re-running `create`, `env add`, or `database provision` with the same inputs
-either succeeds as a no-op or fails with the `CONFLICT` exit code (`5`) and an
-"already exists" message — it never leaves partial state. Agents should treat
-exit code `5` as "already done" rather than a hard failure.
+There are no no-op guarantees. When the backend reports a conflict (HTTP 409),
+the CLI exits `5` (CONFLICT) with an error code such as `SLUG_ALREADY_IN_USE`.
+Do not blindly treat exit `5` as "already done": the conflicting resource may
+belong to someone else or differ from what you tried to create — inspect the
+current state (`apps list`, `env list`, `database list`) before deciding.
+Partial state is possible: `create` registers the app before deploying, so a
+failed build leaves the app existing and a re-run will conflict; recover with
+`deno deploy --app <name>` instead of `create`.
