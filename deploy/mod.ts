@@ -1,6 +1,7 @@
 import { Command, ValidationError } from "@cliffy/command";
 import { green, red, setColorEnabled, yellow } from "@std/fmt/colors";
 import {
+  deployRootDir,
   error,
   renderTemporalTimestamp,
   tablePrinter,
@@ -402,7 +403,9 @@ for the full reference.`)
   })
   .action(
     actionHandler(
-      async (config, options, rootPath = Deno.cwd()) => {
+      async (config, options, rawRootPath = Deno.cwd()) => {
+        // A positional file argument (e.g. `main.ts`) deploys its directory.
+        const rootPath = deployRootDir(rawRootPath);
         const org = await getOrg(options, config, options.org);
         const { app, created } = await getApp(
           options,

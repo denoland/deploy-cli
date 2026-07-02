@@ -248,8 +248,11 @@ async function readConfig(
   allowNodeModules: boolean,
   debug: boolean,
 ): Promise<Config> {
+  // Only `--config <file>` is parsed as a config file; a positional root is not.
+  const fromConfig = Boolean(maybeConfigPath);
   const config = resolve_config(
     resolve(maybeConfigPath || rootPath),
+    fromConfig,
     ignorePaths,
     allowNodeModules,
     debug,

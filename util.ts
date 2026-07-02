@@ -1,7 +1,17 @@
 import { red, stripAnsiCode } from "@std/fmt/colors";
+import { dirname } from "@std/path";
 import { Temporal } from "temporal-polyfill";
 
 import type { GlobalContext } from "./main.ts";
+
+/** Resolve a deploy root to a directory: a file argument maps to its parent. */
+export function deployRootDir(path: string): string {
+  try {
+    return Deno.statSync(path).isFile ? dirname(path) : path;
+  } catch {
+    return path;
+  }
+}
 
 /**
  * Exit codes returned by the CLI. Agents pattern-match on these before parsing

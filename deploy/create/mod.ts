@@ -20,7 +20,7 @@ import {
 
 import { publish, waitForRevision } from "../publish.ts";
 import { resolve } from "@std/path";
-import { error, writeJsonResult } from "../../util.ts";
+import { deployRootDir, error, writeJsonResult } from "../../util.ts";
 import { green } from "@std/fmt/colors";
 
 export const createCommand = new Command<GlobalContext>()
@@ -180,7 +180,9 @@ export const createCommand = new Command<GlobalContext>()
     },
   )
   .arguments("[root-path:string]")
-  .action(actionHandler(async (config, options, rootPath = Deno.cwd()) => {
+  .action(actionHandler(async (config, options, rawRootPath = Deno.cwd()) => {
+    // A positional file argument (e.g. `main.ts`) deploys its directory.
+    const rootPath = deployRootDir(rawRootPath);
     await getAuth(options);
     let data;
     if (
