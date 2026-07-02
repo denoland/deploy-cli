@@ -25,12 +25,18 @@ pub struct ConfigLookup {
 #[wasm_bindgen]
 pub fn resolve_config(
   root_path: String,
+  from_config: bool,
   ignore_paths: Vec<String>,
   allow_node_modules: bool,
   debug: bool,
 ) -> Result<JsValue, JsValue> {
-  let result =
-    inner_resolve_config(root_path, ignore_paths, allow_node_modules, debug);
+  let result = inner_resolve_config(
+    root_path,
+    from_config,
+    ignore_paths,
+    allow_node_modules,
+    debug,
+  );
   result
     .map_err(|err| create_js_error(&err))
     .map(|val| serde_wasm_bindgen::to_value(&val).unwrap())
@@ -38,6 +44,7 @@ pub fn resolve_config(
 
 fn inner_resolve_config(
   root_path: String,
+  from_config: bool,
   ignore_paths: Vec<String>,
   allow_node_modules: bool,
   debug: bool,
@@ -45,8 +52,8 @@ fn inner_resolve_config(
   debug_log(
     debug,
     &format!(
-      "resolve_config(root_path={:?}, ignore_paths={:?}, allow_node_modules={})",
-      root_path, ignore_paths, allow_node_modules
+      "resolve_config(root_path={:?}, from_config={}, ignore_paths={:?}, allow_node_modules={})",
+      root_path, from_config, ignore_paths, allow_node_modules
     ),
   );
 
@@ -54,11 +61,18 @@ fn inner_resolve_config(
   let root_path = resolve_absolute_path(root_path)?;
   debug_log(debug, &format!("resolved absolute root_path={:?}", root_path));
 
-  // When --config points to a file (not a directory), use ConfigFile
-  // discovery so non-standard filenames like deno-staging.json work.
-  let is_config_file = real_sys.fs_is_file(&root_path).unwrap_or(false);
-  debug_log(debug, &format!("is_config_file={}", is_config_file));
-  let dir_path = if is_config_file {
+  let path_is_file = real_sys.fs_is_file(&root_path).unwrap_or(false);
+  // Only `--config <file>` is parsed as a config file; a positional file root
+  // is a deploy target whose config is discovered from its parent directory.
+  let is_config_file = from_config && path_is_file;
+  debug_log(
+    debug,
+    &format!(
+      "path_is_file={} is_config_file={}",
+      path_is_file, is_config_file
+    ),
+  );
+  let dir_path = if path_is_file {
     root_path.parent().unwrap().to_path_buf()
   } else {
     root_path.clone()
@@ -284,6 +298,7 @@ mod tests {
 
     let result = inner_resolve_config(
       root.to_string_lossy().into_owned(),
+      false,
       Vec::new(),
       false,
       false,
@@ -298,6 +313,96 @@ mod tests {
         .any(|f| Path::new(f) == expected.as_path()),
       "expected {} in deploy files; got {:?}",
       expected.display(),
+      result.files,
+    );
+  }
+
+  // Regression test for denoland/deploy-cli#107: a positional file root (e.g.
+  // `deno deploy main.ts`) must not be deserialized as a config file. Config is
+  // discovered from the file's parent directory and the file itself is part of
+  // the upload manifest. Before the fix this errored with "Failed deserializing
+  // config file" because any file path was treated as a config file.
+  #[test]
+  fn positional_file_root_discovers_parent_config() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_file(
+      root,
+      "deno.json",
+      r#"{ "deploy": { "org": "myorg", "app": "myapp" } }"#,
+    );
+    write_file(root, "main.ts", "Deno.serve(() => new Response('hello'));");
+
+    let entry = root.join("main.ts");
+    let result = inner_resolve_config(
+      entry.to_string_lossy().into_owned(),
+      false,
+      Vec::new(),
+      false,
+      false,
+    )
+    .unwrap();
+
+    let config_path = result
+      .path
+      .as_deref()
+      .expect("expected a discovered config path");
+    assert!(
+      config_path.ends_with("deno.json"),
+      "expected parent deno.json as config; got {}",
+      config_path,
+    );
+    assert!(
+      result
+        .files
+        .iter()
+        .any(|f| Path::new(f) == entry.as_path()),
+      "expected {} in deploy files; got {:?}",
+      entry.display(),
+      result.files,
+    );
+  }
+
+  // A non-standard config filename passed via `--config` must still use
+  // ConfigFile discovery so it is loaded directly regardless of its name.
+  #[test]
+  fn explicit_config_flag_uses_named_config_file() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_file(
+      root,
+      "deno-staging.json",
+      r#"{ "deploy": { "org": "myorg", "app": "staging" } }"#,
+    );
+    write_file(root, "main.ts", "Deno.serve(() => new Response('hello'));");
+
+    let config = root.join("deno-staging.json");
+    let result = inner_resolve_config(
+      config.to_string_lossy().into_owned(),
+      true,
+      Vec::new(),
+      false,
+      false,
+    )
+    .unwrap();
+
+    let config_path = result
+      .path
+      .as_deref()
+      .expect("expected a discovered config path");
+    assert!(
+      config_path.ends_with("deno-staging.json"),
+      "expected deno-staging.json as config; got {}",
+      config_path,
+    );
+    let entry = root.join("main.ts");
+    assert!(
+      result
+        .files
+        .iter()
+        .any(|f| Path::new(f) == entry.as_path()),
+      "expected {} in deploy files; got {:?}",
+      entry.display(),
       result.files,
     );
   }

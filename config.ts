@@ -199,7 +199,9 @@ export function actionHandler<
           }
           this.configSaved = true;
 
-          if (this.doNotCreate && !config) {
+          // Skip writing only with no existing file to update (`config` is the
+          // always-truthy wrapper; `config.config` is the file, if any).
+          if (this.doNotCreate && !config.config) {
             return Promise.resolve();
           }
 
@@ -248,8 +250,11 @@ async function readConfig(
   allowNodeModules: boolean,
   debug: boolean,
 ): Promise<Config> {
+  // Only `--config <file>` is parsed as a config file; a positional root is not.
+  const fromConfig = Boolean(maybeConfigPath);
   const config = resolve_config(
     resolve(maybeConfigPath || rootPath),
+    fromConfig,
     ignorePaths,
     allowNodeModules,
     debug,
