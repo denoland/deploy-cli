@@ -467,4 +467,119 @@ mod tests {
       "sibling {sibling:?} must not be under root {root:?}",
     );
   }
+
+  // Regression test for denoland/deploy-cli#90: a workspace-root
+  // `deploy.include` pointing at a workspace member must include the matching
+  // member files. deno_config < 0.102 stripped these entries in
+  // `to_deploy_config` (fixed upstream in denoland/deno#34788).
+  #[test]
+  fn workspace_root_deploy_include_targeting_member_glob() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_file(
+      root,
+      "deno.json",
+      r#"{
+        "workspace": ["./packages/backend"],
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp",
+          "include": ["./packages/backend/**"]
+        }
+      }"#,
+    );
+    write_file(root, "packages/backend/deno.json", "{}");
+    write_file(
+      root,
+      "packages/backend/main.ts",
+      "Deno.serve(() => new Response('hi'));",
+    );
+    write_file(root, "packages/backend/extra.txt", "hello\n");
+
+    let result = inner_resolve_config(
+      root.to_string_lossy().into_owned(),
+      false,
+      Vec::new(),
+      false,
+      false,
+    )
+    .unwrap();
+
+    let main_ts = root.join("packages/backend/main.ts");
+    let extra_txt = root.join("packages/backend/extra.txt");
+    assert!(
+      result
+        .files
+        .iter()
+        .any(|f| Path::new(f) == main_ts.as_path()),
+      "expected {} in deploy files; got {:?}",
+      main_ts.display(),
+      result.files,
+    );
+    assert!(
+      result
+        .files
+        .iter()
+        .any(|f| Path::new(f) == extra_txt.as_path()),
+      "expected {} in deploy files; got {:?}",
+      extra_txt.display(),
+      result.files,
+    );
+  }
+
+  // Same regression but with an explicit file include rather than a glob.
+  #[test]
+  fn workspace_root_deploy_include_targeting_member_file() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write_file(
+      root,
+      "deno.json",
+      r#"{
+        "workspace": ["./packages/backend"],
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp",
+          "include": ["./packages/backend/main.ts"]
+        }
+      }"#,
+    );
+    write_file(root, "packages/backend/deno.json", "{}");
+    write_file(
+      root,
+      "packages/backend/main.ts",
+      "Deno.serve(() => new Response('hi'));",
+    );
+    write_file(root, "packages/backend/extra.txt", "should-not-be-included\n");
+
+    let result = inner_resolve_config(
+      root.to_string_lossy().into_owned(),
+      false,
+      Vec::new(),
+      false,
+      false,
+    )
+    .unwrap();
+
+    let main_ts = root.join("packages/backend/main.ts");
+    let extra_txt = root.join("packages/backend/extra.txt");
+    assert!(
+      result
+        .files
+        .iter()
+        .any(|f| Path::new(f) == main_ts.as_path()),
+      "expected {} in deploy files; got {:?}",
+      main_ts.display(),
+      result.files,
+    );
+    assert!(
+      !result
+        .files
+        .iter()
+        .any(|f| Path::new(f) == extra_txt.as_path()),
+      "did not expect {} in deploy files; got {:?}",
+      extra_txt.display(),
+      result.files,
+    );
+  }
 }
