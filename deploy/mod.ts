@@ -83,7 +83,7 @@ const setupGCPCommand = new Command<GlobalContext>()
   )
   .option(
     "--apply",
-    "Authorize creating/modifying cloud resources, including enabling required APIs, without a confirmation prompt (required in --non-interactive mode)",
+    "Authorize creating/modifying cloud resources without a confirmation prompt (required in --non-interactive mode; API enablement is separately governed by --enable-apis)",
   )
   .arguments("[contexts:string]")
   .action(actionHandler(async (config, options, contexts) => {
