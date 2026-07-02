@@ -264,7 +264,7 @@ const logoutCommand = new Command()
   .description("Revoke the Deno Deploy token if one is present")
   .action(() => {
     tokenStorage.remove();
-    console.log(`${green("✔")} Successfully logged out`);
+    console.error(`${green("✔")} Successfully logged out`);
   });
 
 interface WhoamiOrg {
@@ -324,7 +324,7 @@ const whoamiCommand = new Command<GlobalContext>()
         ? `@${me.user.githubLogin}`
         : me.user.email ?? me.user.name ?? me.user.id)
       : `org-scoped token (${me.tokenType})`;
-    console.log(
+    console.error(
       `${
         green("✔")
       } Authenticated as ${who}. ${orgs.length} reachable organization${
@@ -452,6 +452,19 @@ for the full reference.`)
             options.wait ?? true,
           );
         }
+
+        // Persist resolved org/app now; actionHandler's post-action save()
+        // would otherwise be skipped by the forced exit below.
+        await config.save();
+
+        // The deploy has finished successfully. Force a clean exit: the tRPC
+        // client used for the upload/`revisions.watchUntilReady` subscription
+        // keeps handles open (the EventSource polyfill's connection + reconnect
+        // timer, and the streaming upload request), so without this the process
+        // hangs indefinitely after printing "Successfully deployed" — turning a
+        // successful deploy into a job that runs until its CI timeout. Mirrors
+        // the explicit `Deno.exit(1)` on the failure path in publish.ts.
+        Deno.exit(0);
       },
       (rootPath) => rootPath,
     ),
