@@ -76,7 +76,7 @@ const deploymentsListCommand = new Command<GlobalContext>()
     }
 
     if (res.items.length === 0) {
-      console.log("No deployments for this application.");
+      console.error("No deployments for this application.");
       return;
     }
 
@@ -93,7 +93,9 @@ const deploymentsListCommand = new Command<GlobalContext>()
     );
 
     if (res.nextCursor) {
-      console.log(`\nMore results available; pass --cursor ${res.nextCursor}`);
+      console.error(
+        `\nMore results available; pass --cursor ${res.nextCursor}`,
+      );
     }
   }));
 
