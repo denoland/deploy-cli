@@ -136,12 +136,15 @@ const envAddCommand = new Command<EnvCommandContext>()
       ],
       update: [],
       remove: [],
-    }) as string[];
+    }) as unknown;
 
     if (options.json) {
-      // id is best-effort: null if the mutation returns no server-assigned id.
+      // id is best-effort: null unless the mutation returns an array of
+      // server-assigned ids (the shape is not part of the CLI's contract).
       writeJsonResult(shapeEnvVar({
-        id: created?.[0] ?? null,
+        id: Array.isArray(created) && typeof created[0] === "string"
+          ? created[0]
+          : null,
         key: variable,
         value,
         is_secret: options.secret,

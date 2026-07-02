@@ -1,5 +1,5 @@
 import { $ } from "dax";
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 
 const TOKEN = Deno.env.get("DENO_DEPLOY_TOKEN");
 const ORG = Deno.env.get("DENO_DEPLOY_TEST_ORG");
@@ -54,7 +54,9 @@ Deno.test({
       assertEquals(parsed.value, "v1");
       assertEquals(parsed.isSecret, false);
       assertEquals(parsed.contexts, null);
-      assertEquals(typeof parsed.id, "string");
+      // id is best-effort per the CLI contract: string when the backend
+      // returns created ids, otherwise null.
+      assert(parsed.id === null || typeof parsed.id === "string");
 
       res = await env(cwd, "update-value", key, "v2", ...target);
       assertEquals(res.code, 0, `update-value failed; stderr: ${res.stderr}`);
