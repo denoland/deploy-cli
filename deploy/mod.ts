@@ -38,6 +38,10 @@ const setupAWSCommand = new Command<GlobalContext>()
     "--role-name <name:string>",
     "Name for the IAM role to create (omit for a random-suffixed default; pass to allow idempotent re-runs)",
   )
+  .option(
+    "--apply",
+    "Authorize creating/modifying the cloud resources without a confirmation prompt (required in --non-interactive mode)",
+  )
   .arguments("[contexts:string]")
   .action(actionHandler(async (config, options, contexts) => {
     const org = await getOrg(options, config, options.org);
@@ -52,6 +56,7 @@ const setupAWSCommand = new Command<GlobalContext>()
     await setupAws(options, org, app, contextList, {
       policies: options.policies,
       roleName: options.roleName as unknown as string | undefined,
+      apply: options.apply as unknown as boolean | undefined,
     });
   }));
 
@@ -74,7 +79,11 @@ const setupGCPCommand = new Command<GlobalContext>()
   )
   .option(
     "--enable-apis",
-    "Auto-enable required APIs that are missing, without prompting",
+    "Authorize enabling required APIs that are missing (in --non-interactive mode also requires --apply; nothing is enabled without it)",
+  )
+  .option(
+    "--apply",
+    "Authorize creating/modifying cloud resources without a confirmation prompt (required in --non-interactive mode; API enablement is separately governed by --enable-apis)",
   )
   .arguments("[contexts:string]")
   .action(actionHandler(async (config, options, contexts) => {
@@ -93,6 +102,7 @@ const setupGCPCommand = new Command<GlobalContext>()
         | string
         | undefined,
       enableApis: options.enableApis as unknown as boolean | undefined,
+      apply: options.apply as unknown as boolean | undefined,
     });
   }));
 
