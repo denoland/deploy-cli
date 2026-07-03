@@ -198,7 +198,7 @@ export function actionHandler<
         ...getAppFromConfig(config),
         get files(): string[] {
           if (collectedFiles === undefined) {
-            collectedFiles = readDeployFiles(
+            collectedFiles = _internals.readDeployFiles(
               root,
               context.config,
               context.ignore ?? [],
@@ -284,8 +284,10 @@ async function discoverConfig(
     if ((await Deno.stat(dir)).isFile) {
       dir = dirname(dir);
     }
-  } catch {
-    // Non-existent root: nothing to discover.
+  } catch (err) {
+    // Non-existent root: nothing to discover. Any other error (e.g. permission)
+    // is real and must surface rather than be silently treated as "no config".
+    if (!(err instanceof Deno.errors.NotFound)) throw err;
   }
 
   while (true) {
@@ -294,8 +296,10 @@ async function discoverConfig(
       try {
         const content = await Deno.readTextFile(path);
         return { config: { path, content } };
-      } catch {
-        // Not here; keep looking upward.
+      } catch (err) {
+        // Not here; keep looking upward. Only a missing file means "not here" —
+        // a permission/IO error on an existing config must not be swallowed.
+        if (!(err instanceof Deno.errors.NotFound)) throw err;
       }
     }
     const parent = dirname(dir);
@@ -329,6 +333,13 @@ function readDeployFiles(
   );
   return config.files;
 }
+
+/**
+ * Test seam: `actionHandler`'s lazy `files` getter calls `readDeployFiles`
+ * through this indirection so tests can observe (or stub) the expensive walk and
+ * assert it runs only when `.files` is actually read.
+ */
+export const _internals = { readDeployFiles };
 
 function getAppFromConfig(
   configContent: Config,

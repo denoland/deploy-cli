@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
-import { actionHandler } from "../config.ts";
+import { _internals, actionHandler } from "../config.ts";
 import type { GlobalContext } from "../main.ts";
 
 // Runs the deploy action handler on a temporary config
@@ -99,31 +99,31 @@ Deno.test("deploy preserves comments and formatting (jsonc)", async () => {
 // NOT trigger the recursive deploy-manifest file walk. Before the lazy-`files`
 // fix, `actionHandler` eagerly walked the whole working directory, so commands
 // like `whoami`/`orgs list` hung for a very long time when invoked from a large
-// directory tree. This builds a large tree and asserts the action returns fast
-// when it doesn't read `.files`, then that `.files` still yields the manifest
-// on demand.
+// directory tree. Rather than measure wall-clock time (flaky across machines),
+// count invocations of the walk directly: it must run 0 times for a read-only
+// action and exactly once when `.files` is read, while still yielding the real
+// manifest on demand.
 Deno.test("read-only action does not walk the file tree; .files stays lazy", async () => {
   const dir = await Deno.makeTempDir();
+  const originalReadDeployFiles = _internals.readDeployFiles;
+  let walkCount = 0;
+  _internals.readDeployFiles = (...args) => {
+    walkCount++;
+    return originalReadDeployFiles(...args);
+  };
   try {
     await Deno.writeTextFile(
       join(dir, "deno.json"),
       `{ "deploy": { "org": "o", "app": "a" } }\n`,
     );
-    // A wide/deep tree that is expensive to walk. If the walk were eager this
-    // test would be dramatically slower (and previously effectively hung on
-    // real home directories with hundreds of thousands of files).
     const encoder = new TextEncoder();
-    for (let a = 0; a < 30; a++) {
-      for (let b = 0; b < 30; b++) {
-        const sub = join(dir, `d${a}`, `s${b}`);
-        await Deno.mkdir(sub, { recursive: true });
-        for (let c = 0; c < 10; c++) {
-          await Deno.writeFile(
-            join(sub, `f${c}.ts`),
-            encoder.encode("export const x = 1;\n"),
-          );
-        }
-      }
+    const sub = join(dir, "src");
+    await Deno.mkdir(sub, { recursive: true });
+    for (let i = 0; i < 5; i++) {
+      await Deno.writeFile(
+        join(sub, `f${i}.ts`),
+        encoder.encode("export const x = 1;\n"),
+      );
     }
 
     const context = {
@@ -135,46 +135,34 @@ Deno.test("read-only action does not walk the file tree; .files stays lazy", asy
 
     // Read-only action: reads org/app, never touches `.files`.
     let seenOrg: string | undefined;
-    const readOnlyStart = performance.now();
     await actionHandler((config) => {
       config.noCreate();
       config.noSave();
       seenOrg = config.org;
     }, () => dir)(context);
-    const readOnlyMs = performance.now() - readOnlyStart;
 
     assertEquals(seenOrg, "o");
+    // The whole point of the fix: not touching `.files` must skip the walk.
+    assertEquals(walkCount, 0, "read-only action must not walk the file tree");
 
     // Same action, but this one reads `.files`, forcing the recursive walk.
     let files: string[] = [];
-    const withFilesStart = performance.now();
     await actionHandler((config) => {
       config.noCreate();
       config.noSave();
+      // Read twice to confirm the getter memoizes (a single walk).
+      files = config.files;
       files = config.files;
     }, () => dir)(context);
-    const withFilesMs = performance.now() - withFilesStart;
 
-    // The manifest is still available on demand for the upload path.
+    // The walk runs exactly once, and the manifest is available on demand.
+    assertEquals(walkCount, 1, "reading .files must walk exactly once");
     assert(
-      files.length >= 9000,
+      files.length >= 5,
       `expected the lazy manifest to include the tree files; got ${files.length}`,
     );
-
-    // The whole point of the fix: NOT touching `.files` must skip the walk, so
-    // the read-only action is dramatically cheaper than the walking one. Before
-    // the fix both walked eagerly and cost about the same (the read-only path
-    // then hung outright on very large trees). Require a clear margin rather
-    // than an absolute time bound so the test stays robust across machines.
-    assert(
-      readOnlyMs * 3 < withFilesMs,
-      `read-only action (${
-        readOnlyMs.toFixed(1)
-      }ms) was not markedly cheaper ` +
-        `than the manifest-walking action (${withFilesMs.toFixed(1)}ms); the ` +
-        `file walk was likely not skipped`,
-    );
   } finally {
+    _internals.readDeployFiles = originalReadDeployFiles;
     await Deno.remove(dir, { recursive: true });
   }
 });
