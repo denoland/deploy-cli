@@ -5,7 +5,7 @@ import {
   type PromptEntry,
   promptSelect,
 } from "@std/cli/unstable-prompt-select";
-import { fromFileUrl, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "@std/path";
 import { parse as parseJSONC } from "@david/jsonc-morph";
 import { resolve_config } from "./lib/rs_lib.js";
 import { ValidationError } from "@cliffy/command";
@@ -182,15 +182,32 @@ export function actionHandler<
 ): (options: O, ...args: A) => Promise<void> {
   return async function (this: unknown, context: O, ...args: A) {
     try {
-      const config = await readConfig(
-        rootPath?.(...args) ?? Deno.cwd(),
+      const root = rootPath?.(...args) ?? Deno.cwd();
+      // Discover the config file only (cheap). The deploy file manifest is a
+      // full recursive walk of `root` that can be huge/slow, so it is collected
+      // lazily via `configContext.files` and paid for only by the upload path
+      // (see `readDeployFiles`). Read-only commands (whoami, orgs/apps/env list,
+      // logs, ...) never touch `.files`, so they never trigger the walk — which
+      // previously hung them when invoked from a large working directory.
+      const config = await discoverConfig(
+        root,
         context.config,
-        context.ignore ?? [],
-        context.allowNodeModules ?? false,
-        context.debug,
       );
+      let collectedFiles: string[] | undefined;
       const configContext: ConfigContext = {
         ...getAppFromConfig(config),
+        get files(): string[] {
+          if (collectedFiles === undefined) {
+            collectedFiles = readDeployFiles(
+              root,
+              context.config,
+              context.ignore ?? [],
+              context.allowNodeModules ?? false,
+              context.debug,
+            );
+          }
+          return collectedFiles;
+        },
         configSaved: false,
         doNotCreate: false,
         save() {
@@ -240,16 +257,67 @@ interface Config {
     path: string;
     content: string;
   };
-  files: string[];
 }
 
-async function readConfig(
+const CONFIG_FILE_NAMES = ["deno.json", "deno.jsonc"] as const;
+
+/**
+ * Locate the deploy config file (for `org`/`app`) WITHOUT collecting the deploy
+ * file manifest. This is intentionally cheap: an explicit `--config` is used
+ * as-is, otherwise we walk UP from the root looking for a `deno.json[c]`. It
+ * deliberately avoids `resolve_config`, whose recursive DOWNward file walk to
+ * build the upload manifest can be enormous — and is only needed by the upload
+ * path (`configContext.files` -> `readDeployFiles`), not by read-only commands.
+ */
+async function discoverConfig(
+  rootPath: string,
+  maybeConfigPath: string | undefined,
+): Promise<Config> {
+  if (maybeConfigPath) {
+    const path = resolve(maybeConfigPath);
+    const content = await Deno.readTextFile(path);
+    return { config: { path, content } };
+  }
+
+  let dir = resolve(rootPath);
+  try {
+    if ((await Deno.stat(dir)).isFile) {
+      dir = dirname(dir);
+    }
+  } catch {
+    // Non-existent root: nothing to discover.
+  }
+
+  while (true) {
+    for (const name of CONFIG_FILE_NAMES) {
+      const path = join(dir, name);
+      try {
+        const content = await Deno.readTextFile(path);
+        return { config: { path, content } };
+      } catch {
+        // Not here; keep looking upward.
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      return {};
+    }
+    dir = parent;
+  }
+}
+
+/**
+ * Collect the recursive deploy file manifest for the upload. This is the
+ * expensive full-directory walk (via the wasm `resolve_config`); call it only
+ * when the files are actually needed (i.e. from the upload path).
+ */
+function readDeployFiles(
   rootPath: string,
   maybeConfigPath: string | undefined,
   ignorePaths: string[],
   allowNodeModules: boolean,
   debug: boolean,
-): Promise<Config> {
+): string[] {
   // Only `--config <file>` is parsed as a config file; a positional root is not.
   const fromConfig = Boolean(maybeConfigPath);
   const config = resolve_config(
@@ -259,19 +327,12 @@ async function readConfig(
     allowNodeModules,
     debug,
   );
-
-  if (config.path) {
-    const path = fromFileUrl(config.path);
-    const content = await Deno.readTextFile(path);
-    return { config: { path, content }, files: config.files };
-  }
-
-  return { files: config.files };
+  return config.files;
 }
 
 function getAppFromConfig(
   configContent: Config,
-): { org: undefined | string; app: undefined | string; files: string[] } {
+): { org: undefined | string; app: undefined | string } {
   if (configContent.config) {
     const config = parseJSONC(configContent.config.content);
     const deployObj = config.asObject()?.getIfObject("deploy");
@@ -280,7 +341,6 @@ function getAppFromConfig(
       return {
         org: deployObj.get("org")?.value()?.asString(),
         app: deployObj.get("app")?.value()?.asString(),
-        files: configContent.files,
       };
     }
   }
@@ -288,7 +348,6 @@ function getAppFromConfig(
   return {
     org: undefined,
     app: undefined,
-    files: configContent.files,
   };
 }
 
