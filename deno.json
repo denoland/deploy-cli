@@ -40,6 +40,9 @@
     "pg-connection-string": "npm:pg-connection-string@^2.14.0",
     "dax": "jsr:@david/dax@^0.44.2"
   },
+  "minimumDependencyAge": {
+    "age": "0"
+  },
   "exclude": [
     "astro-demo"
   ]
