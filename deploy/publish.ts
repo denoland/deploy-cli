@@ -3,20 +3,23 @@ import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
+import type { RevisionProgress } from "@deno/sandbox";
 import { authedFetch, createTrpcClient } from "../auth.ts";
 import {
   error,
-  selectProductionUrl,
+  selectProductionUrlFromSdk,
   shouldUseSpinner,
   writeJsonResult,
 } from "../util.ts";
+import { deploySdkClient } from "./sdk.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
 
+// Minimal shape of the tRPC `revisions.watchUntilReady` payload consumed by the
+// diffsync missing-hashes probe below. The deployment-completion wait uses the
+// typed `@deno/sandbox` SDK instead (see `waitForRevision`).
 interface Revision {
   labels: Record<string, string>;
-  steps: { step: string }[];
-  status: "cancelled" | "failed";
 }
 
 type Chunk = {
@@ -119,7 +122,6 @@ export async function publish(
     "Loading previously uploaded files...",
   );
 
-  let revision: Revision | undefined = undefined;
   const sub = trpcClient.subscription(
     "revisions.watchUntilReady",
     {
@@ -130,7 +132,6 @@ export async function publish(
     {
       onData: (data: unknown) => {
         const typedData = data as Revision;
-        revision = typedData;
         if ("deno.diffsync.missing_hashes" in typedData.labels) {
           missingHashesPromise.resolve(
             JSON.parse(typedData.labels["deno.diffsync.missing_hashes"]),
@@ -265,7 +266,7 @@ export async function publish(
   log();
 
   if (wait) {
-    await waitForRevision(context, org, app, revisionId, revision);
+    await waitForRevision(context, org, app, revisionId);
   } else if (context.json) {
     // Build isn't finished yet; emit the revision id so agents can track it.
     writeJsonResult({
@@ -283,19 +284,44 @@ export async function publish(
   }
 }
 
+// The top-level revision-progress stages, in order, mapped to the short step
+// labels the spinner used to show (matching the server's build step names).
+const PROGRESS_STAGE_LABELS: ReadonlyArray<[keyof RevisionProgress, string]> = [
+  ["queued", "queueing"],
+  ["preparing", "preparing"],
+  ["installing", "installing"],
+  ["building", "building"],
+  ["deploying", "routing"],
+];
+
+/**
+ * Derive the current build step label from a {@linkcode RevisionProgress}
+ * event: the furthest-progressed stage that has started (i.e. is not `pending`
+ * or `skipped`). Returns `undefined` before any stage starts.
+ */
+function currentStageLabel(progress: RevisionProgress): string | undefined {
+  let label: string | undefined;
+  for (const [key, name] of PROGRESS_STAGE_LABELS) {
+    const status = progress[key]?.status;
+    if (status && status !== "pending" && status !== "skipped") {
+      label = name;
+    }
+  }
+  return label;
+}
+
 export async function waitForRevision(
   context: GlobalContext,
   org: string,
   app: string,
   revisionId: string,
-  revision?: Revision,
 ) {
   const quiet = context.quiet || context.json;
   const log: typeof console.log = quiet
     ? () => {}
     // deno-lint-ignore no-explicit-any
     : console.error.bind(console) as any;
-  const trpcClient = createTrpcClient(context);
+  const client = await deploySdkClient(context, org);
 
   log(
     "Waiting for deployment to complete, if you do not want this, pass the --no-wait flag.",
@@ -307,70 +333,44 @@ export async function waitForRevision(
   });
   if (shouldUseSpinner(context)) completionSpinner.start();
 
-  const completionPromise = Promise.withResolvers<void>();
-
-  const completionSub = trpcClient.subscription(
-    "revisions.watchUntilReady",
-    {
-      org,
-      app,
-      revision: revisionId,
-    },
-    {
-      onData: (data: unknown) => {
-        const newRevision = data as Revision;
-        revision = newRevision;
-        const lastStep = newRevision.steps.at(-1);
-
-        if (lastStep) {
-          completionSpinner.message = lastStep.step;
-        }
-      },
-      onError: (err: unknown) => {
-        completionSub.unsubscribe();
-        error(context, Deno.inspect(err));
-      },
-      onComplete: () => {
-        completionPromise.resolve();
-        completionSub.unsubscribe();
-      },
-      onStopped: () => {
-        completionSub.unsubscribe();
-      },
-    },
-  );
-
-  await completionPromise.promise;
+  // `revisions.progress` streams structured progress and ends when the revision
+  // reaches a terminal state (succeeded / failed / skipped). The terminal
+  // status itself is read separately via `revisions.get` below.
+  try {
+    for await (const progress of client.revisions.progress(revisionId)) {
+      const label = currentStageLabel(progress);
+      if (label) completionSpinner.message = label;
+    }
+  } catch (err) {
+    completionSpinner.stop();
+    error(context, Deno.inspect(err));
+  }
 
   completionSpinner.stop();
-  if (revision?.status === "cancelled" || revision?.status === "failed") {
+
+  const revision = await client.revisions.get(revisionId);
+  if (revision?.status === "failed") {
+    const cancelled = revision.failure_reason === "cancelled";
+    const statusWord = cancelled ? "cancelled" : "failed";
     if (context.json) {
-      error(context, `The revision ${revision.status}.`, {
+      error(context, `The revision ${statusWord}.`, {
         code: 1,
-        errorCode: revision.status === "cancelled"
-          ? "REVISION_CANCELLED"
-          : "REVISION_FAILED",
+        errorCode: cancelled ? "REVISION_CANCELLED" : "REVISION_FAILED",
         hint:
           `View ${context.endpoint}/${org}/${app}/builds/${revisionId} for details.`,
       });
     }
     console.error(
       `\n${red("✗")} The revision ${
-        revision.status === "cancelled" ? "was " : ""
-      }${revision.status}.\n  Please view the revision in the dashboard for more information.`,
+        cancelled ? "was " : ""
+      }${statusWord}.\n  Please view the revision in the dashboard for more information.`,
     );
     Deno.exit(1);
   }
 
-  const timelines = await trpcClient.query("revisions.listTimelines", {
-    org,
-    app,
-    revision: revisionId,
-  }) as Array<
-    { partition_config_name: string; context_name: string; domains: string[] }
-  >;
+  const timelines = await client.revisions.timelines(revisionId);
 
-  const { productionUrl } = selectProductionUrl(timelines);
+  const { productionUrl } = selectProductionUrlFromSdk(timelines);
 
   if (context.json) {
     writeJsonResult({
@@ -378,11 +378,12 @@ export async function waitForRevision(
       app,
       revisionId,
       url: `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
-      status: revision?.status ?? "ready",
+      status: revision?.status ?? "succeeded",
       productionUrl,
       timelines: timelines.map((t) => ({
-        partition: t.partition_config_name,
-        domains: t.domains.map((d) => `https://${d}`),
+        slug: t.slug,
+        partition: t.partition,
+        domains: t.domains.map((d) => `https://${d.domain}`),
       })),
     });
     return;
@@ -392,8 +393,8 @@ export async function waitForRevision(
 
   for (const timeline of timelines) {
     console.error(
-      `${timeline.partition_config_name} url:${
-        timeline.domains.map((domain) => `\n  https://${domain}`)
+      `${timeline.slug} url:${
+        timeline.domains.map((d) => `\n  https://${d.domain}`)
       }`,
     );
   }

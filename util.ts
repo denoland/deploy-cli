@@ -168,6 +168,33 @@ export function selectProductionUrl<T extends ProductionTimelineLike>(
   return { timeline, domains, productionUrl: domains[0] ?? null };
 }
 
+/** A timeline as returned by the `@deno/sandbox` SDK (`revisions.timelines`). */
+export interface SdkTimelineLike {
+  slug: string;
+  partition: Record<string, string>;
+  domains: { domain: string }[];
+}
+
+/**
+ * Select the production timeline from the `@deno/sandbox` SDK timeline shape and
+ * derive its https-prefixed domains + URL. The SDK drops the friendly
+ * `context_name`/`partition_config_name` fields, exposing only
+ * `slug = slugify(partition_config_name)`, so the production timeline is matched
+ * as `slug === "production"`. Returns `undefined`/`null` when no production
+ * timeline exists (e.g. preview-only deploys).
+ */
+export function selectProductionUrlFromSdk<T extends SdkTimelineLike>(
+  timelines: T[],
+): {
+  timeline: T | undefined;
+  domains: string[];
+  productionUrl: string | null;
+} {
+  const timeline = timelines.find((t) => t.slug === "production");
+  const domains = (timeline?.domains ?? []).map((d) => `https://${d.domain}`);
+  return { timeline, domains, productionUrl: domains[0] ?? null };
+}
+
 export function renderTemporalTimestamp(timestamp: string, hideDate = false) {
   function pad(n: number, width: number): string {
     return n.toString().padStart(width, "0");
