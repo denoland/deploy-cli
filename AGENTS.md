@@ -98,6 +98,27 @@ These work on every subcommand:
 | `--ignore <path>`       | Ignore particular source files (repeatable)          |
 | `--debug`               | Enable debug output and stack traces                 |
 | `--endpoint <url>`      | API endpoint (hidden from `--help`; no trailing `/`) |
+| `--help-json`           | Print the command tree as JSON and exit              |
+
+## Discovering commands and flags
+
+`--help` is human-readable; `--help-json` is the machine-readable equivalent. It
+prints one JSON object describing the addressed command — its description,
+positional arguments, options (including the inherited globals, each with
+`required`, `collect`, `global`, `hidden` and any static `default`), examples,
+and its subcommands recursively — then exits `0`. Required options of the
+addressed command are not enforced, so introspection never fails.
+
+```sh
+# every subcommand name
+deno deploy --help-json | jq -r '.commands[].name'
+
+# every flag `deno deploy env add` accepts
+deno deploy env add --help-json | jq -r '.options[].flags | join(", ")'
+
+# which flags are required
+deno deploy setup-aws --help-json | jq -r '.options[] | select(.required) | .name'
+```
 
 ## Subcommand flags
 

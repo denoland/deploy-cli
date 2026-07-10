@@ -3,6 +3,7 @@ import { greaterOrEqual, parse as semverParse } from "@std/semver";
 import { sandboxCommand } from "./sandbox/mod.ts";
 import { deployCommand } from "./deploy/mod.ts";
 import { actionHandler, getApp, getOrg } from "./config.ts";
+import { helpJson } from "./help-json.ts";
 import { error, ExitCode, writeJsonResult } from "./util.ts";
 
 const MINIMUM_DENO_VERSION = "2.4.2";
@@ -34,12 +35,19 @@ export type GlobalContext = {
 // `.reset()` repoints the builder to the root command before `.noExit()`, which
 // makes Cliffy throw parse errors instead of exiting so `handleCliError` can map them.
 try {
-  if (Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")) {
-    await sandboxCommand.reset().noExit().parse(Deno.args);
-  } else {
-    await deployCommand.command("sandbox", sandboxCommand).reset().noExit()
-      .parse(Deno.args);
+  // deno-lint-ignore no-explicit-any
+  const root: Command<any> = Deno.env.has("DENO_DEPLOY_CLI_SANDBOX")
+    ? sandboxCommand.reset()
+    : deployCommand.command("sandbox", sandboxCommand).reset();
+
+  // Handled before parsing: the addressed command may declare required options
+  // that would otherwise reject a pure introspection call.
+  if (Deno.args.includes("--help-json")) {
+    writeJsonResult(helpJson(root, Deno.args));
+    Deno.exit(ExitCode.OK);
   }
+
+  await root.noExit().parse(Deno.args);
 } catch (e) {
   handleCliError(e);
 }
