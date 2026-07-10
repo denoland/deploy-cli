@@ -400,6 +400,13 @@ for the full reference.`)
     "-y, --non-interactive",
     "Fail fast instead of prompting; values must be supplied via flags or env vars (alias: -y)",
   )
+  // Intercepted in main.ts before parsing; declared here so it shows up in the
+  // dumped command tree.
+  .globalOption(
+    "--help-json",
+    "Print the command tree (commands, flags, arguments) as JSON and exit",
+    { hidden: true },
+  )
   .option("--org <name:string>", "The name of the organization")
   .option("--app <name:string>", "The name of the application")
   .option("--prod", "Deploy directly to production")
