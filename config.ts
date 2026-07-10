@@ -167,6 +167,42 @@ export interface ConfigContext {
   noCreate(): void;
 }
 
+/**
+ * Positional slots that legitimately receive flag-like values: they are
+ * forwarded verbatim (a shell command, an env var value, a SQL query) rather
+ * than interpreted by this CLI.
+ */
+const PASSTHROUGH_ARGUMENTS = new Set(["command", "value", "query"]);
+
+interface ArgumentDef {
+  name: string;
+  variadic?: boolean;
+}
+
+/**
+ * Cliffy >= 1.2 fills the next positional slot with an unrecognized `--flag`
+ * instead of raising an unknown-option error, so `deno deploy --prd` would
+ * silently deploy a directory literally named `--prd`. Restore the usage error
+ * for every slot that isn't a passthrough.
+ */
+function assertNoFlagLikeArgs(command: unknown, args: unknown[]): void {
+  const defs: ArgumentDef[] =
+    (command as { getArguments?(): ArgumentDef[] } | undefined)
+      ?.getArguments?.() ?? [];
+  const last = defs.at(-1);
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (typeof arg !== "string" || arg.length < 2 || !arg.startsWith("-")) {
+      continue;
+    }
+    // A trailing variadic slot absorbs every remaining argument.
+    const def = defs[i] ?? (last?.variadic ? last : undefined);
+    if (def && PASSTHROUGH_ARGUMENTS.has(def.name)) continue;
+    throw new ValidationError(`Unknown option "${arg}".`);
+  }
+}
+
 export function actionHandler<
   O extends GlobalContext,
   A extends unknown[] = unknown[],
@@ -181,6 +217,7 @@ export function actionHandler<
   rootPath?: (...args: A) => string | undefined,
 ): (options: O, ...args: A) => Promise<void> {
   return async function (this: unknown, context: O, ...args: A) {
+    assertNoFlagLikeArgs(this, args);
     try {
       const root = rootPath?.(...args) ?? Deno.cwd();
       // Discover the config file only (cheap). The deploy file manifest is a
