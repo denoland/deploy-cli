@@ -48,6 +48,31 @@ Deno.test("combined short flag -jy is detected as JSON mode for the error envelo
   assertEquals(envelope.error.code, "VALIDATION_ERROR");
 });
 
+Deno.test("an unknown flag is not swallowed by the root's [root-path] argument", async () => {
+  const res = await runCli(["--json", "--prd"]);
+  assertEquals(res.code, 2, `stderr: ${res.stderr}`);
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "VALIDATION_ERROR");
+  assert(
+    envelope.error.message.includes("--prd"),
+    `message should name the flag: ${envelope.error.message}`,
+  );
+});
+
+Deno.test("flag-like positional values are still passed through", async () => {
+  // `env add FOO -bar` must reach the action (which then requires auth) rather
+  // than being rejected as an unknown option.
+  const res = await runCli(
+    ["env", "add", "FOO", "-bar", "--json", "--non-interactive"],
+    { DENO_DEPLOY_TOKEN: "" }, // never reach the backend, whatever the runner has
+  );
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assert(
+    envelope.error.code !== "VALIDATION_ERROR",
+    `unexpected usage error: ${res.stderr}`,
+  );
+});
+
 Deno.test("--help exits 0", async () => {
   const res = await runCli(["--help"]);
   assertEquals(res.code, 0, `stderr: ${res.stderr}`);
