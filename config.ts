@@ -395,7 +395,7 @@ async function writeConfig(
 
   await Deno.writeTextFile(
     configContent.config?.path ?? join(Deno.cwd(), "deno.jsonc"),
-    config.toString() + "\n",
+    config.toString(),
   );
 
   if (!configContent.config) {
