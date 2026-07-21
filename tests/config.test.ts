@@ -95,6 +95,29 @@ Deno.test("deploy preserves comments and formatting (jsonc)", async () => {
   assertStringIncludes(out, "// and this one");
 });
 
+Deno.test("deploy does not append a blank line on repeated updates", async () => {
+  const input = `{
+  "deploy": {
+    "org": "old-org",
+    "app": "my-app"
+  }
+}
+`;
+  const expected = `{
+  "deploy": {
+    "org": "my-org",
+    "app": "my-app"
+  }
+}
+`;
+
+  const once = await runDeploy(input, { org: "my-org", app: "my-app" });
+  const twice = await runDeploy(once, { org: "my-org", app: "my-app" });
+
+  assertEquals(once, expected);
+  assertEquals(twice, expected);
+});
+
 // Regression: a read-only command (one that never touches `config.files`) must
 // NOT trigger the recursive deploy-manifest file walk. Before the lazy-`files`
 // fix, `actionHandler` eagerly walked the whole working directory, so commands
