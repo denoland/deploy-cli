@@ -324,7 +324,12 @@ export const createCommand = new Command<GlobalContext>()
         region,
       };
     } else {
-      data = await createFlow(options, rootPath);
+      data = await createFlow(
+        options,
+        rootPath,
+        undefined,
+        options.buildTimeout,
+      );
     }
     if (options.dryRun) {
       if (options.json) {

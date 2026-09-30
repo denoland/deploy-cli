@@ -104,6 +104,8 @@ export async function createFlow(
   context: GlobalContext,
   rootPath: string,
   preselectedOrg?: string,
+  /** An explicit `--build-timeout`, which takes precedence over a detected one. */
+  explicitBuildTimeout?: number,
 ): Promise<CreateApp> {
   requireInteractive(
     context,
@@ -244,7 +246,7 @@ export async function createFlow(
     finalBuildConfig = getBuildConfig(context, buildConfig);
   }
 
-  let buildTimeout = await detectedBuildTimeoutForOrg(
+  let buildTimeout = explicitBuildTimeout ?? await detectedBuildTimeoutForOrg(
     trpcClient,
     org,
     finalBuildConfig,
