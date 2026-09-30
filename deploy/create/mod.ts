@@ -5,6 +5,7 @@ import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
   createFlow,
+  detectedBuildTimeout,
   REGIONS,
   renderBuildConfig,
 } from "./flow.ts";
@@ -128,6 +129,8 @@ export const createCommand = new Command<GlobalContext>()
     "--build-timeout <minutes:number>",
     `The build timeout in minutes. One of ${
       AVAILABLE_BUILD_TIMEOUTS.join(", ")
+    }. Defaults to deploy.buildTimeout from a detected deno.json, or ${
+      AVAILABLE_BUILD_TIMEOUTS[0]
     }`,
     {
       value(value: number) {
@@ -141,7 +144,6 @@ export const createCommand = new Command<GlobalContext>()
           );
         }
       },
-      default: AVAILABLE_BUILD_TIMEOUTS[0],
     },
   )
   .option(
@@ -309,7 +311,8 @@ export const createCommand = new Command<GlobalContext>()
         repo,
         buildDirectory,
         buildConfig: buildConfig satisfies BuildConfig,
-        buildTimeout: options.buildTimeout,
+        buildTimeout: options.buildTimeout ??
+          detectedBuildTimeout(buildConfig) ?? AVAILABLE_BUILD_TIMEOUTS[0],
         buildMemoryLimit: options.buildMemoryLimit,
         region,
       };

@@ -20,6 +20,20 @@ import { requireInteractive } from "../../util.ts";
 
 export const AVAILABLE_BUILD_TIMEOUTS = [5, 10, 15, 20, 25, 30];
 export const AVAILABLE_BUILD_MEMORY_LIMITS = [1024, 2048, 3072, 4096];
+
+/**
+ * The build timeout a detected build config asks for (deno.json
+ * `deploy.buildTimeout`), as the largest available step not above it. The
+ * console caps it to the plan maximum.
+ */
+export function detectedBuildTimeout(
+  buildConfig: BuildConfig | null | undefined,
+): number | undefined {
+  const timeout = buildConfig?.buildTimeout;
+  if (timeout === undefined) return undefined;
+  return AVAILABLE_BUILD_TIMEOUTS.findLast((t) => t <= timeout) ??
+    AVAILABLE_BUILD_TIMEOUTS[0];
+}
 export const REGIONS = ["us", "eu", "global"];
 
 const NA = "(n/a)";
@@ -203,22 +217,26 @@ export async function createFlow(
     finalBuildConfig = getBuildConfig(context, buildConfig);
   }
 
-  // TODO: check pro
-  const buildTimeout = promptSelect(
-    "build timeout:",
-    AVAILABLE_BUILD_TIMEOUTS.map((timeout) => ({
-      label: `${timeout} minutes`,
-      value: timeout,
-    })),
-    {
-      clear: true,
-      fitToRemainingHeight: true,
-    },
-  );
-  if (!buildTimeout) {
-    error(context, "No build timeout was selected.");
+  let buildTimeout = detectedBuildTimeout(finalBuildConfig);
+  if (buildTimeout === undefined) {
+    // TODO: check pro
+    const selectedBuildTimeout = promptSelect(
+      "build timeout:",
+      AVAILABLE_BUILD_TIMEOUTS.map((timeout) => ({
+        label: `${timeout} minutes`,
+        value: timeout,
+      })),
+      {
+        clear: true,
+        fitToRemainingHeight: true,
+      },
+    );
+    if (!selectedBuildTimeout) {
+      error(context, "No build timeout was selected.");
+    }
+    buildTimeout = selectedBuildTimeout.value;
   }
-  logTitle(TITLES.buildTimeout, buildTimeout.label);
+  logTitle(TITLES.buildTimeout, `${buildTimeout} minutes`);
 
   // TODO: check pro
   const buildMemoryLimit = promptSelect(
@@ -258,7 +276,7 @@ export async function createFlow(
       repo,
       buildDirectory: appDirectoryPath,
       buildConfig: finalBuildConfig,
-      buildTimeout: buildTimeout.value,
+      buildTimeout,
       buildMemoryLimit: buildMemoryLimit.value,
       region,
     };
