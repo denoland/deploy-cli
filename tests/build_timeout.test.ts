@@ -14,3 +14,9 @@ Deno.test("detectedBuildTimeout: snaps to an available step", () => {
   assertEquals(timeout(60), 30);
   assertEquals(timeout(1), 5);
 });
+
+Deno.test("detectedBuildTimeout: caps to the plan maximum", () => {
+  const config = { frameworkPreset: "fresh" as const, buildTimeout: 20 };
+  assertEquals(detectedBuildTimeout(config, 5), 5);
+  assertEquals(detectedBuildTimeout(config, 30), 20);
+});

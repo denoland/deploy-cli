@@ -5,7 +5,7 @@ import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
   createFlow,
-  detectedBuildTimeout,
+  detectedBuildTimeoutForOrg,
   REGIONS,
   renderBuildConfig,
 } from "./flow.ts";
@@ -300,6 +300,14 @@ export const createCommand = new Command<GlobalContext>()
 
       const region = required(options.region, "region");
 
+      const buildTimeout = options.buildTimeout ??
+        await detectedBuildTimeoutForOrg(
+          createTrpcClient(options),
+          org,
+          buildConfig,
+        ) ??
+        AVAILABLE_BUILD_TIMEOUTS[0];
+
       if (!options.json) {
         console.error("Using the following build configuration:");
         console.error(renderBuildConfig(buildConfig satisfies BuildConfig));
@@ -311,8 +319,7 @@ export const createCommand = new Command<GlobalContext>()
         repo,
         buildDirectory,
         buildConfig: buildConfig satisfies BuildConfig,
-        buildTimeout: options.buildTimeout ??
-          detectedBuildTimeout(buildConfig) ?? AVAILABLE_BUILD_TIMEOUTS[0],
+        buildTimeout,
         buildMemoryLimit: options.buildMemoryLimit,
         region,
       };
