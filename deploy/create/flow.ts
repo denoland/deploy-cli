@@ -35,10 +35,12 @@ const DURATION_UNIT_MINUTES: Record<string, number> = {
  * steps, and null otherwise.
  */
 export function parseBuildTimeoutFlag(value: string): number | null {
-  const match = /^([1-9][0-9]*)([smh]?)$/.exec(value);
-  if (match === null) return null;
-  const minutes = Number(match[1]) *
-    (match[2] ? DURATION_UNIT_MINUTES[match[2]] : 1);
+  const match = /^([1-9][0-9]*)([smh])$/.exec(value);
+  // Without a unit, convert as the flag's former numeric type did, so that
+  // spellings such as `10.0` keep working.
+  const minutes = match === null
+    ? Number(value)
+    : Number(match[1]) * DURATION_UNIT_MINUTES[match[2]];
   return AVAILABLE_BUILD_TIMEOUTS.includes(minutes) ? minutes : null;
 }
 
