@@ -270,6 +270,14 @@ export async function createFlow(
     org,
     finalBuildConfig,
   );
+  // A deno.json `deploy` section decides the timeout on every deploy, an
+  // omitted one meaning the default, so there is nothing to ask for.
+  if (
+    buildTimeout === undefined && buildConfig?.from === "deno.json" &&
+    finalBuildConfig === buildConfig
+  ) {
+    buildTimeout = AVAILABLE_BUILD_TIMEOUTS[0];
+  }
   if (buildTimeout === undefined) {
     // TODO: check pro
     const selectedBuildTimeout = promptSelect(

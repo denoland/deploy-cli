@@ -108,7 +108,8 @@ export async function publish(
   }
   // The root config also holds `deploy.include`/`exclude`, which can leave it
   // out of the upload itself (e.g. `"include": ["dist/**"]`); its `deploy`
-  // section still applies.
+  // section still applies. A deno.json in a non-root app directory that the
+  // upload excludes is not sent: the CLI does not know the app directory.
   for (const name of DENO_JSON_NAMES) {
     if (name in denoJsonFiles) continue;
     try {

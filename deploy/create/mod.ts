@@ -13,6 +13,7 @@ import {
 import { createTrpcClient, getAuth } from "../../auth.ts";
 import {
   type BuildConfig,
+  detectBuildConfig,
   detectWorkspace,
   FrameworkFileSystemReader,
   type FrameworkPreset,
@@ -248,11 +249,21 @@ export const createCommand = new Command<GlobalContext>()
       }
 
       if (
-        !options.json && member?.buildConfig.from === "deno.json" &&
+        !options.json &&
         (options.doNotUseDetectedBuildConfig ||
           options.buildTimeout !== undefined)
       ) {
-        console.warn(DENO_JSON_PRECEDENCE_WARNING);
+        // A custom app directory is not a detected workspace member, but a
+        // local deploy still sends its deno.json, so check it directly.
+        const detected = member?.buildConfig ??
+          (source === "local"
+            ? await detectBuildConfig(
+              new FrameworkFileSystemReader(resolve(rootPath, buildDirectory)),
+            ).catch(() => undefined)
+            : undefined);
+        if (detected?.from === "deno.json") {
+          console.warn(DENO_JSON_PRECEDENCE_WARNING);
+        }
       }
 
       let buildConfig;
