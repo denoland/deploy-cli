@@ -91,7 +91,10 @@ export async function publish(
   const manifest: Record<string, string> = {};
   // The console reads the `deploy` section of the app directory's deno.json
   // from these, as it does for GitHub deployments, so it applies on every
-  // deploy rather than only when the app is created.
+  // deploy rather than only when the app is created. They are taken from the
+  // uploaded files rather than from the config the CLI resolved (which may be
+  // `--config other.json`, or outside the upload): the console only ever reads
+  // deno.json/deno.jsonc in the app directory of what the build sees.
   const denoJsonFiles: Record<string, string> = {};
 
   spinner.message = "Generating hashes...";

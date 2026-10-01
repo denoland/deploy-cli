@@ -5,6 +5,7 @@ import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
   createFlow,
+  DENO_JSON_PRECEDENCE_WARNING,
   detectedBuildTimeoutForOrg,
   REGIONS,
   renderBuildConfig,
@@ -244,6 +245,14 @@ export const createCommand = new Command<GlobalContext>()
           required(options.appDirectory, "app-directory");
       } else {
         buildDirectory = options.appDirectory || "";
+      }
+
+      if (
+        member?.buildConfig.from === "deno.json" &&
+        (options.doNotUseDetectedBuildConfig ||
+          options.buildTimeout !== undefined)
+      ) {
+        console.warn(DENO_JSON_PRECEDENCE_WARNING);
       }
 
       let buildConfig;

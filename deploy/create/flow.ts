@@ -63,6 +63,16 @@ export async function detectedBuildTimeoutForOrg(
   return detectedBuildTimeout(buildConfig, maxBuildTimeout);
 }
 
+/**
+ * The `deploy` section of deno.json takes precedence over the app's stored
+ * build configuration on every deploy, so settings given to `create` that
+ * differ from it would never be used.
+ */
+export const DENO_JSON_PRECEDENCE_WARNING =
+  "This app's deno.json has a `deploy` section, which takes precedence over " +
+  "the build configuration given here on every deploy. To change the build " +
+  "configuration, edit deno.json instead.";
+
 const NA = "(n/a)";
 const TITLES = {
   organization: "organization",
@@ -222,6 +232,9 @@ export async function createFlow(
     clearPreviousLines(renderedBuildConfigLines + 1);
 
     if (!useDetected) {
+      if (buildConfig.from === "deno.json") {
+        console.warn(DENO_JSON_PRECEDENCE_WARNING);
+      }
       finalBuildConfig = getBuildConfig(context, buildConfig);
     } else {
       finalBuildConfig = buildConfig;
@@ -246,6 +259,12 @@ export async function createFlow(
     finalBuildConfig = getBuildConfig(context, buildConfig);
   }
 
+  if (
+    explicitBuildTimeout !== undefined && finalBuildConfig === buildConfig &&
+    buildConfig?.from === "deno.json"
+  ) {
+    console.warn(DENO_JSON_PRECEDENCE_WARNING);
+  }
   let buildTimeout = explicitBuildTimeout ?? await detectedBuildTimeoutForOrg(
     trpcClient,
     org,
