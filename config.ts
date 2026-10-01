@@ -198,7 +198,13 @@ function assertNoFlagLikeArgs(command: unknown, args: unknown[]): void {
     }
     // A trailing variadic slot absorbs every remaining argument.
     const def = defs[i] ?? (last?.variadic ? last : undefined);
-    if (def && PASSTHROUGH_ARGUMENTS.has(def.name)) continue;
+    if (def && PASSTHROUGH_ARGUMENTS.has(def.name)) {
+      // A variadic command or query only takes flags once it has started:
+      // `sandbox new ls -la` passes `-la` on, but in `sandbox new --memoryy 2gb`
+      // the misspelled option would itself become the command.
+      const startsVariadic = def.variadic && i === defs.length - 1;
+      if (!startsVariadic) continue;
+    }
     throw new ValidationError(`Unknown option "${arg}".`);
   }
 }

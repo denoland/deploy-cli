@@ -73,6 +73,22 @@ Deno.test("flag-like positional values are still passed through", async () => {
   );
 });
 
+Deno.test("an unknown flag is not taken as the start of a passthrough command", async () => {
+  // `sandbox new [command...]`: a misspelled option must not become the
+  // command, or the sandbox is created before anything notices.
+  const res = await runCli(
+    ["sandbox", "new", "--memoryy", "2gb", "--json", "--non-interactive"],
+    { DENO_DEPLOY_TOKEN: "" },
+  );
+  assertEquals(res.code, 2, `stderr: ${res.stderr}`);
+  const envelope = JSON.parse(res.stderr.trim().split("\n").pop()!);
+  assertEquals(envelope.error.code, "VALIDATION_ERROR");
+  assert(
+    envelope.error.message.includes("--memoryy"),
+    `message should name the flag: ${envelope.error.message}`,
+  );
+});
+
 Deno.test("--help exits 0", async () => {
   const res = await runCli(["--help"]);
   assertEquals(res.code, 0, `stderr: ${res.stderr}`);
