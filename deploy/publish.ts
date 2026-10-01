@@ -12,6 +12,7 @@ import {
 } from "../util.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
+import type { AppDetail } from "./apps.ts";
 
 interface Revision {
   labels: Record<string, string>;
@@ -53,7 +54,7 @@ async function appBuildDirectory(
   const fullApp = await createTrpcClient(context).query("apps.get", {
     org,
     app,
-  }) as { build_config?: { buildDirectory?: string } };
+  }) as AppDetail;
   return normalizeBuildDirectory(fullApp.build_config?.buildDirectory ?? "");
 }
 
