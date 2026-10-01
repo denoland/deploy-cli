@@ -1,7 +1,7 @@
 import { TarStream, type TarStreamFile } from "@std/tar";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
-import { join, relative, resolve, SEPARATOR } from "@std/path";
+import { isAbsolute, join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
 import { authedFetch, createTrpcClient } from "../auth.ts";
 import {
@@ -12,6 +12,7 @@ import {
 } from "../util.ts";
 import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
+import type { AppDetail } from "./apps.ts";
 
 interface Revision {
   labels: Record<string, string>;
@@ -25,6 +26,93 @@ type Chunk = {
   hash: string;
   data: Uint8Array;
 };
+
+const DENO_JSON_NAMES = new Set(["deno.json", "deno.jsonc"]);
+
+/**
+ * Normalizes an app's stored build directory as the console does: `.` and
+ * empty segments are dropped, and a path leaving the deploy root (which the
+ * console rejects) becomes the root, "".
+ */
+export function normalizeBuildDirectory(buildDirectory: string): string {
+  const segments = buildDirectory.split(/[\\/]/).filter((p) =>
+    p !== "" && p !== "."
+  );
+  return segments.includes("..") ? "" : segments.join("/");
+}
+
+/**
+ * The deno.json files to send with a CLI revision. The console reads the
+ * `deploy` section of the deno.json in the app's build directory, as it does
+ * for GitHub deployments, so it applies on every deploy rather than only when
+ * the app is created; it reads no other config, so only that directory's are
+ * sent. A config selected with `--config` stands in for it, and one the upload
+ * leaves out through `deploy.include`/`exclude` (e.g. `"include": ["dist/**"]`)
+ * still applies, so it is read from disk.
+ */
+export async function collectDenoJsonFiles(
+  { rootPath, buildDirectory, uploaded, configPath }: {
+    rootPath: string;
+    /** The app's stored build directory, as stored. */
+    buildDirectory: string;
+    /** The uploaded deno.json/deno.jsonc files, by `/`-separated path. */
+    uploaded: Record<string, string>;
+    configPath?: string;
+  },
+): Promise<Record<string, string>> {
+  const appDir = normalizeBuildDirectory(buildDirectory);
+  const prefix = appDir === "" ? "" : `${appDir}/`;
+  const files: Record<string, string> = {};
+  for (const name of DENO_JSON_NAMES) {
+    if (`${prefix}${name}` in uploaded) {
+      files[`${prefix}${name}`] = uploaded[`${prefix}${name}`];
+    }
+  }
+  if (configPath) {
+    delete files[`${prefix}deno.jsonc`];
+    files[`${prefix}deno.json`] = await Deno.readTextFile(configPath);
+    return files;
+  }
+  // Symlinks are resolved first, so that neither the app directory nor the
+  // config can point outside the deploy root.
+  const root = await Deno.realPath(rootPath);
+  for (const name of DENO_JSON_NAMES) {
+    if (`${prefix}${name}` in files) continue;
+    let path;
+    try {
+      path = await Deno.realPath(join(rootPath, appDir, name));
+    } catch (err) {
+      if (err instanceof Deno.errors.NotFound) continue;
+      throw err;
+    }
+    const fromRoot = relative(root, path);
+    if (
+      fromRoot === ".." || fromRoot.startsWith(`..${SEPARATOR}`) ||
+      isAbsolute(fromRoot)
+    ) {
+      continue;
+    }
+    files[`${prefix}${name}`] = await Deno.readTextFile(path);
+  }
+  return files;
+}
+
+/**
+ * The app's stored build directory, as stored (see `normalizeBuildDirectory`).
+ * A failure here (e.g. a missing app) is reported and exits just as
+ * `apps.initiateCliRevision` would have.
+ */
+async function appBuildDirectory(
+  context: GlobalContext,
+  org: string,
+  app: string,
+): Promise<string> {
+  const fullApp = await createTrpcClient(context).query("apps.get", {
+    org,
+    app,
+  }) as AppDetail;
+  return fullApp.build_config?.buildDirectory ?? "";
+}
 
 export async function publish(
   context: GlobalContext,
@@ -83,12 +171,24 @@ export async function publish(
   const [counter, body] = stream.tee();
 
   const manifest: Record<string, string> = {};
+  const uploadedDenoJsonFiles: Record<string, string> = {};
 
   spinner.message = "Generating hashes...";
 
-  for await (const { hash, relativePath } of counter) {
-    manifest[relativePath.replaceAll(SEPARATOR, "/")] = hash;
+  for await (const { hash, relativePath, data } of counter) {
+    const path = relativePath.replaceAll(SEPARATOR, "/");
+    manifest[path] = hash;
+    if (DENO_JSON_NAMES.has(path.slice(path.lastIndexOf("/") + 1))) {
+      uploadedDenoJsonFiles[path] = new TextDecoder().decode(data);
+    }
   }
+
+  const denoJsonFiles = await collectDenoJsonFiles({
+    rootPath,
+    buildDirectory: await appBuildDirectory(context, org, app),
+    uploaded: uploadedDenoJsonFiles,
+    configPath: context.config,
+  });
 
   if (context.debug) {
     console.error("Manifest", manifest);
@@ -103,6 +203,7 @@ export async function publish(
       app,
       production: prod,
       manifest,
+      denoJsonFiles,
     },
   ) as string;
 

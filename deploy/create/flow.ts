@@ -1,4 +1,5 @@
 import { createTrpcClient, type TRPCClient } from "../../auth.ts";
+import { resolve } from "@std/path";
 import { green } from "@std/fmt/colors";
 import { error } from "../../util.ts";
 import {
@@ -7,7 +8,9 @@ import {
 } from "@std/cli/unstable-prompt-select";
 import {
   type BuildConfig,
+  detectBuildConfig,
   type DetectedBuildConfig,
+  detectPackageManager,
   detectWorkspace,
   FrameworkFileSystemReader,
   SUPPORTED_FRAMEWORK_PRESETS,
@@ -42,6 +45,33 @@ export function parseBuildTimeoutFlag(value: string): number | null {
     ? Number(value)
     : Number(match[1]) * DURATION_UNIT_MINUTES[match[2]];
   return AVAILABLE_BUILD_TIMEOUTS.includes(minutes) ? minutes : null;
+}
+
+/**
+ * The build config detected in a local app directory that is not a detected
+ * workspace member: a deploy still applies its deno.json `deploy` section, so
+ * `create` must know about it. Not attempted for a GitHub repo, where it would
+ * need a request whose failure exits the CLI, for what is only a warning.
+ */
+export async function customDirectoryBuildConfig(
+  rootPath: string,
+  repo: Repo,
+  path: string,
+): Promise<DetectedBuildConfig | null> {
+  if (repo !== undefined) return null;
+  try {
+    // As `detectWorkspace` does: a lockfile at the root decides the package
+    // manager of a nested app.
+    const packageManager = await detectPackageManager(
+      new FrameworkFileSystemReader(rootPath),
+    );
+    return await detectBuildConfig(
+      new FrameworkFileSystemReader(resolve(rootPath, path)),
+      packageManager,
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -84,6 +114,16 @@ export async function detectedBuildTimeoutForOrg(
     ?.subscription_metadata?.max_build_timeout;
   return detectedBuildTimeout(buildConfig, maxBuildTimeout);
 }
+
+/**
+ * The `deploy` section of deno.json takes precedence over the app's stored
+ * build configuration on every deploy, so settings given to `create` that
+ * differ from it would never be used.
+ */
+export const DENO_JSON_PRECEDENCE_WARNING =
+  "This app's deno.json has a `deploy` section, which takes precedence over " +
+  "the build configuration given here on every deploy. To change the build " +
+  "configuration, edit deno.json instead.";
 
 const NA = "(n/a)";
 const TITLES = {
@@ -221,7 +261,12 @@ export async function createFlow(
   if (typeof selectedAppDirectory === "string") {
     buildConfig = appDirectories.members.find((member) =>
       member.path === selectedAppDirectory
-    )?.buildConfig ?? null;
+    )?.buildConfig ??
+      await customDirectoryBuildConfig(
+        rootPath,
+        repo,
+        selectedAppDirectory,
+      );
   } else {
     buildConfig = selectedAppDirectory.buildConfig;
   }
@@ -244,6 +289,9 @@ export async function createFlow(
     clearPreviousLines(renderedBuildConfigLines + 1);
 
     if (!useDetected) {
+      if (buildConfig.from === "deno.json") {
+        console.warn(DENO_JSON_PRECEDENCE_WARNING);
+      }
       finalBuildConfig = getBuildConfig(context, buildConfig);
     } else {
       finalBuildConfig = buildConfig;
@@ -268,11 +316,25 @@ export async function createFlow(
     finalBuildConfig = getBuildConfig(context, buildConfig);
   }
 
+  if (
+    explicitBuildTimeout !== undefined && finalBuildConfig === buildConfig &&
+    buildConfig?.from === "deno.json"
+  ) {
+    console.warn(DENO_JSON_PRECEDENCE_WARNING);
+  }
   let buildTimeout = explicitBuildTimeout ?? await detectedBuildTimeoutForOrg(
     trpcClient,
     org,
     finalBuildConfig,
   );
+  // A deno.json `deploy` section decides the timeout on every deploy, an
+  // omitted one meaning the default, so there is nothing to ask for.
+  if (
+    buildTimeout === undefined && buildConfig?.from === "deno.json" &&
+    finalBuildConfig === buildConfig
+  ) {
+    buildTimeout = AVAILABLE_BUILD_TIMEOUTS[0];
+  }
   if (buildTimeout === undefined) {
     // TODO: check pro
     const selectedBuildTimeout = promptSelect(

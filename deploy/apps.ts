@@ -17,12 +17,17 @@ interface AppItem {
   layers: Array<{ slug: string }>;
 }
 
-interface AppDetail {
+/** The app row `apps.get` returns, as far as the CLI reads it. */
+export interface AppDetail {
   id: string;
   slug: string;
   created_at: Date;
   updated_at: Date;
-  build_config: { frameworkPreset?: string | null } | null;
+  build_config: {
+    frameworkPreset?: string | null;
+    /** The app directory, relative to the repository or deploy root. */
+    buildDirectory?: string;
+  } | null;
 }
 
 interface TimelineEntry {

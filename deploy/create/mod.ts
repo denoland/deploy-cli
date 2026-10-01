@@ -5,6 +5,8 @@ import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
   createFlow,
+  customDirectoryBuildConfig,
+  DENO_JSON_PRECEDENCE_WARNING,
   detectedBuildTimeoutForOrg,
   parseBuildTimeoutFlag,
   REGIONS,
@@ -248,6 +250,25 @@ export const createCommand = new Command<GlobalContext>()
           required(options.appDirectory, "app-directory");
       } else {
         buildDirectory = options.appDirectory || "";
+      }
+
+      // Build settings given here are overridden by a deno.json `deploy`
+      // section: those passed as flags, or all of them for a custom app
+      // directory, whose config is synthesized from the flags below.
+      if (
+        !options.json &&
+        (options.doNotUseDetectedBuildConfig ||
+          options.buildTimeout !== undefined || member === undefined)
+      ) {
+        const detected = member?.buildConfig ??
+          await customDirectoryBuildConfig(
+            rootPath,
+            repo,
+            buildDirectory,
+          );
+        if (detected?.from === "deno.json") {
+          console.warn(DENO_JSON_PRECEDENCE_WARNING);
+        }
       }
 
       let buildConfig;
