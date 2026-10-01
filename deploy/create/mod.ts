@@ -5,6 +5,7 @@ import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
   createFlow,
+  detectedBuildTimeoutForOrg,
   REGIONS,
   renderBuildConfig,
 } from "./flow.ts";
@@ -128,6 +129,8 @@ export const createCommand = new Command<GlobalContext>()
     "--build-timeout <minutes:number>",
     `The build timeout in minutes. One of ${
       AVAILABLE_BUILD_TIMEOUTS.join(", ")
+    }. Defaults to deploy.buildTimeout from a detected deno.json, or ${
+      AVAILABLE_BUILD_TIMEOUTS[0]
     }`,
     {
       value(value: number) {
@@ -141,7 +144,6 @@ export const createCommand = new Command<GlobalContext>()
           );
         }
       },
-      default: AVAILABLE_BUILD_TIMEOUTS[0],
     },
   )
   .option(
@@ -298,6 +300,14 @@ export const createCommand = new Command<GlobalContext>()
 
       const region = required(options.region, "region");
 
+      const buildTimeout = options.buildTimeout ??
+        await detectedBuildTimeoutForOrg(
+          createTrpcClient(options),
+          org,
+          buildConfig,
+        ) ??
+        AVAILABLE_BUILD_TIMEOUTS[0];
+
       if (!options.json) {
         console.error("Using the following build configuration:");
         console.error(renderBuildConfig(buildConfig satisfies BuildConfig));
@@ -309,12 +319,17 @@ export const createCommand = new Command<GlobalContext>()
         repo,
         buildDirectory,
         buildConfig: buildConfig satisfies BuildConfig,
-        buildTimeout: options.buildTimeout,
+        buildTimeout,
         buildMemoryLimit: options.buildMemoryLimit,
         region,
       };
     } else {
-      data = await createFlow(options, rootPath);
+      data = await createFlow(
+        options,
+        rootPath,
+        undefined,
+        options.buildTimeout,
+      );
     }
     if (options.dryRun) {
       if (options.json) {

@@ -22,6 +22,47 @@ export const AVAILABLE_BUILD_TIMEOUTS = [5, 10, 15, 20, 25, 30];
 export const AVAILABLE_BUILD_MEMORY_LIMITS = [1024, 2048, 3072, 4096];
 export const REGIONS = ["us", "eu", "global"];
 
+/**
+ * The build timeout a detected build config asks for (deno.json
+ * `deploy.buildTimeout`), as the largest available step not above it or
+ * `maxBuildTimeout`.
+ */
+export function detectedBuildTimeout(
+  buildConfig: BuildConfig | null | undefined,
+  maxBuildTimeout = Infinity,
+): number | undefined {
+  const timeout = buildConfig?.buildTimeout;
+  if (timeout === undefined) return undefined;
+  const limit = Math.min(timeout, maxBuildTimeout);
+  return AVAILABLE_BUILD_TIMEOUTS.findLast((t) => t <= limit) ??
+    AVAILABLE_BUILD_TIMEOUTS[0];
+}
+
+/**
+ * `detectedBuildTimeout`, capped to the organization's plan maximum: the
+ * console caps a deno.json timeout when it builds, but `apps.create` rejects
+ * one above the plan outright. Only asks the console when there is something
+ * to cap.
+ */
+export async function detectedBuildTimeoutForOrg(
+  trpcClient: TRPCClient,
+  org: string,
+  buildConfig: BuildConfig | null | undefined,
+): Promise<number | undefined> {
+  const timeout = detectedBuildTimeout(buildConfig);
+  if (timeout === undefined || timeout <= AVAILABLE_BUILD_TIMEOUTS[0]) {
+    return timeout;
+  }
+  const orgs = await trpcClient.query("orgs.list") as Array<{
+    id: string;
+    slug: string;
+    subscription_metadata?: { max_build_timeout?: number };
+  }>;
+  const maxBuildTimeout = orgs.find((o) => o.slug === org || o.id === org)
+    ?.subscription_metadata?.max_build_timeout;
+  return detectedBuildTimeout(buildConfig, maxBuildTimeout);
+}
+
 const NA = "(n/a)";
 const TITLES = {
   organization: "organization",
@@ -63,6 +104,8 @@ export async function createFlow(
   context: GlobalContext,
   rootPath: string,
   preselectedOrg?: string,
+  /** An explicit `--build-timeout`, which takes precedence over a detected one. */
+  explicitBuildTimeout?: number,
 ): Promise<CreateApp> {
   requireInteractive(
     context,
@@ -203,22 +246,30 @@ export async function createFlow(
     finalBuildConfig = getBuildConfig(context, buildConfig);
   }
 
-  // TODO: check pro
-  const buildTimeout = promptSelect(
-    "build timeout:",
-    AVAILABLE_BUILD_TIMEOUTS.map((timeout) => ({
-      label: `${timeout} minutes`,
-      value: timeout,
-    })),
-    {
-      clear: true,
-      fitToRemainingHeight: true,
-    },
+  let buildTimeout = explicitBuildTimeout ?? await detectedBuildTimeoutForOrg(
+    trpcClient,
+    org,
+    finalBuildConfig,
   );
-  if (!buildTimeout) {
-    error(context, "No build timeout was selected.");
+  if (buildTimeout === undefined) {
+    // TODO: check pro
+    const selectedBuildTimeout = promptSelect(
+      "build timeout:",
+      AVAILABLE_BUILD_TIMEOUTS.map((timeout) => ({
+        label: `${timeout} minutes`,
+        value: timeout,
+      })),
+      {
+        clear: true,
+        fitToRemainingHeight: true,
+      },
+    );
+    if (!selectedBuildTimeout) {
+      error(context, "No build timeout was selected.");
+    }
+    buildTimeout = selectedBuildTimeout.value;
   }
-  logTitle(TITLES.buildTimeout, buildTimeout.label);
+  logTitle(TITLES.buildTimeout, `${buildTimeout} minutes`);
 
   // TODO: check pro
   const buildMemoryLimit = promptSelect(
@@ -258,7 +309,7 @@ export async function createFlow(
       repo,
       buildDirectory: appDirectoryPath,
       buildConfig: finalBuildConfig,
-      buildTimeout: buildTimeout.value,
+      buildTimeout,
       buildMemoryLimit: buildMemoryLimit.value,
       region,
     };
