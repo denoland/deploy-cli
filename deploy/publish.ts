@@ -92,9 +92,9 @@ export async function publish(
   // The console reads the `deploy` section of the app directory's deno.json
   // from these, as it does for GitHub deployments, so it applies on every
   // deploy rather than only when the app is created. They are taken from the
-  // uploaded files rather than from the config the CLI resolved (which may be
-  // `--config other.json`, or outside the upload): the console only ever reads
-  // deno.json/deno.jsonc in the app directory of what the build sees.
+  // uploaded files and the deploy root rather than from the config the CLI
+  // resolved (which may be `--config other.json`, or above the deploy root):
+  // the console only ever reads deno.json/deno.jsonc in the app directory.
   const denoJsonFiles: Record<string, string> = {};
 
   spinner.message = "Generating hashes...";
@@ -104,6 +104,17 @@ export async function publish(
     manifest[path] = hash;
     if (isDenoJson(path)) {
       denoJsonFiles[path] = new TextDecoder().decode(data);
+    }
+  }
+  // The root config also holds `deploy.include`/`exclude`, which can leave it
+  // out of the upload itself (e.g. `"include": ["dist/**"]`); its `deploy`
+  // section still applies.
+  for (const name of DENO_JSON_NAMES) {
+    if (name in denoJsonFiles) continue;
+    try {
+      denoJsonFiles[name] = await Deno.readTextFile(join(rootPath, name));
+    } catch (err) {
+      if (!(err instanceof Deno.errors.NotFound)) throw err;
     }
   }
 
