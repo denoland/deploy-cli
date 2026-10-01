@@ -107,6 +107,7 @@ const setupGCPCommand = new Command<GlobalContext>()
   }));
 
 const tunnelLoginCommand = new Command<GlobalContext>()
+  .description("Resolve org, app and token for `deno tunnel` (internal)")
   .option("--really-no-config", "really no config")
   .option("--out <file:string>", "out file")
   .hidden()
