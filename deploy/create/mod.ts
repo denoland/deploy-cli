@@ -248,7 +248,7 @@ export const createCommand = new Command<GlobalContext>()
       }
 
       if (
-        member?.buildConfig.from === "deno.json" &&
+        !options.json && member?.buildConfig.from === "deno.json" &&
         (options.doNotUseDetectedBuildConfig ||
           options.buildTimeout !== undefined)
       ) {
