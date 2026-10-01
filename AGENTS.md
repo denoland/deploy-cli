@@ -128,8 +128,8 @@ to run non-interactively.
   - static: `--static-dir <dir>`, `--single-page-app`
 - `--framework-preset <preset>`, `--install-command`, `--build-command`,
   `--pre-deploy-command`, `--app-directory <path>`
-- `--region <region>`, `--build-timeout <minutes>`,
-  `--build-memory-limit <megabytes>`
+- `--region <region>`, `--build-timeout <duration>` (minutes, or e.g.
+  `10m`/`600s`), `--build-memory-limit <megabytes>`
 
 ### `env`
 

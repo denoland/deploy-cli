@@ -3,6 +3,7 @@ import type { TRPCClient } from "../auth.ts";
 import {
   detectedBuildTimeout,
   detectedBuildTimeoutForOrg,
+  parseBuildTimeoutFlag,
 } from "../deploy/create/flow.ts";
 
 Deno.test("detectedBuildTimeout: undefined without a deno.json build timeout", () => {
@@ -86,4 +87,16 @@ Deno.test("detectedBuildTimeoutForOrg: leaves an unknown org uncapped for the co
     }),
     20,
   );
+});
+
+Deno.test("parseBuildTimeoutFlag: minutes, or a duration with a unit suffix", () => {
+  assertEquals(parseBuildTimeoutFlag("10"), 10);
+  assertEquals(parseBuildTimeoutFlag("10m"), 10);
+  assertEquals(parseBuildTimeoutFlag("600s"), 10);
+  assertEquals(parseBuildTimeoutFlag("30m"), 30);
+  for (
+    const value of ["7", "90s", "1h", "0", "10min", "1.5m", "", "-5", "05"]
+  ) {
+    assertEquals(parseBuildTimeoutFlag(value), null, value);
+  }
 });

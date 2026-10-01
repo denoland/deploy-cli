@@ -22,6 +22,26 @@ export const AVAILABLE_BUILD_TIMEOUTS = [5, 10, 15, 20, 25, 30];
 export const AVAILABLE_BUILD_MEMORY_LIMITS = [1024, 2048, 3072, 4096];
 export const REGIONS = ["us", "eu", "global"];
 
+const DURATION_UNIT_MINUTES: Record<string, number> = {
+  s: 1 / 60,
+  m: 1,
+  h: 60,
+};
+
+/**
+ * Parses `--build-timeout`: a whole number of minutes (`10`, as the flag has
+ * always taken), or a whole number with an `s`, `m` or `h` suffix (`"600s"`,
+ * `"10m"`). Returns the timeout in minutes if it is one of the available
+ * steps, and null otherwise.
+ */
+export function parseBuildTimeoutFlag(value: string): number | null {
+  const match = /^([1-9][0-9]*)([smh]?)$/.exec(value);
+  if (match === null) return null;
+  const minutes = Number(match[1]) *
+    (match[2] ? DURATION_UNIT_MINUTES[match[2]] : 1);
+  return AVAILABLE_BUILD_TIMEOUTS.includes(minutes) ? minutes : null;
+}
+
 /**
  * The build timeout a detected build config asks for (deno.json
  * `deploy.buildTimeout`), as the largest available step not above it or
