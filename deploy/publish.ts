@@ -118,6 +118,13 @@ export async function publish(
       if (!(err instanceof Deno.errors.NotFound)) throw err;
     }
   }
+  // A config selected with `--config` is the root config for this deploy, so
+  // it takes the place of the root deno.json (and of a root deno.jsonc, which
+  // the console would otherwise prefer).
+  if (context.config) {
+    delete denoJsonFiles["deno.jsonc"];
+    denoJsonFiles["deno.json"] = await Deno.readTextFile(context.config);
+  }
 
   if (context.debug) {
     console.error("Manifest", manifest);
