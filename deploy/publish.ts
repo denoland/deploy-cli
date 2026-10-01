@@ -26,6 +26,12 @@ type Chunk = {
   data: Uint8Array;
 };
 
+const DENO_JSON_NAMES = new Set(["deno.json", "deno.jsonc"]);
+
+export function isDenoJson(path: string): boolean {
+  return DENO_JSON_NAMES.has(path.slice(path.lastIndexOf("/") + 1));
+}
+
 export async function publish(
   context: GlobalContext,
   configContext: ConfigContext,
@@ -83,11 +89,19 @@ export async function publish(
   const [counter, body] = stream.tee();
 
   const manifest: Record<string, string> = {};
+  // The console reads the `deploy` section of the app directory's deno.json
+  // from these, as it does for GitHub deployments, so it applies on every
+  // deploy rather than only when the app is created.
+  const denoJsonFiles: Record<string, string> = {};
 
   spinner.message = "Generating hashes...";
 
-  for await (const { hash, relativePath } of counter) {
-    manifest[relativePath.replaceAll(SEPARATOR, "/")] = hash;
+  for await (const { hash, relativePath, data } of counter) {
+    const path = relativePath.replaceAll(SEPARATOR, "/");
+    manifest[path] = hash;
+    if (isDenoJson(path)) {
+      denoJsonFiles[path] = new TextDecoder().decode(data);
+    }
   }
 
   if (context.debug) {
@@ -103,6 +117,7 @@ export async function publish(
       app,
       production: prod,
       manifest,
+      denoJsonFiles,
     },
   ) as string;
 
