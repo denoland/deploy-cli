@@ -47,23 +47,17 @@ export function parseBuildTimeoutFlag(value: string): number | null {
 }
 
 /**
- * The build config detected in an app directory that is not a detected
- * workspace member, locally or in the GitHub repo. A deploy still applies its
- * deno.json `deploy` section, so `create` must know about it.
+ * The build config detected in a local app directory that is not a detected
+ * workspace member: a deploy still applies its deno.json `deploy` section, so
+ * `create` must know about it. Not attempted for a GitHub repo, where it would
+ * need a request whose failure exits the CLI, for what is only a warning.
  */
 export async function customDirectoryBuildConfig(
-  trpcClient: TRPCClient,
   rootPath: string,
   repo: Repo,
   path: string,
 ): Promise<DetectedBuildConfig | null> {
-  if (repo !== undefined) {
-    return await trpcClient.query("github.detectBuildConfigForRepo", {
-      owner: repo.owner,
-      repo: repo.repo,
-      path,
-    }) as DetectedBuildConfig | null;
-  }
+  if (repo !== undefined) return null;
   return await detectBuildConfig(
     new FrameworkFileSystemReader(resolve(rootPath, path)),
   ).catch(() => null);
@@ -258,7 +252,6 @@ export async function createFlow(
       member.path === selectedAppDirectory
     )?.buildConfig ??
       await customDirectoryBuildConfig(
-        trpcClient,
         rootPath,
         repo,
         selectedAppDirectory,

@@ -262,7 +262,6 @@ export const createCommand = new Command<GlobalContext>()
       ) {
         const detected = member?.buildConfig ??
           await customDirectoryBuildConfig(
-            createTrpcClient(options),
             rootPath,
             repo,
             buildDirectory,
