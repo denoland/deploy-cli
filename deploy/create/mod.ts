@@ -128,7 +128,7 @@ export const createCommand = new Command<GlobalContext>()
   )
   .option(
     "--build-timeout <duration:string>",
-    `The build timeout, as minutes or with an s, m or h suffix (e.g. 10, 10m, 600s). One of ${
+    `The build timeout, as minutes or with a unit suffix (e.g. 10, 10m, 600s). One of ${
       AVAILABLE_BUILD_TIMEOUTS.join(", ")
     } minutes. Defaults to deploy.buildTimeout from a detected deno.json, or ${
       AVAILABLE_BUILD_TIMEOUTS[0]

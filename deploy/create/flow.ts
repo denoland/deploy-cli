@@ -29,10 +29,10 @@ const DURATION_UNIT_MINUTES: Record<string, number> = {
 };
 
 /**
- * Parses `--build-timeout`: a whole number of minutes (`10`, as the flag has
- * always taken), or a whole number with an `s`, `m` or `h` suffix (`"600s"`,
+ * Parses `--build-timeout`: a number of minutes (`10`, as the flag has always
+ * taken), or a whole number with a unit suffix as in deno.json (`"600s"`,
  * `"10m"`). Returns the timeout in minutes if it is one of the available
- * steps, and null otherwise.
+ * steps (5 to 30 minutes), and null otherwise.
  */
 export function parseBuildTimeoutFlag(value: string): number | null {
   const match = /^([1-9][0-9]*)([smh])$/.exec(value);
