@@ -94,8 +94,11 @@ Deno.test("parseBuildTimeoutFlag: minutes, or a duration with a unit suffix", ()
   assertEquals(parseBuildTimeoutFlag("10m"), 10);
   assertEquals(parseBuildTimeoutFlag("600s"), 10);
   assertEquals(parseBuildTimeoutFlag("30m"), 30);
+  // A unitless value converts like the flag's former numeric type.
+  assertEquals(parseBuildTimeoutFlag("10.0"), 10);
+  assertEquals(parseBuildTimeoutFlag("05"), 5);
   for (
-    const value of ["7", "90s", "1h", "0", "10min", "1.5m", "", "-5", "05"]
+    const value of ["7", "90s", "1h", "0", "10min", "1.5m", "", "-5", "05m"]
   ) {
     assertEquals(parseBuildTimeoutFlag(value), null, value);
   }
