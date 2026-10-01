@@ -10,6 +10,7 @@ import {
   type BuildConfig,
   detectBuildConfig,
   type DetectedBuildConfig,
+  detectPackageManager,
   detectWorkspace,
   FrameworkFileSystemReader,
   SUPPORTED_FRAMEWORK_PRESETS,
@@ -58,9 +59,19 @@ export async function customDirectoryBuildConfig(
   path: string,
 ): Promise<DetectedBuildConfig | null> {
   if (repo !== undefined) return null;
-  return await detectBuildConfig(
-    new FrameworkFileSystemReader(resolve(rootPath, path)),
-  ).catch(() => null);
+  try {
+    // As `detectWorkspace` does: a lockfile at the root decides the package
+    // manager of a nested app.
+    const packageManager = await detectPackageManager(
+      new FrameworkFileSystemReader(rootPath),
+    );
+    return await detectBuildConfig(
+      new FrameworkFileSystemReader(resolve(rootPath, path)),
+      packageManager,
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
