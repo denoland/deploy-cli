@@ -47,9 +47,11 @@ async function appBuildDirectory(
       org,
       app,
     }) as { build_config?: { buildDirectory?: string } };
-    // Normalized as the console does: `.` and empty segments are dropped.
-    return (fullApp.build_config?.buildDirectory ?? "").split("/")
-      .filter((p) => p !== "" && p !== ".").join("/");
+    // Normalized as the console does: `.` and empty segments are dropped, and
+    // a path leaving the deploy root (which the console rejects) is ignored.
+    const segments = (fullApp.build_config?.buildDirectory ?? "").split("/")
+      .filter((p) => p !== "" && p !== ".");
+    return segments.includes("..") ? "" : segments.join("/");
   } catch {
     return "";
   }
