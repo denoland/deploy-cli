@@ -252,10 +252,13 @@ export const createCommand = new Command<GlobalContext>()
         buildDirectory = options.appDirectory || "";
       }
 
+      // Build settings given here are overridden by a deno.json `deploy`
+      // section: those passed as flags, or all of them for a custom app
+      // directory, whose config is synthesized from the flags below.
       if (
         !options.json &&
         (options.doNotUseDetectedBuildConfig ||
-          options.buildTimeout !== undefined)
+          options.buildTimeout !== undefined || member === undefined)
       ) {
         // A custom app directory is not a detected workspace member, but a
         // local deploy still sends its deno.json, so check it directly.

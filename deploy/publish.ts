@@ -32,6 +32,29 @@ export function isDenoJson(path: string): boolean {
   return DENO_JSON_NAMES.has(path.slice(path.lastIndexOf("/") + 1));
 }
 
+/**
+ * The app's stored build directory, relative to the deploy root ("" for the
+ * root). Falls back to the root if the app cannot be read, leaving the error
+ * to `apps.initiateCliRevision`, which reports a missing app as before.
+ */
+async function appBuildDirectory(
+  context: GlobalContext,
+  org: string,
+  app: string,
+): Promise<string> {
+  try {
+    const fullApp = await createTrpcClient(context).query("apps.get", {
+      org,
+      app,
+    }) as { build_config?: { buildDirectory?: string } };
+    // Normalized as the console does: `.` and empty segments are dropped.
+    return (fullApp.build_config?.buildDirectory ?? "").split("/")
+      .filter((p) => p !== "" && p !== ".").join("/");
+  } catch {
+    return "";
+  }
+}
+
 export async function publish(
   context: GlobalContext,
   configContext: ConfigContext,
@@ -92,9 +115,8 @@ export async function publish(
   // The console reads the `deploy` section of the app directory's deno.json
   // from these, as it does for GitHub deployments, so it applies on every
   // deploy rather than only when the app is created. They are taken from the
-  // uploaded files and the deploy root rather than from the config the CLI
-  // resolved (which may be `--config other.json`, or above the deploy root):
-  // the console only ever reads deno.json/deno.jsonc in the app directory.
+  // uploaded files, plus the app directory's config as below: the console
+  // only ever reads deno.json/deno.jsonc in the app's build directory.
   const denoJsonFiles: Record<string, string> = {};
 
   spinner.message = "Generating hashes...";
@@ -106,24 +128,28 @@ export async function publish(
       denoJsonFiles[path] = new TextDecoder().decode(data);
     }
   }
-  // The root config also holds `deploy.include`/`exclude`, which can leave it
-  // out of the upload itself (e.g. `"include": ["dist/**"]`); its `deploy`
-  // section still applies. A deno.json in a non-root app directory that the
-  // upload excludes is not sent: the CLI does not know the app directory.
-  for (const name of DENO_JSON_NAMES) {
-    if (name in denoJsonFiles) continue;
-    try {
-      denoJsonFiles[name] = await Deno.readTextFile(join(rootPath, name));
-    } catch (err) {
-      if (!(err instanceof Deno.errors.NotFound)) throw err;
-    }
-  }
-  // A config selected with `--config` is the root config for this deploy, so
-  // it takes the place of the root deno.json (and of a root deno.jsonc, which
-  // the console would otherwise prefer).
+  // The console reads the config in the app's build directory, which the
+  // upload can leave out through `deploy.include`/`exclude` (e.g.
+  // `"include": ["dist/**"]`) while its `deploy` section still applies, and
+  // which a config selected with `--config` stands in for.
+  const appDir = await appBuildDirectory(context, org, app);
+  const prefix = appDir === "" ? "" : `${appDir}/`;
   if (context.config) {
-    delete denoJsonFiles["deno.jsonc"];
-    denoJsonFiles["deno.json"] = await Deno.readTextFile(context.config);
+    delete denoJsonFiles[`${prefix}deno.jsonc`];
+    denoJsonFiles[`${prefix}deno.json`] = await Deno.readTextFile(
+      context.config,
+    );
+  } else {
+    for (const name of DENO_JSON_NAMES) {
+      if (`${prefix}${name}` in denoJsonFiles) continue;
+      try {
+        denoJsonFiles[`${prefix}${name}`] = await Deno.readTextFile(
+          join(rootPath, appDir, name),
+        );
+      } catch (err) {
+        if (!(err instanceof Deno.errors.NotFound)) throw err;
+      }
+    }
   }
 
   if (context.debug) {
