@@ -10,7 +10,7 @@
     "jsr:@david/jsonc-morph@~0.3.4": "0.3.4",
     "jsr:@david/path@0.2": "0.2.0",
     "jsr:@david/which@~0.4.1": "0.4.2",
-    "jsr:@deno/framework-detect@~0.3.1": "0.3.1",
+    "jsr:@deno/framework-detect@~0.3.2": "0.3.2",
     "jsr:@deno/sandbox@~0.13.2": "0.13.2",
     "jsr:@std/assert@^1.0.19": "1.0.19",
     "jsr:@std/async@1.3.0": "1.3.0",
@@ -110,8 +110,8 @@
     "@david/which@0.4.2": {
       "integrity": "440ee262bc0673b57a39ad4d0dc5673e515ddd41c049a55b2588a0881e5d4a8c"
     },
-    "@deno/framework-detect@0.3.1": {
-      "integrity": "51828884d4f8e8d76c66d73b59ccb07fd79d409ea8ada388c0d9713e0cba026a",
+    "@deno/framework-detect@0.3.2": {
+      "integrity": "a4702db291d0ae701033a12aeeff5a3dcba84d4f30874eb4f6f651e7dca90ebd",
       "dependencies": [
         "jsr:@std/jsonc",
         "jsr:@std/path@^1.1.2"
@@ -2612,7 +2612,7 @@
       "jsr:@cliffy/command@^1.2.1",
       "jsr:@david/dax@~0.44.2",
       "jsr:@david/jsonc-morph@~0.3.4",
-      "jsr:@deno/framework-detect@~0.3.1",
+      "jsr:@deno/framework-detect@~0.3.2",
       "jsr:@deno/sandbox@~0.13.2",
       "jsr:@std/assert@^1.0.19",
       "jsr:@std/async@^1.5.0",
