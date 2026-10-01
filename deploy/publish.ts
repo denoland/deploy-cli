@@ -42,8 +42,59 @@ export function normalizeBuildDirectory(buildDirectory: string): string {
 }
 
 /**
- * The app's stored build directory, relative to the deploy root ("" for the
- * root). A failure here (e.g. a missing app) is reported and exits just as
+ * The deno.json files to send with a CLI revision. The console reads the
+ * `deploy` section of the deno.json in the app's build directory, as it does
+ * for GitHub deployments, so it applies on every deploy rather than only when
+ * the app is created; it reads no other config, so only that directory's are
+ * sent. A config selected with `--config` stands in for it, and one the upload
+ * leaves out through `deploy.include`/`exclude` (e.g. `"include": ["dist/**"]`)
+ * still applies, so it is read from disk.
+ */
+export async function collectDenoJsonFiles(
+  { rootPath, buildDirectory, uploaded, configPath }: {
+    rootPath: string;
+    /** The app's stored build directory, as stored. */
+    buildDirectory: string;
+    /** The uploaded deno.json/deno.jsonc files, by `/`-separated path. */
+    uploaded: Record<string, string>;
+    configPath?: string;
+  },
+): Promise<Record<string, string>> {
+  const appDir = normalizeBuildDirectory(buildDirectory);
+  const prefix = appDir === "" ? "" : `${appDir}/`;
+  const files: Record<string, string> = {};
+  for (const name of DENO_JSON_NAMES) {
+    if (`${prefix}${name}` in uploaded) {
+      files[`${prefix}${name}`] = uploaded[`${prefix}${name}`];
+    }
+  }
+  if (configPath) {
+    delete files[`${prefix}deno.jsonc`];
+    files[`${prefix}deno.json`] = await Deno.readTextFile(configPath);
+    return files;
+  }
+  const dir = resolve(rootPath, appDir);
+  const fromRoot = relative(resolve(rootPath), dir);
+  if (
+    fromRoot === ".." || fromRoot.startsWith(`..${SEPARATOR}`) ||
+    isAbsolute(fromRoot)
+  ) {
+    return files;
+  }
+  for (const name of DENO_JSON_NAMES) {
+    if (`${prefix}${name}` in files) continue;
+    try {
+      files[`${prefix}${name}`] = await Deno.readTextFile(join(dir, name));
+    } catch (err) {
+      if (!(err instanceof Deno.errors.NotFound)) throw err;
+    }
+  }
+  return files;
+}
+
+/**
+ * The app's stored build directory, as stored (see `normalizeBuildDirectory`).
+ * A failure here (e.g. a missing app) is reported and exits just as
  * `apps.initiateCliRevision` would have.
  */
 async function appBuildDirectory(
@@ -55,7 +106,7 @@ async function appBuildDirectory(
     org,
     app,
   }) as AppDetail;
-  return normalizeBuildDirectory(fullApp.build_config?.buildDirectory ?? "");
+  return fullApp.build_config?.buildDirectory ?? "";
 }
 
 export async function publish(
@@ -115,47 +166,24 @@ export async function publish(
   const [counter, body] = stream.tee();
 
   const manifest: Record<string, string> = {};
-  // The console reads the `deploy` section of the deno.json in the app's build
-  // directory, as it does for GitHub deployments, so it applies on every
-  // deploy rather than only when the app is created. Only that directory's
-  // configs are sent: the console reads no others.
-  const appDir = await appBuildDirectory(context, org, app);
-  const prefix = appDir === "" ? "" : `${appDir}/`;
-  const denoJsonFiles: Record<string, string> = {};
+  const uploadedDenoJsonFiles: Record<string, string> = {};
 
   spinner.message = "Generating hashes...";
 
   for await (const { hash, relativePath, data } of counter) {
     const path = relativePath.replaceAll(SEPARATOR, "/");
     manifest[path] = hash;
-    if (path === `${prefix}deno.json` || path === `${prefix}deno.jsonc`) {
-      denoJsonFiles[path] = new TextDecoder().decode(data);
+    if (DENO_JSON_NAMES.has(path.slice(path.lastIndexOf("/") + 1))) {
+      uploadedDenoJsonFiles[path] = new TextDecoder().decode(data);
     }
   }
-  // A config selected with `--config` stands in for the app directory's. One
-  // the upload leaves out through `deploy.include`/`exclude` (e.g.
-  // `"include": ["dist/**"]`) still applies, so it is read from disk.
-  if (context.config) {
-    delete denoJsonFiles[`${prefix}deno.jsonc`];
-    denoJsonFiles[`${prefix}deno.json`] = await Deno.readTextFile(
-      context.config,
-    );
-  } else {
-    const dir = resolve(rootPath, appDir);
-    const fromRoot = relative(resolve(rootPath), dir);
-    const insideRoot = fromRoot !== ".." &&
-      !fromRoot.startsWith(`..${SEPARATOR}`) && !isAbsolute(fromRoot);
-    for (const name of insideRoot ? DENO_JSON_NAMES : []) {
-      if (`${prefix}${name}` in denoJsonFiles) continue;
-      try {
-        denoJsonFiles[`${prefix}${name}`] = await Deno.readTextFile(
-          join(dir, name),
-        );
-      } catch (err) {
-        if (!(err instanceof Deno.errors.NotFound)) throw err;
-      }
-    }
-  }
+
+  const denoJsonFiles = await collectDenoJsonFiles({
+    rootPath,
+    buildDirectory: await appBuildDirectory(context, org, app),
+    uploaded: uploadedDenoJsonFiles,
+    configPath: context.config,
+  });
 
   if (context.debug) {
     console.error("Manifest", manifest);
