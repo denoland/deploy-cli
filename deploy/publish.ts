@@ -28,8 +28,16 @@ type Chunk = {
 
 const DENO_JSON_NAMES = new Set(["deno.json", "deno.jsonc"]);
 
-export function isDenoJson(path: string): boolean {
-  return DENO_JSON_NAMES.has(path.slice(path.lastIndexOf("/") + 1));
+/**
+ * Normalizes an app's stored build directory as the console does: `.` and
+ * empty segments are dropped, and a path leaving the deploy root (which the
+ * console rejects) becomes the root, "".
+ */
+export function normalizeBuildDirectory(buildDirectory: string): string {
+  const segments = buildDirectory.split(/[\\/]/).filter((p) =>
+    p !== "" && p !== "."
+  );
+  return segments.includes("..") ? "" : segments.join("/");
 }
 
 /**
@@ -46,11 +54,7 @@ async function appBuildDirectory(
     org,
     app,
   }) as { build_config?: { buildDirectory?: string } };
-  // Normalized as the console does: `.` and empty segments are dropped, and a
-  // path leaving the deploy root (which the console rejects) is ignored.
-  const segments = (fullApp.build_config?.buildDirectory ?? "")
-    .split(/[\\/]/).filter((p) => p !== "" && p !== ".");
-  return segments.includes("..") ? "" : segments.join("/");
+  return normalizeBuildDirectory(fullApp.build_config?.buildDirectory ?? "");
 }
 
 export async function publish(
@@ -110,11 +114,12 @@ export async function publish(
   const [counter, body] = stream.tee();
 
   const manifest: Record<string, string> = {};
-  // The console reads the `deploy` section of the app directory's deno.json
-  // from these, as it does for GitHub deployments, so it applies on every
-  // deploy rather than only when the app is created. They are taken from the
-  // uploaded files, plus the app directory's config as below: the console
-  // only ever reads deno.json/deno.jsonc in the app's build directory.
+  // The console reads the `deploy` section of the deno.json in the app's build
+  // directory, as it does for GitHub deployments, so it applies on every
+  // deploy rather than only when the app is created. Only that directory's
+  // configs are sent: the console reads no others.
+  const appDir = await appBuildDirectory(context, org, app);
+  const prefix = appDir === "" ? "" : `${appDir}/`;
   const denoJsonFiles: Record<string, string> = {};
 
   spinner.message = "Generating hashes...";
@@ -122,16 +127,13 @@ export async function publish(
   for await (const { hash, relativePath, data } of counter) {
     const path = relativePath.replaceAll(SEPARATOR, "/");
     manifest[path] = hash;
-    if (isDenoJson(path)) {
+    if (path === `${prefix}deno.json` || path === `${prefix}deno.jsonc`) {
       denoJsonFiles[path] = new TextDecoder().decode(data);
     }
   }
-  // The console reads the config in the app's build directory, which the
-  // upload can leave out through `deploy.include`/`exclude` (e.g.
-  // `"include": ["dist/**"]`) while its `deploy` section still applies, and
-  // which a config selected with `--config` stands in for.
-  const appDir = await appBuildDirectory(context, org, app);
-  const prefix = appDir === "" ? "" : `${appDir}/`;
+  // A config selected with `--config` stands in for the app directory's. One
+  // the upload leaves out through `deploy.include`/`exclude` (e.g.
+  // `"include": ["dist/**"]`) still applies, so it is read from disk.
   if (context.config) {
     delete denoJsonFiles[`${prefix}deno.jsonc`];
     denoJsonFiles[`${prefix}deno.json`] = await Deno.readTextFile(
@@ -140,7 +142,8 @@ export async function publish(
   } else {
     const dir = resolve(rootPath, appDir);
     const fromRoot = relative(resolve(rootPath), dir);
-    const insideRoot = !fromRoot.startsWith("..") && !isAbsolute(fromRoot);
+    const insideRoot = fromRoot !== ".." &&
+      !fromRoot.startsWith(`..${SEPARATOR}`) && !isAbsolute(fromRoot);
     for (const name of insideRoot ? DENO_JSON_NAMES : []) {
       if (`${prefix}${name}` in denoJsonFiles) continue;
       try {
