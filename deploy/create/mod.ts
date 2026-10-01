@@ -7,6 +7,7 @@ import {
   createFlow,
   DENO_JSON_PRECEDENCE_WARNING,
   detectedBuildTimeoutForOrg,
+  parseBuildTimeoutFlag,
   REGIONS,
   renderBuildConfig,
 } from "./flow.ts";
@@ -128,21 +129,24 @@ export const createCommand = new Command<GlobalContext>()
       "For static configuration",
   )
   .option(
-    "--build-timeout <minutes:number>",
-    `The build timeout in minutes. One of ${
+    "--build-timeout <duration:string>",
+    `The build timeout, as minutes or with a unit suffix (e.g. 10, 10m, 600s). One of ${
       AVAILABLE_BUILD_TIMEOUTS.join(", ")
-    }. Defaults to deploy.buildTimeout from a detected deno.json, or ${
+    } minutes. Defaults to deploy.buildTimeout from a detected deno.json, or ${
       AVAILABLE_BUILD_TIMEOUTS[0]
-    }`,
+    } minutes`,
     {
-      value(value: number) {
-        if (AVAILABLE_BUILD_TIMEOUTS.includes(value)) {
-          return value;
+      value(value: string) {
+        const minutes = parseBuildTimeoutFlag(value);
+        if (minutes !== null) {
+          return minutes;
         } else {
           throw new ValidationError(
             `Invalid build timeout: ${value}. Valid values are ${
               AVAILABLE_BUILD_TIMEOUTS.join(", ")
-            }.`,
+            } minutes, e.g. ${AVAILABLE_BUILD_TIMEOUTS[1]} or ${
+              AVAILABLE_BUILD_TIMEOUTS[1]
+            }m.`,
           );
         }
       },
