@@ -1,4 +1,5 @@
 import { createTrpcClient, type TRPCClient } from "../../auth.ts";
+import { resolve } from "@std/path";
 import { green } from "@std/fmt/colors";
 import { error } from "../../util.ts";
 import {
@@ -7,6 +8,7 @@ import {
 } from "@std/cli/unstable-prompt-select";
 import {
   type BuildConfig,
+  detectBuildConfig,
   type DetectedBuildConfig,
   detectWorkspace,
   FrameworkFileSystemReader,
@@ -42,6 +44,29 @@ export function parseBuildTimeoutFlag(value: string): number | null {
     ? Number(value)
     : Number(match[1]) * DURATION_UNIT_MINUTES[match[2]];
   return AVAILABLE_BUILD_TIMEOUTS.includes(minutes) ? minutes : null;
+}
+
+/**
+ * The build config detected in an app directory that is not a detected
+ * workspace member, locally or in the GitHub repo. A deploy still applies its
+ * deno.json `deploy` section, so `create` must know about it.
+ */
+export async function customDirectoryBuildConfig(
+  trpcClient: TRPCClient,
+  rootPath: string,
+  repo: Repo,
+  path: string,
+): Promise<DetectedBuildConfig | null> {
+  if (repo !== undefined) {
+    return await trpcClient.query("github.detectBuildConfigForRepo", {
+      owner: repo.owner,
+      repo: repo.repo,
+      path,
+    }) as DetectedBuildConfig | null;
+  }
+  return await detectBuildConfig(
+    new FrameworkFileSystemReader(resolve(rootPath, path)),
+  ).catch(() => null);
 }
 
 /**
@@ -231,7 +256,13 @@ export async function createFlow(
   if (typeof selectedAppDirectory === "string") {
     buildConfig = appDirectories.members.find((member) =>
       member.path === selectedAppDirectory
-    )?.buildConfig ?? null;
+    )?.buildConfig ??
+      await customDirectoryBuildConfig(
+        trpcClient,
+        rootPath,
+        repo,
+        selectedAppDirectory,
+      );
   } else {
     buildConfig = selectedAppDirectory.buildConfig;
   }

@@ -113,3 +113,33 @@ Deno.test("collectDenoJsonFiles: never reads outside the deploy root", async () 
     }
   });
 });
+
+Deno.test("collectDenoJsonFiles: never follows a symlink out of the deploy root", async () => {
+  await withProject({
+    "project/main.ts": "",
+    "private/deno.json": "secret",
+  }, async (dir) => {
+    const rootPath = join(dir, "project");
+    await Deno.symlink(join(dir, "private"), join(rootPath, "linked"));
+    await Deno.symlink(
+      join(dir, "private", "deno.json"),
+      join(rootPath, "deno.json"),
+    );
+    assertEquals(
+      await collectDenoJsonFiles({
+        rootPath,
+        buildDirectory: "linked",
+        uploaded: {},
+      }),
+      {},
+    );
+    assertEquals(
+      await collectDenoJsonFiles({
+        rootPath,
+        buildDirectory: "",
+        uploaded: {},
+      }),
+      {},
+    );
+  });
+});

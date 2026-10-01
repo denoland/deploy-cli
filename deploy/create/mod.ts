@@ -5,6 +5,7 @@ import {
   AVAILABLE_BUILD_MEMORY_LIMITS,
   AVAILABLE_BUILD_TIMEOUTS,
   createFlow,
+  customDirectoryBuildConfig,
   DENO_JSON_PRECEDENCE_WARNING,
   detectedBuildTimeoutForOrg,
   parseBuildTimeoutFlag,
@@ -14,7 +15,6 @@ import {
 import { createTrpcClient, getAuth } from "../../auth.ts";
 import {
   type BuildConfig,
-  detectBuildConfig,
   detectWorkspace,
   FrameworkFileSystemReader,
   type FrameworkPreset,
@@ -260,14 +260,13 @@ export const createCommand = new Command<GlobalContext>()
         (options.doNotUseDetectedBuildConfig ||
           options.buildTimeout !== undefined || member === undefined)
       ) {
-        // A custom app directory is not a detected workspace member, but a
-        // local deploy still sends its deno.json, so check it directly.
         const detected = member?.buildConfig ??
-          (source === "local"
-            ? await detectBuildConfig(
-              new FrameworkFileSystemReader(resolve(rootPath, buildDirectory)),
-            ).catch(() => undefined)
-            : undefined);
+          await customDirectoryBuildConfig(
+            createTrpcClient(options),
+            rootPath,
+            repo,
+            buildDirectory,
+          );
         if (detected?.from === "deno.json") {
           console.warn(DENO_JSON_PRECEDENCE_WARNING);
         }

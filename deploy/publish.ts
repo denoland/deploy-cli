@@ -73,21 +73,26 @@ export async function collectDenoJsonFiles(
     files[`${prefix}deno.json`] = await Deno.readTextFile(configPath);
     return files;
   }
-  const dir = resolve(rootPath, appDir);
-  const fromRoot = relative(resolve(rootPath), dir);
-  if (
-    fromRoot === ".." || fromRoot.startsWith(`..${SEPARATOR}`) ||
-    isAbsolute(fromRoot)
-  ) {
-    return files;
-  }
+  // Symlinks are resolved first, so that neither the app directory nor the
+  // config can point outside the deploy root.
+  const root = await Deno.realPath(rootPath);
   for (const name of DENO_JSON_NAMES) {
     if (`${prefix}${name}` in files) continue;
+    let path;
     try {
-      files[`${prefix}${name}`] = await Deno.readTextFile(join(dir, name));
+      path = await Deno.realPath(join(rootPath, appDir, name));
     } catch (err) {
-      if (!(err instanceof Deno.errors.NotFound)) throw err;
+      if (err instanceof Deno.errors.NotFound) continue;
+      throw err;
     }
+    const fromRoot = relative(root, path);
+    if (
+      fromRoot === ".." || fromRoot.startsWith(`..${SEPARATOR}`) ||
+      isAbsolute(fromRoot)
+    ) {
+      continue;
+    }
+    files[`${prefix}${name}`] = await Deno.readTextFile(path);
   }
   return files;
 }
