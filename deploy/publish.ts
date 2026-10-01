@@ -1,7 +1,7 @@
 import { TarStream, type TarStreamFile } from "@std/tar";
 import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
-import { join, relative, resolve, SEPARATOR } from "@std/path";
+import { isAbsolute, join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
 import { authedFetch, createTrpcClient } from "../auth.ts";
 import {
@@ -34,27 +34,23 @@ export function isDenoJson(path: string): boolean {
 
 /**
  * The app's stored build directory, relative to the deploy root ("" for the
- * root). Falls back to the root if the app cannot be read, leaving the error
- * to `apps.initiateCliRevision`, which reports a missing app as before.
+ * root). A failure here (e.g. a missing app) is reported and exits just as
+ * `apps.initiateCliRevision` would have.
  */
 async function appBuildDirectory(
   context: GlobalContext,
   org: string,
   app: string,
 ): Promise<string> {
-  try {
-    const fullApp = await createTrpcClient(context).query("apps.get", {
-      org,
-      app,
-    }) as { build_config?: { buildDirectory?: string } };
-    // Normalized as the console does: `.` and empty segments are dropped, and
-    // a path leaving the deploy root (which the console rejects) is ignored.
-    const segments = (fullApp.build_config?.buildDirectory ?? "")
-      .split(/[\\/]/).filter((p) => p !== "" && p !== ".");
-    return segments.includes("..") ? "" : segments.join("/");
-  } catch {
-    return "";
-  }
+  const fullApp = await createTrpcClient(context).query("apps.get", {
+    org,
+    app,
+  }) as { build_config?: { buildDirectory?: string } };
+  // Normalized as the console does: `.` and empty segments are dropped, and a
+  // path leaving the deploy root (which the console rejects) is ignored.
+  const segments = (fullApp.build_config?.buildDirectory ?? "")
+    .split(/[\\/]/).filter((p) => p !== "" && p !== ".");
+  return segments.includes("..") ? "" : segments.join("/");
 }
 
 export async function publish(
@@ -142,9 +138,9 @@ export async function publish(
       context.config,
     );
   } else {
-    const root = resolve(rootPath);
-    const dir = resolve(root, appDir);
-    const insideRoot = dir === root || dir.startsWith(root + SEPARATOR);
+    const dir = resolve(rootPath, appDir);
+    const fromRoot = relative(resolve(rootPath), dir);
+    const insideRoot = !fromRoot.startsWith("..") && !isAbsolute(fromRoot);
     for (const name of insideRoot ? DENO_JSON_NAMES : []) {
       if (`${prefix}${name}` in denoJsonFiles) continue;
       try {
