@@ -49,8 +49,8 @@ async function appBuildDirectory(
     }) as { build_config?: { buildDirectory?: string } };
     // Normalized as the console does: `.` and empty segments are dropped, and
     // a path leaving the deploy root (which the console rejects) is ignored.
-    const segments = (fullApp.build_config?.buildDirectory ?? "").split("/")
-      .filter((p) => p !== "" && p !== ".");
+    const segments = (fullApp.build_config?.buildDirectory ?? "")
+      .split(/[\\/]/).filter((p) => p !== "" && p !== ".");
     return segments.includes("..") ? "" : segments.join("/");
   } catch {
     return "";
@@ -142,11 +142,14 @@ export async function publish(
       context.config,
     );
   } else {
-    for (const name of DENO_JSON_NAMES) {
+    const root = resolve(rootPath);
+    const dir = resolve(root, appDir);
+    const insideRoot = dir === root || dir.startsWith(root + SEPARATOR);
+    for (const name of insideRoot ? DENO_JSON_NAMES : []) {
       if (`${prefix}${name}` in denoJsonFiles) continue;
       try {
         denoJsonFiles[`${prefix}${name}`] = await Deno.readTextFile(
-          join(rootPath, appDir, name),
+          join(dir, name),
         );
       } catch (err) {
         if (!(err instanceof Deno.errors.NotFound)) throw err;
