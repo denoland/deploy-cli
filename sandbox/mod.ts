@@ -686,6 +686,13 @@ full reference.`)
     "-y, --non-interactive",
     "Fail fast instead of prompting; values must be supplied via flags or env vars (alias: -y)",
   )
+  // Intercepted in main.ts before parsing; declared here so it shows up in the
+  // dumped command tree.
+  .globalOption(
+    "--help-json",
+    "Print the command tree (commands, flags, arguments) as JSON and exit",
+    { hidden: true },
+  )
   .globalAction((options) => {
     const endpoint = Deno.env.get("DENO_DEPLOY_ENDPOINT");
     if (endpoint) {
