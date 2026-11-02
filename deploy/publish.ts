@@ -3,9 +3,11 @@ import { ProgressBar } from "@std/cli/unstable-progress-bar";
 import { Spinner } from "@std/cli/unstable-spinner";
 import { isAbsolute, join, relative, resolve, SEPARATOR } from "@std/path";
 import { green, red, yellow } from "@std/fmt/colors";
-import { authedFetch, createTrpcClient } from "../auth.ts";
+import { authedFetch, createTrpcClient, type TRPCClient } from "../auth.ts";
 import {
   error,
+  type ErrorOptions,
+  ExitCode,
   selectProductionUrl,
   shouldUseSpinner,
   writeJsonResult,
@@ -14,10 +16,221 @@ import type { GlobalContext } from "../main.ts";
 import type { ConfigContext } from "../config.ts";
 import type { AppDetail } from "./apps.ts";
 
-interface Revision {
+export interface Revision {
   labels: Record<string, string>;
   steps: { step: string }[];
-  status: "cancelled" | "failed";
+  status: "building" | "routeable" | "routed" | "cancelled" | "failed";
+  /** Set by the console when a failed build could be classified. */
+  build_failure?: { kind: string; message: string } | null;
+}
+
+/**
+ * The label the console sets on a diff-sync revision once the builder has
+ * compared the uploaded manifest against its cache: a JSON-encoded array of
+ * the hashes whose files the CLI still has to upload (`"[]"` when none).
+ */
+export const MISSING_HASHES_LABEL = "deno.diffsync.missing_hashes";
+
+/**
+ * How long to wait for the builder to report which files to upload. The
+ * report arrives while the build is still preparing, long before any build
+ * timeout, so a wait this long means the build never started.
+ */
+export const MISSING_HASHES_TIMEOUT_MS = 10 * 60 * 1000;
+
+export type MissingHashesFailure =
+  /** The revision failed or was cancelled before the builder reported. */
+  | { reason: "revision_terminal"; revision: Revision }
+  /** The server ended the stream without the label or a terminal status. */
+  | { reason: "stream_ended"; revision: Revision | undefined }
+  /** No report within `timeoutMs`. */
+  | { reason: "timeout"; revision: Revision | undefined; timeoutMs: number }
+  /** A snapshot without labels, or a label that is not a JSON array of strings. */
+  | { reason: "malformed_label"; revision: Revision | undefined; value: string }
+  /** The subscription itself failed. */
+  | {
+    reason: "subscription_error";
+    revision: Revision | undefined;
+    error: unknown;
+  };
+
+export class MissingHashesError extends Error {
+  constructor(readonly failure: MissingHashesFailure) {
+    super(`missing hashes unavailable: ${failure.reason}`);
+    this.name = "MissingHashesError";
+  }
+}
+
+function parseMissingHashes(value: string): string[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  return Array.isArray(parsed) &&
+      parsed.every((hash) => typeof hash === "string")
+    ? parsed
+    : undefined;
+}
+
+function isTerminal(revision: Revision): boolean {
+  return revision.status === "failed" || revision.status === "cancelled";
+}
+
+/**
+ * Watches the revision until the console publishes the hashes the builder is
+ * missing (see {@link MISSING_HASHES_LABEL}). Settles on every exit of the
+ * stream: the label makes it resolve; a terminal revision, the stream ending,
+ * a subscription error, or the timeout reject with a {@link MissingHashesError}
+ * naming the cause, so the deploy fails with a message instead of waiting on
+ * a stream that will never deliver.
+ */
+export function waitForMissingHashes(
+  trpcClient: TRPCClient,
+  input: { org: string; app: string; revision: string },
+  { timeoutMs = MISSING_HASHES_TIMEOUT_MS }: { timeoutMs?: number } = {},
+): Promise<{ missingHashes: string[]; revision: Revision }> {
+  const { promise, resolve, reject } = Promise.withResolvers<
+    { missingHashes: string[]; revision: Revision }
+  >();
+  let revision: Revision | undefined;
+  // Assigned once `subscription` returns; a callback may run before that.
+  let sub: { unsubscribe(): void } | undefined = undefined;
+  let settled = false;
+
+  const timer = setTimeout(() => {
+    fail({ reason: "timeout", revision, timeoutMs });
+  }, timeoutMs);
+
+  function finish() {
+    settled = true;
+    clearTimeout(timer);
+    sub?.unsubscribe();
+  }
+  function fail(failure: MissingHashesFailure) {
+    if (settled) return;
+    finish();
+    reject(new MissingHashesError(failure));
+  }
+  // The console ends the stream once the revision is terminal, so a stream
+  // that ends after a failed or cancelled snapshot is reported as that.
+  function streamEnded() {
+    fail(
+      revision !== undefined && isTerminal(revision)
+        ? { reason: "revision_terminal", revision }
+        : { reason: "stream_ended", revision },
+    );
+  }
+
+  sub = trpcClient.subscription("revisions.watchUntilReady", input, {
+    onData: (data: unknown) => {
+      if (settled) return;
+      const labels = (data as Partial<Revision> | null)?.labels;
+      if (
+        typeof labels !== "object" || labels === null || Array.isArray(labels)
+      ) {
+        fail({
+          reason: "malformed_label",
+          revision,
+          value: Deno.inspect(data),
+        });
+        return;
+      }
+      revision = data as Revision;
+      if (MISSING_HASHES_LABEL in revision.labels) {
+        const value = revision.labels[MISSING_HASHES_LABEL];
+        const missingHashes = parseMissingHashes(value);
+        if (missingHashes === undefined) {
+          fail({ reason: "malformed_label", revision, value });
+          return;
+        }
+        finish();
+        resolve({ missingHashes, revision });
+      } else if (isTerminal(revision)) {
+        // The builder reports before the build runs, so a revision that ended
+        // without the label will never carry it.
+        fail({ reason: "revision_terminal", revision });
+      }
+    },
+    // The CLI's tRPC client (`auth.ts`) reports and exits on errors in its
+    // error link, so this only runs for a client built without that link; it
+    // settles the wait either way.
+    onError: (err: unknown) => {
+      fail({ reason: "subscription_error", revision, error: err });
+    },
+    onStopped: streamEnded,
+    onComplete: streamEnded,
+  });
+  // A callback may have settled the wait before `subscription` returned.
+  if (settled) sub.unsubscribe();
+
+  return promise;
+}
+
+/**
+ * The error to report for a {@link MissingHashesFailure}: a message naming
+ * what happened, with the revision's console URL as the hint so the build
+ * logs are one click away.
+ */
+export function describeMissingHashesFailure(
+  failure: MissingHashesFailure,
+  revisionUrl: string,
+): { message: string } & ErrorOptions {
+  const hint = `View ${revisionUrl} for details.`;
+  switch (failure.reason) {
+    case "revision_terminal": {
+      const { status, build_failure } = failure.revision;
+      const detail = build_failure?.message ? `\n${build_failure.message}` : "";
+      return {
+        message: `The revision ${
+          status === "cancelled" ? "was cancelled" : "failed"
+        } before the upload could start.${detail}`,
+        code: ExitCode.GENERIC,
+        errorCode: status === "cancelled"
+          ? "REVISION_CANCELLED"
+          : "REVISION_FAILED",
+        hint,
+      };
+    }
+    case "stream_ended":
+      return {
+        message:
+          "The server closed the revision stream before reporting which files need uploading.",
+        code: ExitCode.NETWORK,
+        errorCode: "DIFFSYNC_STREAM_ENDED",
+        hint:
+          `The revision may have been cancelled or superseded by another deploy. ${hint} Then retry the deploy.`,
+      };
+    case "timeout":
+      return {
+        message: `Timed out after ${
+          Math.round(failure.timeoutMs / 60_000)
+        } minutes waiting for the build to report which files need uploading.`,
+        code: ExitCode.NETWORK,
+        errorCode: "DIFFSYNC_TIMEOUT",
+        hint:
+          `The build may be stuck or queued. ${hint} Then retry the deploy.`,
+      };
+    case "malformed_label":
+      return {
+        message:
+          `The server reported the files to upload in an unexpected format: ${failure.value}`,
+        code: ExitCode.NETWORK,
+        errorCode: "DIFFSYNC_MALFORMED_RESPONSE",
+        hint,
+      };
+    case "subscription_error":
+      return {
+        message:
+          `The revision stream failed before reporting which files need uploading: ${
+            Deno.inspect(failure.error)
+          }`,
+        code: ExitCode.NETWORK,
+        errorCode: "DIFFSYNC_SUBSCRIPTION_ERROR",
+        hint: `${hint} Then retry the deploy.`,
+      };
+  }
 }
 
 type Chunk = {
@@ -214,42 +427,28 @@ export async function publish(
     `You can view the revision here:\n  ${context.endpoint}/${org}/${app}/builds/${revisionId}\n`,
   );
 
-  const missingHashesPromise = Promise.withResolvers<string[]>();
-
   const existingFilesSpinner = startSpinner(
     "Loading previously uploaded files...",
   );
 
-  let revision: Revision | undefined = undefined;
-  const sub = trpcClient.subscription(
-    "revisions.watchUntilReady",
-    {
+  let missingHashes: string[];
+  let revision: Revision | undefined;
+  try {
+    ({ missingHashes, revision } = await waitForMissingHashes(trpcClient, {
       org,
       app,
       revision: revisionId,
-    },
-    {
-      onData: (data: unknown) => {
-        const typedData = data as Revision;
-        revision = typedData;
-        if ("deno.diffsync.missing_hashes" in typedData.labels) {
-          missingHashesPromise.resolve(
-            JSON.parse(typedData.labels["deno.diffsync.missing_hashes"]),
-          );
-          sub.unsubscribe();
-        }
-      },
-      onError: (err: unknown) => {
-        sub.unsubscribe();
-        error(context, Deno.inspect(err));
-      },
-      onStopped: () => {
-        sub.unsubscribe();
-      },
-    },
-  );
-
-  const missingHashes = await missingHashesPromise.promise;
+    }));
+  } catch (err) {
+    existingFilesSpinner.stop();
+    if (!(err instanceof MissingHashesError)) throw err;
+    if (context.debug) console.error(err.failure);
+    const { message, ...opts } = describeMissingHashesFailure(
+      err.failure,
+      `${context.endpoint}/${org}/${app}/builds/${revisionId}`,
+    );
+    error(context, message, opts);
+  }
 
   existingFilesSpinner.stop();
   log(`${green("✔")} Loaded previously uploaded files`);
