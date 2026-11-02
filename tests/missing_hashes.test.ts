@@ -180,6 +180,19 @@ Deno.test("waitForMissingHashes: rejects a label that is not a string array", as
   }
 });
 
+Deno.test("waitForMissingHashes: rejects a snapshot without labels instead of throwing", async () => {
+  for (
+    const data of [{ steps: [], status: "building" }, { labels: null }, null]
+  ) {
+    const { client, state } = fakeWatchClient();
+    const wait = waitForMissingHashes(client, INPUT);
+    state.observer!.onData(data);
+    const f = await failure(wait);
+    assertEquals(f.reason, "malformed_label");
+    assertEquals(state.unsubscribed, 1);
+  }
+});
+
 Deno.test("waitForMissingHashes: gives up after the timeout", async () => {
   const { client, state } = fakeWatchClient();
   const wait = waitForMissingHashes(client, INPUT, { timeoutMs: 10 });
@@ -262,5 +275,8 @@ Deno.test("describeMissingHashesFailure: stream end, timeout and errors are acti
     URL,
   );
   assertStringIncludes(errored.message, "connection reset");
+  assertEquals(errored.errorCode, "DIFFSYNC_SUBSCRIPTION_ERROR");
+  assertEquals(errored.code, 6);
   assertStringIncludes(errored.hint!, URL);
+  assertStringIncludes(errored.hint!, "retry");
 });

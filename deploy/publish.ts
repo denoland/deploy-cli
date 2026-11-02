@@ -45,8 +45,8 @@ export type MissingHashesFailure =
   | { reason: "stream_ended"; revision: Revision | undefined }
   /** No report within `timeoutMs`. */
   | { reason: "timeout"; revision: Revision | undefined; timeoutMs: number }
-  /** The label is present but not a JSON array of strings. */
-  | { reason: "malformed_label"; revision: Revision; value: string }
+  /** A snapshot without labels, or a label that is not a JSON array of strings. */
+  | { reason: "malformed_label"; revision: Revision | undefined; value: string }
   /** The subscription itself failed. */
   | {
     reason: "subscription_error";
@@ -126,6 +126,15 @@ export function waitForMissingHashes(
   sub = trpcClient.subscription("revisions.watchUntilReady", input, {
     onData: (data: unknown) => {
       if (settled) return;
+      const labels = (data as Partial<Revision> | null)?.labels;
+      if (typeof labels !== "object" || labels === null) {
+        fail({
+          reason: "malformed_label",
+          revision,
+          value: Deno.inspect(data),
+        });
+        return;
+      }
       revision = data as Revision;
       if (MISSING_HASHES_LABEL in revision.labels) {
         const value = revision.labels[MISSING_HASHES_LABEL];
@@ -208,9 +217,13 @@ export function describeMissingHashesFailure(
       };
     case "subscription_error":
       return {
-        message: Deno.inspect(failure.error),
-        code: ExitCode.GENERIC,
-        hint,
+        message:
+          `The revision stream failed before reporting which files need uploading: ${
+            Deno.inspect(failure.error)
+          }`,
+        code: ExitCode.NETWORK,
+        errorCode: "DIFFSYNC_SUBSCRIPTION_ERROR",
+        hint: `${hint} Then retry the deploy.`,
       };
   }
 }
