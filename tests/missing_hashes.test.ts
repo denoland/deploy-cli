@@ -182,7 +182,10 @@ Deno.test("waitForMissingHashes: rejects a label that is not a string array", as
 
 Deno.test("waitForMissingHashes: rejects a snapshot without labels instead of throwing", async () => {
   for (
-    const data of [{ steps: [], status: "building" }, { labels: null }, null]
+    const data of [{ steps: [], status: "building" }, { labels: null }, {
+      labels: [],
+      status: "building",
+    }, null]
   ) {
     const { client, state } = fakeWatchClient();
     const wait = waitForMissingHashes(client, INPUT);

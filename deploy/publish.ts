@@ -127,7 +127,9 @@ export function waitForMissingHashes(
     onData: (data: unknown) => {
       if (settled) return;
       const labels = (data as Partial<Revision> | null)?.labels;
-      if (typeof labels !== "object" || labels === null) {
+      if (
+        typeof labels !== "object" || labels === null || Array.isArray(labels)
+      ) {
         fail({
           reason: "malformed_label",
           revision,
@@ -151,6 +153,9 @@ export function waitForMissingHashes(
         fail({ reason: "revision_terminal", revision });
       }
     },
+    // The CLI's tRPC client (`auth.ts`) reports and exits on errors in its
+    // error link, so this only runs for a client built without that link; it
+    // settles the wait either way.
     onError: (err: unknown) => {
       fail({ reason: "subscription_error", revision, error: err });
     },
